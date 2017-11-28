@@ -15,7 +15,7 @@ sbatch <<EOT
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=02:00:00
+#SBATCH --time=05:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -28,7 +28,7 @@ sbatch <<EOT
 #SBATCH -p normal,hns
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=2G
 #SBATCH --nodes=1
 #################
 
