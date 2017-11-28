@@ -9,7 +9,7 @@
 ## date: 11/27/2017
 
 input_files <- list.files("../data/", "*.fq", full.names = TRUE)
-input_files <- gsub("_1P.fq||_2P.fq", "", input_files)
+input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
 n_files <- length(input_files)
 n_per_batch <- 5
 

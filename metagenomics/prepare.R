@@ -14,8 +14,6 @@ parser <- arg_parser("Prepare metagenomic data for statistical analysis")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
 argv <- parse_args(parser)
-print(argv)
-print(getwd())
 
 ###############################################################################
 ## Setup paths and load modules
