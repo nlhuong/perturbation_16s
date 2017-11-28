@@ -40,6 +40,6 @@ sbatch <<EOT
 #SBATCH --mail-user=kriss1@stanford.edu
 
 #now run normal batch commands
-cd /scratch/users/kriss1//research/perturbation_16/metagenomics
+cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
 Rscript prepare.R -s $1 -e $2
 EOT
