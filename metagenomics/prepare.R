@@ -35,7 +35,7 @@ outdir <- "../data/processed/"
 dir.create("../data/processed/")
 
 input_files <- list.files("../data/", "*.fq", full.names = TRUE)
-input_files <- gsub("_1P.fq||_2P.fq", "", input_files)
+input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
 input_files <- input_files[argv$start_ix:argv$end_ix]
 
 ###############################################################################
