@@ -41,5 +41,5 @@ sbatch <<EOT
 
 #now run normal batch commands
 cd /scratch/users/kriss1//research/perturbation_16/metagenomics
-Rscript prepare.R $1 $2
+Rscript prepare.R -s $1 -e $2
 EOT

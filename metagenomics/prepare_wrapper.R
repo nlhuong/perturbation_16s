@@ -14,10 +14,6 @@ input_files <- gsub("_1P.fq||_2P.fq", "", input_files)
 n_files <- 15
 n_per_batch <- 5
 
-start_ix <- seq(1, n_files, n_per_batch)
-
-for (i in start_ix) {
-  for (j in i:(i + n_per_batch - 1)) {
-    system(sprintf("bash submit.sh %s %s", i, j))
-  }
+for (i in seq(1, n_files, n_per_batch)) {
+  system(sprintf("bash submit.sh %s %s", i, i + n_per_batch - 1))
 }
