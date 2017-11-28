@@ -6,4 +6,4 @@
 ## date: 11/27/2017
 
 ## Would be nice if the data are gzipped...
-scp -r kriss1@curie.stanford.edu:/relman04/projects/hmd/MetaG/HMD_Mar2017/*Sub/*.fq ../data/
+rsync --compress --copy-links --ignore-existing -r kriss1@curie.stanford.edu:/relman04/projects/hmd/MetaG/HMD_Mar2017/*Sub/*.fq ../data/
