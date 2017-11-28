@@ -10,7 +10,8 @@
 
 input_files <- list.files("../data/", "*.fq", full.names = TRUE)
 input_files <- gsub("_1P.fq||_2P.fq", "", input_files)
-n_files <- length(input_files)
+## n_files <- length(input_files)
+n_files <- 15
 n_per_batch <- 5
 
 start_ix <- seq(1, n_files, n_per_batch)
