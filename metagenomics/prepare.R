@@ -25,8 +25,7 @@ Sys.setenv("PYTHONPATH" = python_path)
 Sys.setenv("PATH" = path)
 Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 
-system("module load biology")
-system("module load samtools/1.6")
+system("module load biology; module load samtools/1.6")
 
 ###############################################################################
 ## Define input and output directories
