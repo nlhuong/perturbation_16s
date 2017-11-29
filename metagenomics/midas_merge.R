@@ -37,7 +37,6 @@ dir.create(merged_dir)
 dir.create(genes_dirs)
 
 base_cmd <- "merge_midas.py %s %s -i %s -t dir"
-system(sprintf(base_cmd, "genes", merged_dir, samples_dir))
 system(sprintf(base_cmd, "genes", genes_dirs, samples_dir))
 system(sprintf(base_cmd, "snps", genes_dirs, samples_dir))
 
