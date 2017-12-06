@@ -35,6 +35,16 @@ dir.create("../data/processed/")
 
 input_files <- list.files("../data/", "*.fq", full.names = TRUE)
 input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
+
+## Identify and filter away procesed samples
+processed_files <- list.files("../data/processed", full.names = TRUE)
+for (f in processed_files) {
+  snps_dir <- file.path(f, "snps", "output")
+  if (length(list.files(snps_dir)) > 0) {
+    input_files <- input_files[!grepl(basename(f), input_files)]
+  }
+}
+
 input_files <- input_files[argv$start_ix:argv$end_ix]
 
 ###############################################################################

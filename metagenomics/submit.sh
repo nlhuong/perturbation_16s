@@ -15,7 +15,7 @@ sbatch <<EOT
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=05:00:00
+#SBATCH --time=10:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -41,5 +41,5 @@ sbatch <<EOT
 
 #now run normal batch commands
 cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
-Rscript prepare.R -s $1 -e $2
+Rscript midas_profile.R -s $1 -e $2
 EOT
