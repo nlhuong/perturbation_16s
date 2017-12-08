@@ -14,6 +14,27 @@
 library("tidyverse")
 library("readxl")
 library("feather")
+library("ggrepel")
+library("forcats")
+
+scale_colour_discrete <- function(...)
+  scale_colour_brewer(..., palette="Set2")
+scale_fill_discrete <- function(...)
+  scale_fill_brewer(..., palette="Set2")
+
+theme_set(theme_bw())
+theme_update(
+  panel.border = element_rect(size = 0.5),
+  panel.grid = element_blank(),
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 8),
+  legend.text = element_text(size = 6),
+  axis.text = element_text(size = 6),
+  axis.title = element_text(size = 8),
+  strip.background = element_blank(),
+  strip.text = element_text(size = 8),
+  legend.key = element_blank()
+)
 
 opts <- list(
   "filter" = list(
@@ -41,9 +62,68 @@ keep_ix <- rowMeans(coverage[, -1] > opts$filter$cov$k) > opts$filter$cov$a
 coverage <- coverage[keep_ix, ]
 coverage[, -1] <- asinh(coverage[, -1])
 
-coverage <- as.data.frame(coverage)
+coverage <- as.data.frame(coverage) %>%
+  separate(
+    species_id,
+    c("genus", "species", "strain_id"), "_",
+    remove = FALSE
+  ) %>%
+  mutate(
+    genus = as.factor(genus),
+    genus_grouped = fct_lump(genus, prop = 0.04)
+  )
+
 rownames(coverage) <- coverage$species_id
-pheatmap(t(coverage[, -1]), fontsize = 6)
+cov_mat <- coverage %>%
+  select(starts_with("M")) %>%
+  t()
+colnames(cov_mat) <- coverage$species_id
+pheatmap(cov_mat, fontsize = 6)
+
+## basic pca biplot
+pc_cov <- princomp(scale(t(cov_mat)))
+scores <- pc_cov$scores[, 1:5] %>%
+  as.data.frame() %>%
+  rownames_to_column("species_id") %>%
+  left_join(coverage %>% select(-starts_with("M")))
+
+ggplot(scores) +
+  geom_hline(yintercept = 0, col = "#e6e6e6") +
+  geom_vline(xintercept = 0, col = "#e6e6e6") +
+  geom_point(
+    aes(
+      x = Comp.1,
+      y = Comp.2,
+      col = genus_grouped
+    ),
+    size = 1
+  ) +
+  geom_text_repel(
+    data = scores %>%
+      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 100),
+    aes(
+      x = Comp.1,
+      y = Comp.2,
+      label = species,
+      col = genus_grouped
+    )
+  )
+
+loadings <- pc_cov$loadings[, 1:5] %>%
+  as.data.frame() %>%
+  rownames_to_column("sample")
+
+## presumably the two subjects
+ggplot(loadings) +
+  geom_text_repel(
+    aes(
+      x = Comp.1,
+      y = Comp.2,
+      label = sample
+    ),
+    size = 2,
+    force = 0.001
+  )
 
 ###############################################################################
 ## Gene depths
