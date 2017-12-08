@@ -14,6 +14,7 @@
 library("tidyverse")
 library("readxl")
 library("feather")
+library("pheatmap")
 library("ggrepel")
 library("forcats")
 
@@ -135,6 +136,40 @@ pheatmap(t(depths_df), show_colnames = FALSE)
 
 ## the only genes that get picked up are associated with Akkermansis muciniphila
 depths$species %>% unique()
+
+depths_mat <- depths %>%
+  select(starts_with("M")) %>%
+  as.matrix()
+rownames(depths_mat) <- depths$gene_id
+
+pc_depths <- princomp(depths_mat)
+scores <- pc_depths$scores %>%
+  scale() %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_id")
+
+ggplot(scores) +
+  geom_hline(yintercept = 0, col = "#e6e6e6") +
+  geom_vline(xintercept = 0, col = "#e6e6e6") +
+  geom_point(
+    aes(
+      x = Comp.1,
+      y = Comp.2,
+      size = Comp.3
+    ),
+    alpha = 0.4
+  ) +
+  geom_text_repel(
+    data = scores %>%
+      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 16),
+    aes(
+      x = Comp.1,
+      y = Comp.2,
+      label = gene_id
+    ),
+    size = 2.5
+  ) +
+    scale_size(range = c(0.001, 2))
 
 ###############################################################################
 ## Species summary statistics
