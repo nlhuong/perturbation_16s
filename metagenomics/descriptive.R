@@ -39,14 +39,8 @@ theme_update(
 
 opts <- list(
   "filter" = list(
-    "cov" = list(
-      "k" = 0.2,
-      "a" = 0
-    ),
-    "species" = list(
-      "k" = 0.2,
-      "a" = 0
-    )
+    "cov" = list("k" = 0.2, "a" = 0),
+    "species" = list("k" = 0.2, "a" = 0)
   )
 )
 
@@ -92,22 +86,13 @@ ggplot(scores) +
   geom_hline(yintercept = 0, col = "#e6e6e6") +
   geom_vline(xintercept = 0, col = "#e6e6e6") +
   geom_point(
-    aes(
-      x = Comp.1,
-      y = Comp.2,
-      col = genus_grouped
-    ),
+    aes(x = Comp.1, y = Comp.2, col = genus_grouped),
     size = 1
   ) +
   geom_text_repel(
     data = scores %>%
       filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 100),
-    aes(
-      x = Comp.1,
-      y = Comp.2,
-      label = species,
-      col = genus_grouped
-    )
+    aes(x = Comp.1, y = Comp.2, label = species, col = genus_grouped)
   )
 
 loadings <- pc_cov$loadings[, 1:5] %>%
@@ -117,11 +102,7 @@ loadings <- pc_cov$loadings[, 1:5] %>%
 ## presumably the two subjects
 ggplot(loadings) +
   geom_text_repel(
-    aes(
-      x = Comp.1,
-      y = Comp.2,
-      label = sample
-    ),
+    aes(x = Comp.1, y = Comp.2, label = sample),
     size = 2,
     force = 0.001
   )
@@ -137,6 +118,7 @@ pheatmap(t(depths_df), show_colnames = FALSE)
 ## the only genes that get picked up are associated with Akkermansis muciniphila
 depths$species %>% unique()
 
+## can also make a PCA biplot
 depths_mat <- depths %>%
   select(starts_with("M")) %>%
   as.matrix()
@@ -152,21 +134,13 @@ ggplot(scores) +
   geom_hline(yintercept = 0, col = "#e6e6e6") +
   geom_vline(xintercept = 0, col = "#e6e6e6") +
   geom_point(
-    aes(
-      x = Comp.1,
-      y = Comp.2,
-      size = Comp.3
-    ),
+    aes(x = Comp.1, y = Comp.2, size = Comp.3),
     alpha = 0.4
   ) +
   geom_text_repel(
     data = scores %>%
       filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 16),
-    aes(
-      x = Comp.1,
-      y = Comp.2,
-      label = gene_id
-    ),
+    aes(x = Comp.1, y = Comp.2, label = gene_id),
     size = 2.5
   ) +
     scale_size(range = c(0.001, 2))
