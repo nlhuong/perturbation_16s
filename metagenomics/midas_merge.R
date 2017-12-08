@@ -67,7 +67,7 @@ for (i in seq_along(genes_f)) {
 ###############################################################################
 ## Write results to file
 ###############################################################################
-write_feather(bind_wrapper(depths), file.path(merged_dir, "depths.txt"))
-write_feather(bind_wrapper(copy_num), file.path(merged_dir, "copy_num.txt"))
-write_feather(bind_wrapper(snps), file.path(merged_dir, "snps.txt"))
-write_feather(bind_wrapper(snps_info), file.path(merged_dir, "snps_info.txt"))
+write_feather(bind_wrapper(depths), file.path(merged_dir, "depths.feather"))
+write_feather(bind_wrapper(copy_num), file.path(merged_dir, "copy_num.feather"))
+write_feather(bind_wrapper(snps), file.path(merged_dir, "snps.feather"))
+write_feather(bind_wrapper(snps_info), file.path(merged_dir, "snps_info.feather"))
