@@ -30,8 +30,8 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 ###############################################################################
 ## Merge data across samples
 ###############################################################################
-samples_dir <- file.path("..", "data", "processed")
-merged_dir <- file.path("..", "data", "merged")
+samples_dir <- file.path("..", "data", "metagenomic", "processed")
+merged_dir <- file.path("..", "data", "metagenomic", "merged")
 genes_dirs <- file.path(merged_dir, "genes")
 dir.create(merged_dir)
 dir.create(genes_dirs)
