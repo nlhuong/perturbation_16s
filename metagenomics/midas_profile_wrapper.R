@@ -8,11 +8,11 @@
 ## author: sankaran.kris@gmail.com
 ## date: 11/27/2017
 
-input_files <- list.files("../data/", "*.fq", full.names = TRUE)
+input_files <- list.files("../data/metagenomic/", "*.fq", full.names = TRUE)
 input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
 
 ## Identify and filter away procesed samples
-processed_files <- list.files("../data/processed", full.names = TRUE)
+processed_files <- list.files("../data/metagenomic/processed", full.names = TRUE)
 for (f in processed_files) {
   snps_dir <- file.path(f, "snps", "output")
   if (length(list.files(snps_dir)) > 0) {
