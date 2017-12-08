@@ -30,14 +30,14 @@ system("module load biology; module load samtools/1.6")
 ###############################################################################
 ## Define input and output directories
 ###############################################################################
-outdir <- "../data/processed/"
-dir.create("../data/processed/")
+outdir <- "../data/metagenomic/processed/"
+dir.create(outdir)
 
-input_files <- list.files("../data/", "*.fq", full.names = TRUE)
+input_files <- list.files("../data/metagenomic/", "*.fq", full.names = TRUE)
 input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
 
 ## Identify and filter away procesed samples
-processed_files <- list.files("../data/processed", full.names = TRUE)
+processed_files <- list.files(outdir, full.names = TRUE)
 for (f in processed_files) {
   snps_dir <- file.path(f, "snps", "output")
   if (length(list.files(snps_dir)) > 0) {
