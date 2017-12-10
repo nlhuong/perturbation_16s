@@ -42,8 +42,7 @@ parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k_cov", help = "k in k-over-a filter for coverage", default = 0.05)
 parser <- add_argument(parser, "--a_cov", help = "a in k-over-a filter for coverage", default = 0)
-parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for depths", default = 0.3)
-parser <- add_argument(parser, "--a_depth", help = "a in k-over-a filter for depths", default = 25)
+parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for depths", default = 0.6)
 argv <- parse_args(parser)
 
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
@@ -112,7 +111,7 @@ ggplot(loadings) +
 ###############################################################################
 ## Gene depths
 ###############################################################################
-keep_ix <- rowMeans(depths[, -c(1, 2)] > argv$a_depth, na.rm = TRUE) > argv$k_depth
+keep_ix <- rowMeans(!is.na(depths[, -c(1, 2)])) > argv$k_depth
 
 depths_df <- depths[keep_ix, ] %>%
   as.data.frame() %>%
@@ -124,15 +123,25 @@ depths_df <- depths[keep_ix, ] %>%
   mutate(
     genus = as.factor(genus),
     genus_grouped = fct_lump(genus, prop = 0.04)
-  )
+  ) %>%
+  mutate_at(
+    vars(starts_with("M")),
+    .funs = function(x) {
+      x[is.na(x)] <- 0
+      asinh(x)
+    })
 rm(depths)
-depths_df[is.na(depths_df)] <- 0
 
-rownames(depths_df) <- depths$gene_id
+## transformed depths
+depths_df[1:1000, ] %>%
+  select(starts_with("M")) %>%
+  as.matrix() %>%
+  hist(breaks = 20)
+
 pheatmap(
   t(depths_df %>% select(starts_with("M"))),
-  annotate_rows = depths_df$genus_grouped,
-  show_colnames = FALSE
+  annotation_col = depths_df$genus_grouped,
+  show_colnames = FALSE,
 )
 
 ## can also make a PCA biplot
