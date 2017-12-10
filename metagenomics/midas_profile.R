@@ -45,8 +45,8 @@ input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
 ## Identify and filter away procesed samples
 processed_files <- list.files(outdir, full.names = TRUE)
 for (f in processed_files) {
-  snps_dir <- file.path(f, "snps", "output")
-  if (length(list.files(snps_dir)) > 0) {
+  genes_dir <- file.path(f, "genes", "output")
+  if (length(list.files(genes_dir)) > 0) {
     input_files <- input_files[!grepl(basename(f), input_files)]
   }
 }
@@ -56,7 +56,6 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ###############################################################################
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
-
 for (f in input_files) {
   f1 <- paste0(f, "_1P.fq")
   f2 <- paste0(f, "_2P.fq")
@@ -72,13 +71,6 @@ for (f in input_files) {
   ## gene profiling
   cmd <- sprintf(
     "run_midas.py genes %s/%s -1 %s -2 %s",
-    outdir, meas, f1, f2
-  )
-  system(cmd)
-
-  ## snps profiling
-  cmd <- sprintf(
-    "run_midas.py snps %s/%s -1 %s -2 %s",
     outdir, meas, f1, f2
   )
   system(cmd)
