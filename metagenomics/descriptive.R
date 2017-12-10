@@ -42,7 +42,8 @@ parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k_cov", help = "k in k-over-a filter for coverage", default = 0.05)
 parser <- add_argument(parser, "--a_cov", help = "a in k-over-a filter for coverage", default = 0)
-parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for depths", default = 0.6)
+parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for depths", default = 0.1)
+parser <- add_argument(parser, "--a_depth", help = "a in k-over-a filter for depths", default = 0.0)
 argv <- parse_args(parser)
 
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
@@ -111,7 +112,8 @@ ggplot(loadings) +
 ###############################################################################
 ## Gene depths
 ###############################################################################
-keep_ix <- rowMeans(!is.na(depths[, -c(1, 2)])) > argv$k_depth
+depths[is.na(depths)] <- 0
+keep_ix <- rowMeans(depths[, -c(1, 2)] > argv$a_depth) > argv$k_depth
 
 depths_df <- depths[keep_ix, ] %>%
   as.data.frame() %>%
@@ -139,16 +141,22 @@ depths_df[1:1000, ] %>%
   hist(breaks = 20)
 
 pheatmap(
-  t(depths_df %>% select(starts_with("M"))),
-  annotation_col = depths_df$genus_grouped,
-  show_colnames = FALSE,
+  depths_df %>%
+  filter(genus == "Ruminococcus") %>%
+  select(starts_with("M")) %>%
+  as.matrix() %>%
+  t(),
+  show_rownames = FALSE
 )
 
 ## can also make a PCA biplot
-depths_mat <- depths %>%
+depths_mat <- depths_df %>%
+  filter(genus == "Ruminococcus") %>%
   select(starts_with("M")) %>%
   as.matrix()
-rownames(depths_mat) <- depths$gene_id
+rownames(depths_mat) <- depths_df %>%
+  filter(genus == "Ruminococcus") %>%
+  .[["gene_id"]]
 
 pc_depths <- princomp(depths_mat)
 scores <- pc_depths$scores %>%
@@ -165,15 +173,10 @@ ggplot(scores) +
   ) +
   geom_text_repel(
     data = scores %>%
-      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 16),
+      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 18),
     aes(x = Comp.1, y = Comp.2, label = gene_id),
+    force = 0.002,
     size = 2.5
   ) +
-    scale_size(range = c(0.001, 2))
-
-###############################################################################
-## Species summary statistics
-###############################################################################
-species %>%
-  arrange(desc(mean_coverage)) %>%
-  .[["species_id"]]
+    scale_size(range = c(0.001, 2)) +
+    ylim(-4, 8)
