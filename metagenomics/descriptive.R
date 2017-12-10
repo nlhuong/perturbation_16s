@@ -12,6 +12,7 @@
 ## Setup and data
 ###############################################################################
 library("tidyverse")
+library("argparser")
 library("readxl")
 library("feather")
 library("pheatmap")
@@ -37,23 +38,24 @@ theme_update(
   legend.key = element_blank()
 )
 
-opts <- list(
-  "filter" = list(
-    "cov" = list("k" = 0.2, "a" = 0),
-    "species" = list("k" = 0.2, "a" = 0)
-  )
-)
+parser <- arg_parser("Plot MIDAS output")
+parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
+parser <- add_argument(parser, "--k_cov", help = "k in k-over-a filter for coverage", default = 0.05)
+parser <- add_argument(parser, "--a_cov", help = "a in k-over-a filter for coverage", default = 0)
+parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for depths", default = 0.1)
+parser <- add_argument(parser, "--a_depth", help = "a in k-over-a filter for depths", default = 0.0)
+argv <- parse_args(parser)
 
-coverage <- read_tsv("../data/merged/coverage.tsv")
-depths <- read_feather("../data/merged/depths.feather")
-species <- read_tsv("../data/merged/species_prevalence.tsv")
-copy_num <- read_feather("../data/merged/copy_num.feather")
-mapping <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", skip = 2)
+merged_dir <- file.path("..", "data", argv$subdir, "merged")
+coverage <- read_tsv(file.path(merged_dir, "coverage.tsv"))
+depths <- read_feather(file.path(merged_dir, "depths.feather"))
+copy_num <- read_feather(file.path(merged_dir, "copy_num.feather"))
+mapping <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", skip = 1)
 
 ###############################################################################
 ## Study the species COG coverage data
 ###############################################################################
-keep_ix <- rowMeans(coverage[, -1] > opts$filter$cov$k) > opts$filter$cov$a
+keep_ix <- rowMeans(coverage[, -1] > argv$k_cov) > argv$a_cov
 coverage <- coverage[keep_ix, ]
 coverage[, -1] <- asinh(coverage[, -1])
 
@@ -110,19 +112,51 @@ ggplot(loadings) +
 ###############################################################################
 ## Gene depths
 ###############################################################################
-depths_df <- depths[, -c(1, 2)] %>%
-  as.data.frame()
-rownames(depths_df) <- depths$gene_id
-pheatmap(t(depths_df), show_colnames = FALSE)
+depths[is.na(depths)] <- 0
+keep_ix <- rowMeans(depths[, -c(1, 2)] > argv$a_depth) > argv$k_depth
 
-## the only genes that get picked up are associated with Akkermansis muciniphila
-depths$species %>% unique()
+depths_df <- depths[keep_ix, ] %>%
+  as.data.frame() %>%
+  separate(
+    species,
+    c("genus", "species_name", "strain_id"), "_",
+    remove = FALSE
+  ) %>%
+  mutate(
+    genus = as.factor(genus),
+    genus_grouped = fct_lump(genus, prop = 0.04)
+  ) %>%
+  mutate_at(
+    vars(starts_with("M")),
+    .funs = function(x) {
+      x[is.na(x)] <- 0
+      asinh(x)
+    })
+rm(depths)
+
+## transformed depths
+depths_df[1:1000, ] %>%
+  select(starts_with("M")) %>%
+  as.matrix() %>%
+  hist(breaks = 20)
+
+pheatmap(
+  depths_df %>%
+  filter(genus == "Ruminococcus") %>%
+  select(starts_with("M")) %>%
+  as.matrix() %>%
+  t(),
+  show_rownames = FALSE
+)
 
 ## can also make a PCA biplot
-depths_mat <- depths %>%
+depths_mat <- depths_df %>%
+  filter(genus == "Ruminococcus") %>%
   select(starts_with("M")) %>%
   as.matrix()
-rownames(depths_mat) <- depths$gene_id
+rownames(depths_mat) <- depths_df %>%
+  filter(genus == "Ruminococcus") %>%
+  .[["gene_id"]]
 
 pc_depths <- princomp(depths_mat)
 scores <- pc_depths$scores %>%
@@ -139,15 +173,10 @@ ggplot(scores) +
   ) +
   geom_text_repel(
     data = scores %>%
-      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 16),
+      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 18),
     aes(x = Comp.1, y = Comp.2, label = gene_id),
+    force = 0.002,
     size = 2.5
   ) +
-    scale_size(range = c(0.001, 2))
-
-###############################################################################
-## Species summary statistics
-###############################################################################
-species %>%
-  arrange(desc(mean_coverage)) %>%
-  .[["species_id"]]
+    scale_size(range = c(0.001, 2)) +
+    ylim(-4, 8)
