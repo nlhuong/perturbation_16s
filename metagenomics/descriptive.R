@@ -37,23 +37,23 @@ theme_update(
   legend.key = element_blank()
 )
 
-opts <- list(
-  "filter" = list(
-    "cov" = list("k" = 0.2, "a" = 0),
-    "species" = list("k" = 0.2, "a" = 0)
-  )
-)
+parser <- arg_parser("Plot MIDAS output")
+parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
+parser <- add_argument("k_cov", help = "k in k-over-a filter for coverage", default = 0.2)
+parser <- add_argument("a_cov", help = "a in k-over-a filter for coverage", default = 0)
+parser <- add_argument("k_dep", help = "k in k-over-a filter for depths", default = 0.2)
+parser <- add_argument("a_dep", help = "a in k-over-a filter for depths", default = 0)
+argv <- parse_args(parser)
 
-coverage <- read_tsv("../data/merged/coverage.tsv")
-depths <- read_feather("../data/merged/depths.feather")
-species <- read_tsv("../data/merged/species_prevalence.tsv")
-copy_num <- read_feather("../data/merged/copy_num.feather")
-mapping <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", skip = 2)
+merged_dir <- file.path("..", "data", argv$subdir, "merged")
+depths <- read_feather(file.path(merged_dir, "depths.feather"))
+copy_num <- read_feather(file.path(merged_dir, "copy_num.feather"))
+mapping <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", skip = 1)
 
 ###############################################################################
 ## Study the species COG coverage data
 ###############################################################################
-keep_ix <- rowMeans(coverage[, -1] > opts$filter$cov$k) > opts$filter$cov$a
+keep_ix <- rowMeans(coverage[, -1] > parser$k_cov) > parser$a_cov
 coverage <- coverage[keep_ix, ]
 coverage[, -1] <- asinh(coverage[, -1])
 
@@ -114,9 +114,6 @@ depths_df <- depths[, -c(1, 2)] %>%
   as.data.frame()
 rownames(depths_df) <- depths$gene_id
 pheatmap(t(depths_df), show_colnames = FALSE)
-
-## the only genes that get picked up are associated with Akkermansis muciniphila
-depths$species %>% unique()
 
 ## can also make a PCA biplot
 depths_mat <- depths %>%
