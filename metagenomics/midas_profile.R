@@ -38,8 +38,8 @@ system("module load biology; module load samtools/1.6")
 outdir <- file.path(argv$indir, "processed")
 dir.create(outdir)
 
-input_files <- list.files(argv$indir, "*.fq", full.names = TRUE)
-input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
+input_files <- list.files(argv$indir, "*.fq*", full.names = TRUE)
+input_files <- unique(gsub("_1P||_2P", "", input_files))
 
 ## Identify and filter away procesed samples
 processed_files <- list.files(outdir, full.names = TRUE)
@@ -56,8 +56,8 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
 for (f in input_files) {
-  f1 <- paste0(f, "_1P.fq")
-  f2 <- paste0(f, "_2P.fq")
+  f1 <- gsub(f, ".fq", "_1P.fq")
+  f2 <- gsub(f, ".fq", "_2P.fq")
   meas <- str_extract(f1, "M[0-9]+")
 
   ## species profiling
