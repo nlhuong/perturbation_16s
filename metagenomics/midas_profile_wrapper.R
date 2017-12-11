@@ -14,8 +14,8 @@ parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ con
 argv <- parse_args(parser)
 
 indir <- file.path("..", "data", argv$subdir)
-input_files <- list.files(indir, "*.fq", full.names = TRUE)
-input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
+input_files <- list.files(indir, "*.fq*", full.names = TRUE)
+input_files <- unique(gsub("_1P||_2P", "", input_files))
 
 ## Identify and filter away procesed samples
 processed_files <- list.files(file.path(indir, "processed"), full.names = TRUE)
