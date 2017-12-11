@@ -17,7 +17,7 @@ library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
-parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the raw data", default = "metagenomic")
+parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "../data/metagenomic")
 argv <- parse_args(parser)
 
 ###############################################################################
@@ -35,11 +35,10 @@ system("module load biology; module load samtools/1.6")
 ###############################################################################
 ## Define input and output directories
 ###############################################################################
-indir <- file.path("..", "data", argv$subdir)
-outdir <- file.path(subdir, "processed")
+outdir <- file.path(argv$indir, "processed")
 dir.create(outdir)
 
-input_files <- list.files(indir, "*.fq", full.names = TRUE)
+input_files <- list.files(argv$indir, "*.fq", full.names = TRUE)
 input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
 
 ## Identify and filter away procesed samples
