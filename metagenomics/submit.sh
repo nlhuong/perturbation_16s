@@ -41,5 +41,5 @@ sbatch <<EOT
 
 #now run normal batch commands
 cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
-Rscript midas_profile.R -s $1 -e $2
+Rscript midas_profile.R -s $1 -e $2 -i $3
 EOT
