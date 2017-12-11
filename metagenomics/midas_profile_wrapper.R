@@ -11,6 +11,7 @@
 library("argparser")
 parser <- arg_parser("Wrap metagenomic and metatranscriptomic profiling")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the raw data", default = "metagenomic")
+argv <- parse_args(parser)
 
 indir <- file.path("..", "data", argv$subdir)
 input_files <- list.files(indir, "*.fq", full.names = TRUE)
