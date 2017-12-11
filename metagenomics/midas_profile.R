@@ -56,8 +56,8 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
 for (f in input_files) {
-  f1 <- gsub(f, ".fq", "_1P.fq")
-  f2 <- gsub(f, ".fq", "_2P.fq")
+  f1 <- gsub(".fq", "_1P.fq", f)
+  f2 <- gsub(".fq", "_2P.fq", f)
   meas <- str_extract(f1, "M[0-9]+")
 
   ## species profiling
