@@ -14,6 +14,7 @@
 ## Libraries and setup
 ###############################################################################
 library("tidyverse")
+library("readxl")
 library("phyloseq")
 library("ggrepel")
 
@@ -39,22 +40,23 @@ theme_update(
 ps <- readRDS("../data/16s/perturb_physeq_8Dec.rds")
 metag <- read_tsv("../data/metagenomic/merged/count_reads.tsv") %>%
   separate(species_id, c("Genus", "species", "strain_id"), remove = FALSE)
+meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1)
+samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1)
 
 species_sums <- metag %>%
   select(starts_with("M")) %>%
   rowSums()
 metag <- metag[species_sums != 0, ]
 
-
 ###############################################################################
 ## Functions used throughout
 ###############################################################################
 count_taxa <- function(melted_abund, taxa_level = "Genus") {
   melted_abund %>%
-    group_by_("sample", taxa_level) %>%
-    summarise(total = sum(count)) %>%
-    arrange(sample, desc(total)) %>%
-    group_by(sample) %>%
+    group_by_("Meas_ID", taxa_level) %>%
+    summarise(SampID = SampID[1], total = sum(count)) %>%
+    arrange(Meas_ID, desc(total)) %>%
+    group_by(Meas_ID) %>%
     mutate(rel_total = total / sum(total)) %>%
     ungroup()
 }
@@ -67,19 +69,23 @@ taxa <- tax_table(ps) %>%
   rownames_to_column("seq_id")
 
 melt_metag <- metag %>%
-  gather(sample, count, starts_with("M"))
+  gather(Meas_ID, count, starts_with("M")) %>%
+  left_join(meas %>% select("Meas_ID", "SampID"))
 
 melt_16s <- ps %>%
   get_taxa() %>%
   as.data.frame() %>%
   rownames_to_column("seq_id") %>%
-  gather(sample, count, -seq_id) %>%
-  left_join(taxa)
+  gather(Meas_ID, count, -seq_id) %>%
+  left_join(taxa %>% select("seq_id", "Genus")) %>%
+  left_join(meas %>% select("Meas_ID", "SampID"))
 
 sums_metag <- count_taxa(melt_metag) %>%
   mutate(source = "metagenomic")
 sums_16s <- count_taxa(melt_16s) %>%
   mutate(source = "16s")
+rm(melt_16s)
+rm(melt_metag)
 
 genus_levels <- c(sums_metag$Genus, levels(sums_16s$Genus)) %>%
   unique()
@@ -96,27 +102,20 @@ genus <- melt_genus %>%
 ###############################################################################
 ## Plot genus count comparions
 ###############################################################################
-## per sample plot of relative abundances between the two data sources
-ggplot(genus) +
-  geom_segment(
-    aes(
-      x = asinh(`16s`),
-      y = sample,
-      xend = asinh(metagenomic),
-      yend = sample
-    ),
-    position = position_jitter(h = 0.5),
-    alpha = 0.1,
-    size = 0.2
-  )
-
 ## barplot of relative abundances across genuses, from both data sets
-keep_samples <- unique(sums_metag$sample)[1:10]
+keep_ids <- meas %>%
+  filter(Meas_ID %in% c(colnames(metag), sample_names(ps))) %>%
+  group_by(SampID) %>%
+  mutate(n_types = n()) %>%
+  filter(n_types > 1) %>%
+  arrange(SampID) %>%
+  .[["Meas_ID"]]
+
 keep_genus <- levels(melt_genus$Genus)[1:100]
 ggplot(
   melt_genus %>%
     filter(
-      sample %in% keep_samples,
+      Meas_ID %in% keep_ids[1:10],
       Genus %in% keep_genus
     )
   ) +
@@ -125,13 +124,31 @@ ggplot(
     stat = "identity",
     position = "dodge"
   ) +
-  facet_grid(sample ~ .) +
+  facet_grid(SampID ~ ., scale = "free_y") +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
-## don't have any samples in common right now
-intersect(sums_metag$sample %>% unique(), sums_16s$sample %>% unique())
+## scatterplot of abundances from the two sources, per sample
+ggplot(
+  melt_genus %>%
+    filter(
+      Meas_ID %in% keep_ids[1:12],
+      Genus %in% keep_genus
+    ) %>%
+    select(-Meas_ID, -total) %>%
+    spread(source, rel_total) %>%
+    filter(`16s` > 1e-3 | `metagenomic` > 1e-3)
+  ) +
+  geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
+  geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
+  geom_abline(alpha = 0.4, size = 0.2) +
+  geom_text_repel(
+    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+    size = 2,
+    force = 0.02
+  ) +
+  facet_wrap(~SampID, scale = "free")
 
-## aggregate over all samples now
+## aggregate over all SampIDs now
 ave_genus <- melt_genus %>%
     filter(Genus %in% keep_genus) %>%
     group_by(Genus, source) %>%
@@ -145,16 +162,17 @@ ggplot(ave_genus) +
   ) +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
-## scatterplot of logged relative abundances from the two sources
 ggplot(
   ave_genus %>%
-    spread(source, rel_total)
+    filter(Genus %in% keep_genus) %>%
+    spread(source, rel_total) %>%
+    filter(`16s` > 1e-3 | `metagenomic` > 1e-3)
   ) +
-  geom_abline(slope = 1, size = 0.1) +
+  geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
+  geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
+  geom_abline(alpha = 0.4, size = 0.2) +
   geom_text_repel(
-    aes(x = `16s`, y = `metagenomic`, label = Genus),
+    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
     size = 2,
     force = 0.02
-  ) +
-  scale_x_log10() +
-  scale_y_log10()
+  )
