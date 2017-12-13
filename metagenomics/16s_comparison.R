@@ -15,6 +15,7 @@
 ###############################################################################
 library("tidyverse")
 library("phyloseq")
+library("ggrepel")
 
 scale_colour_discrete <- function(...)
   scale_colour_brewer(..., palette="Set2")
@@ -131,15 +132,29 @@ ggplot(
 intersect(sums_metag$sample %>% unique(), sums_16s$sample %>% unique())
 
 ## aggregate over all samples now
-ggplot(
-  melt_genus %>%
+ave_genus <- melt_genus %>%
     filter(Genus %in% keep_genus) %>%
     group_by(Genus, source) %>%
     summarise(rel_total = mean(rel_total, na.rm = TRUE))
-  ) +
+
+ggplot(ave_genus) +
   geom_bar(
     aes(x = Genus, y = rel_total, fill = source),
     stat = "identity",
     position = "dodge"
   ) +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
+
+## scatterplot of logged relative abundances from the two sources
+ggplot(
+  ave_genus %>%
+    spread(source, rel_total)
+  ) +
+  geom_abline(slope = 1, size = 0.1) +
+  geom_text_repel(
+    aes(x = `16s`, y = `metagenomic`, label = Genus),
+    size = 2,
+    force = 0.02
+  ) +
+  scale_x_log10() +
+  scale_y_log10()
