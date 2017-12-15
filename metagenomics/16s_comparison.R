@@ -38,10 +38,9 @@ theme_update(
 )
 
 ps <- readRDS("../data/16s/perturb_physeq_8Dec.rds")
-metag <- read_tsv("../data/metagenomic/merged/count_reads.tsv") %>%
+metag <- read_tsv("../data/metagenomic/merged/coverage.tsv") %>%
   separate(species_id, c("Genus", "species", "strain_id"), remove = FALSE)
 meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1)
-samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1)
 
 species_sums <- metag %>%
   select(starts_with("M")) %>%
