@@ -15,17 +15,16 @@ library("tidyverse")
 library("argparser")
 library("readxl")
 library("feather")
-library("pheatmap")
 library("ggrepel")
 library("forcats")
 
 ## custom plot defaults
+scale_fill_interval <- function(...)
+  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
+scale_color_interval <- function(...)
+  scale_color_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
 scale_colour_discrete <- function(...)
   scale_colour_brewer(..., palette="Set2")
-scale_fill_discrete <- function(...)
-  scale_fill_brewer(..., palette="Set2")
-scale_fill_interval <- function(...)
-  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0", "red"), na.value = "#2f4f4f")
 
 theme_set(theme_bw())
 theme_update(
@@ -42,10 +41,40 @@ theme_update(
 )
 
 ## Functions used throughout
-plot_cov <- function(hm, cov_aes, fill_type) {
-  cov_aes$fill <- fill_type
-  hm +
-    geom_tile(cov_aes)
+plot_cov <- function(mcoverage, fill_type) {
+  ggplot(mcoverage) +
+    geom_tile(
+      aes_string(x = "species_id", y = "Meas_ID", alpha = "coverage", fill = fill_type)
+    ) +
+    facet_grid(
+      Subject ~ genus_grouped,
+      scales = "free",
+      space = "free"
+    ) +
+    scale_fill_interval() +
+    scale_alpha(range = c(0, 1)) +
+    theme(
+      axis.text = element_blank(),
+      axis.title.y = element_blank(),
+      strip.text.x = element_text(angle = 90, hjust = 0),
+      strip.text.y = element_text(angle = 0),
+      legend.position = "bottom"
+    )
+}
+
+
+plot_loadings <- function(loadings, col_type) {
+  ggplot(loadings) +
+    geom_hline(yintercept = 0, col = "#e6e6e6") +
+    geom_vline(xintercept = 0, col = "#e6e6e6") +
+    geom_text_repel(
+      aes_string(x = "Comp.1", y = "Comp.2", label = "Meas_ID", col = col_type),
+      size = 2,
+      force = 0.001
+    ) +
+    guides(col = guide_legend(override.aes = list(size = 6))) +
+    scale_color_interval() +
+    facet_grid(~ Subject)
 }
 
 ## Define the parser
@@ -53,15 +82,11 @@ parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k_cov", help = "k in k-over-a filter for coverage", default = 0.05)
 parser <- add_argument(parser, "--a_cov", help = "a in k-over-a filter for coverage", default = 0)
-parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for depths", default = 0.1)
-parser <- add_argument(parser, "--a_depth", help = "a in k-over-a filter for depths", default = 0.0)
 argv <- parse_args(parser)
 
 ## Read in data
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
 coverage <- read_tsv(file.path(merged_dir, "coverage.tsv"))
-depths <- read_feather(file.path(merged_dir, "depths.feather"))
-copy_num <- read_feather(file.path(merged_dir, "copy_num.feather"))
 meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
   rename(Samp_ID = SampID)
 samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
@@ -86,7 +111,7 @@ coverage <- as.data.frame(coverage) %>%
   ) %>%
   mutate(
     genus = as.factor(genus),
-    genus_grouped = fct_lump(genus, prop = 0.04)
+    genus_grouped = fct_lump(genus, n = 7)
   )
 
 mcoverage <- coverage %>%
@@ -121,7 +146,7 @@ mcoverage <- mcoverage %>%
   )
 
 ## pca biplot data
-pc_cov <- princomp(scale(t(cov_mat)))
+pc_cov <- princomp(scale(cov_mat))
 scores <- pc_cov$scores[, 1:5] %>%
   as.data.frame() %>%
   rownames_to_column("species_id") %>%
@@ -129,37 +154,17 @@ scores <- pc_cov$scores[, 1:5] %>%
 
 loadings <- pc_cov$loadings[, 1:5] %>%
   as.data.frame() %>%
-  rownames_to_column("sample")
+  rownames_to_column("Meas_ID") %>%
+  left_join(meas %>% select(ends_with("ID"))) %>%
+  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval")))
 
 
 ###############################################################################
 ## Produce visualizations for the species COG data
 ###############################################################################
-cov_aes <- aes(
-  x = species_id,
-  y = Meas_ID,
-  alpha = coverage,
-  fill = Diet_Interval
-)
-hm <- ggplot(mcoverage) +
-  facet_grid(
-    Subject ~ genus_grouped,
-    scales = "free",
-    space = "free"
-  ) +
-  scale_fill_interval() +
-  scale_alpha(range = c(0, 1)) +
-  theme(
-    axis.text = element_blank(),
-    axis.title.y = element_blank(),
-    strip.text.x = element_text(angle = 90, hjust = 0),
-    strip.text.y = element_text(angle = 0),
-    legend.position = "bottom"
-  )
-
-plot_cov(hm, cov_aes, substitute(CC_Interval))
-plot_cov(hm, cov_aes, substitute(Diet_Interval))
-plot_cov(hm, cov_aes, substitute(Abx_Interval))
+plot_cov(mcoverage, "CC_Interval")
+plot_cov(mcoverage, "Diet_Interval")
+plot_cov(mcoverage, "Abx_Interval")
 
 ## basic pca biplot
 ggplot(scores) +
@@ -176,81 +181,6 @@ ggplot(scores) +
   )
 
 ## presumably the two subjects
-ggplot(loadings) +
-  geom_text_repel(
-    aes(x = Comp.1, y = Comp.2, label = sample),
-    size = 2,
-    force = 0.001
-  )
-
-###############################################################################
-## Gene depths
-###############################################################################
-depths[is.na(depths)] <- 0
-keep_ix <- rowMeans(depths[, -c(1, 2)] > argv$a_depth) > argv$k_depth
-
-depths_df <- depths[keep_ix, ] %>%
-  as.data.frame() %>%
-  separate(
-    species,
-    c("genus", "species_name", "strain_id"), "_",
-    remove = FALSE
-  ) %>%
-  mutate(
-    genus = as.factor(genus),
-    genus_grouped = fct_lump(genus, prop = 0.04)
-  ) %>%
-  mutate_at(
-    vars(starts_with("M")),
-    .funs = function(x) {
-      x[is.na(x)] <- 0
-      asinh(x)
-    })
-rm(depths)
-
-## transformed depths
-depths_df[1:1000, ] %>%
-  select(starts_with("M")) %>%
-  as.matrix() %>%
-  hist(breaks = 20)
-
-pheatmap(
-  depths_df %>%
-  filter(genus == "Ruminococcus") %>%
-  select(starts_with("M")) %>%
-  as.matrix() %>%
-  t(),
-  show_rownames = FALSE
-)
-
-## can also make a PCA biplot
-depths_mat <- depths_df %>%
-  filter(genus == "Ruminococcus") %>%
-  select(starts_with("M")) %>%
-  as.matrix()
-rownames(depths_mat) <- depths_df %>%
-  filter(genus == "Ruminococcus") %>%
-  .[["gene_id"]]
-
-pc_depths <- princomp(depths_mat)
-scores <- pc_depths$scores %>%
-  scale() %>%
-  as.data.frame() %>%
-  rownames_to_column("gene_id")
-
-ggplot(scores) +
-  geom_hline(yintercept = 0, col = "#e6e6e6") +
-  geom_vline(xintercept = 0, col = "#e6e6e6") +
-  geom_point(
-    aes(x = Comp.1, y = Comp.2, size = Comp.3),
-    alpha = 0.4
-  ) +
-  geom_text_repel(
-    data = scores %>%
-      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 18),
-    aes(x = Comp.1, y = Comp.2, label = gene_id),
-    force = 0.002,
-    size = 2.5
-  ) +
-    scale_size(range = c(0.001, 2)) +
-    ylim(-4, 8)
+plot_loadings(loadings, "CC_Interval")
+plot_loadings(loadings, "Diet_Interval")
+plot_loadings(loadings, "Abx_Interval")
