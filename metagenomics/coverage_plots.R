@@ -80,8 +80,8 @@ plot_loadings <- function(loadings, col_type) {
 ## Define the parser
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
-parser <- add_argument(parser, "--k_cov", help = "k in k-over-a filter for coverage", default = 0.05)
-parser <- add_argument(parser, "--a_cov", help = "a in k-over-a filter for coverage", default = 0)
+parser <- add_argument(parser, "--k", help = "k in k-over-a filter for coverage", default = 0.05)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for coverage", default = 0)
 argv <- parse_args(parser)
 
 ## Read in data
@@ -99,7 +99,7 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
 ###############################################################################
 ## Prepare data for visualizing species COG data
 ###############################################################################
-keep_ix <- rowMeans(coverage[, -1] > argv$k_cov) > argv$a_cov
+keep_ix <- rowMeans(coverage[, -1] > argv$k) > argv$a
 coverage <- coverage[keep_ix, ]
 coverage[, -1] <- asinh(coverage[, -1])
 
