@@ -14,6 +14,7 @@
 library("tidyverse")
 library("argparser")
 library("readxl")
+library("gridExtra")
 library("feather")
 library("pheatmap")
 library("ggrepel")
@@ -23,6 +24,8 @@ scale_colour_discrete <- function(...)
   scale_colour_brewer(..., palette="Set2")
 scale_fill_discrete <- function(...)
   scale_fill_brewer(..., palette="Set2")
+scale_fill_interval <- function(...)
+  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
 
 theme_set(theme_bw())
 theme_update(
@@ -30,8 +33,8 @@ theme_update(
   panel.grid = element_blank(),
   axis.ticks = element_blank(),
   legend.title = element_text(size = 8),
-  legend.text = element_text(size = 6),
-  axis.text = element_text(size = 6),
+  legend.text = element_text(size = 9),
+  axis.text = element_text(size = 9),
   axis.title = element_text(size = 8),
   strip.background = element_blank(),
   strip.text = element_text(size = 8),
@@ -50,7 +53,14 @@ merged_dir <- file.path("..", "data", argv$subdir, "merged")
 coverage <- read_tsv(file.path(merged_dir, "coverage.tsv"))
 depths <- read_feather(file.path(merged_dir, "depths.feather"))
 copy_num <- read_feather(file.path(merged_dir, "copy_num.feather"))
-mapping <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", skip = 1)
+meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
+  rename(Samp_ID = SampID)
+samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
+  mutate(
+    Diet_Interval = factor(Diet_Interval, c("PreDiet", "MidDiet", "PostDiet")),
+    CC_Interval = factor(CC_Interval, c("PreCC", "MidCC", "PostCC")),
+    Abx_Interval = factor(Abx_Interval, c("PreAbx", "MidAbx", "PostAbx"))
+  )
 
 ###############################################################################
 ## Study the species COG coverage data
@@ -70,12 +80,60 @@ coverage <- as.data.frame(coverage) %>%
     genus_grouped = fct_lump(genus, prop = 0.04)
   )
 
+mcoverage <- coverage %>%
+  gather(Meas_ID, coverage, starts_with("M")) %>%
+  left_join(meas %>% select(Meas_ID, Samp_ID)) %>%
+  left_join(samp %>% select(Samp_ID, Subject, Samp_Date, ends_with("Interval")))
+
 rownames(coverage) <- coverage$species_id
 cov_mat <- coverage %>%
-  select(starts_with("M")) %>%
-  t()
-colnames(cov_mat) <- coverage$species_id
-pheatmap(cov_mat, fontsize = 6)
+  select(starts_with("M"))
+sp_order <- hclust(dist(cov_mat))$order
+mcoverage$species_id <- factor(
+  mcoverage$species_id,
+  levels = rownames(cov_mat)[sp_order]
+)
+
+## sort measurement and genus levels
+meas_levels <- mcoverage %>%
+  select(Meas_ID, Subject, Samp_Date) %>%
+  unique() %>%
+  arrange(Subject, desc(Samp_Date)) %>%
+  .[["Meas_ID"]]
+genus_levels <- mcoverage %>%
+  group_by(genus_grouped) %>%
+  summarise(sum = sum(coverage)) %>%
+  arrange(desc(sum)) %>%
+  .[["genus_grouped"]]
+mcoverage <- mcoverage %>%
+  mutate(
+    Meas_ID = factor(Meas_ID, meas_levels),
+    genus_grouped = factor(genus_grouped, genus_levels)
+  )
+
+cov_hm <- ggplot(mcoverage) +
+  geom_tile(
+    aes(
+      x = species_id,
+      y = Meas_ID,
+      alpha = coverage,
+      fill = Diet_Interval
+    )
+  ) +
+  facet_grid(
+    Subject ~ genus_grouped,
+    scales = "free",
+    space = "free"
+  ) +
+  scale_fill_interval() +
+  scale_alpha(range = c(0, 1)) +
+  theme(
+    axis.text = element_blank(),
+    axis.title.y = element_blank(),
+    strip.text.x = element_text(angle = 90, hjust = 0, size = 9),
+    strip.text.y = element_text(angle = 0, size = 9),
+    legend.position = "bottom"
+  )
 
 ## basic pca biplot
 pc_cov <- princomp(scale(t(cov_mat)))
