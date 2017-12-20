@@ -14,18 +14,18 @@
 library("tidyverse")
 library("argparser")
 library("readxl")
-library("gridExtra")
 library("feather")
 library("pheatmap")
 library("ggrepel")
 library("forcats")
 
+## custom plot defaults
 scale_colour_discrete <- function(...)
   scale_colour_brewer(..., palette="Set2")
 scale_fill_discrete <- function(...)
   scale_fill_brewer(..., palette="Set2")
 scale_fill_interval <- function(...)
-  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
+  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0", "red"), na.value = "#2f4f4f")
 
 theme_set(theme_bw())
 theme_update(
@@ -37,10 +37,18 @@ theme_update(
   axis.text = element_text(size = 9),
   axis.title = element_text(size = 8),
   strip.background = element_blank(),
-  strip.text = element_text(size = 8),
+  strip.text = element_text(size = 9),
   legend.key = element_blank()
 )
 
+## Functions used throughout
+plot_cov <- function(hm, cov_aes, fill_type) {
+  cov_aes$fill <- fill_type
+  hm +
+    geom_tile(cov_aes)
+}
+
+## Define the parser
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k_cov", help = "k in k-over-a filter for coverage", default = 0.05)
@@ -49,6 +57,7 @@ parser <- add_argument(parser, "--k_depth", help = "k in k-over-a filter for dep
 parser <- add_argument(parser, "--a_depth", help = "a in k-over-a filter for depths", default = 0.0)
 argv <- parse_args(parser)
 
+## Read in data
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
 coverage <- read_tsv(file.path(merged_dir, "coverage.tsv"))
 depths <- read_feather(file.path(merged_dir, "depths.feather"))
@@ -63,7 +72,7 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
   )
 
 ###############################################################################
-## Study the species COG coverage data
+## Prepare data for visualizing species COG data
 ###############################################################################
 keep_ix <- rowMeans(coverage[, -1] > argv$k_cov) > argv$a_cov
 coverage <- coverage[keep_ix, ]
@@ -111,15 +120,28 @@ mcoverage <- mcoverage %>%
     genus_grouped = factor(genus_grouped, genus_levels)
   )
 
-cov_hm <- ggplot(mcoverage) +
-  geom_tile(
-    aes(
-      x = species_id,
-      y = Meas_ID,
-      alpha = coverage,
-      fill = Diet_Interval
-    )
-  ) +
+## pca biplot data
+pc_cov <- princomp(scale(t(cov_mat)))
+scores <- pc_cov$scores[, 1:5] %>%
+  as.data.frame() %>%
+  rownames_to_column("species_id") %>%
+  left_join(coverage %>% select(-starts_with("M")))
+
+loadings <- pc_cov$loadings[, 1:5] %>%
+  as.data.frame() %>%
+  rownames_to_column("sample")
+
+
+###############################################################################
+## Produce visualizations for the species COG data
+###############################################################################
+cov_aes <- aes(
+  x = species_id,
+  y = Meas_ID,
+  alpha = coverage,
+  fill = Diet_Interval
+)
+hm <- ggplot(mcoverage) +
   facet_grid(
     Subject ~ genus_grouped,
     scales = "free",
@@ -130,18 +152,16 @@ cov_hm <- ggplot(mcoverage) +
   theme(
     axis.text = element_blank(),
     axis.title.y = element_blank(),
-    strip.text.x = element_text(angle = 90, hjust = 0, size = 9),
-    strip.text.y = element_text(angle = 0, size = 9),
+    strip.text.x = element_text(angle = 90, hjust = 0),
+    strip.text.y = element_text(angle = 0),
     legend.position = "bottom"
   )
 
-## basic pca biplot
-pc_cov <- princomp(scale(t(cov_mat)))
-scores <- pc_cov$scores[, 1:5] %>%
-  as.data.frame() %>%
-  rownames_to_column("species_id") %>%
-  left_join(coverage %>% select(-starts_with("M")))
+plot_cov(hm, cov_aes, substitute(CC_Interval))
+plot_cov(hm, cov_aes, substitute(Diet_Interval))
+plot_cov(hm, cov_aes, substitute(Abx_Interval))
 
+## basic pca biplot
 ggplot(scores) +
   geom_hline(yintercept = 0, col = "#e6e6e6") +
   geom_vline(xintercept = 0, col = "#e6e6e6") +
@@ -154,10 +174,6 @@ ggplot(scores) +
       filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 100),
     aes(x = Comp.1, y = Comp.2, label = species, col = genus_grouped)
   )
-
-loadings <- pc_cov$loadings[, 1:5] %>%
-  as.data.frame() %>%
-  rownames_to_column("sample")
 
 ## presumably the two subjects
 ggplot(loadings) +
