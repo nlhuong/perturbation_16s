@@ -1,16 +1,24 @@
-## DADA2 pipline
 
-## Use this on the server
-# { time Rscript --no-save --no-restore --verbose dada2_pipeline_bigdata.R > logs/dada2_logs/tax.Rout 2> logs/dada2_logs/error_tax.Rout ; } 2> logs/dada2_logs/time_tax.Rout.txt
+## File description -------------------------------------------------------------
+##
+## Use DADA2 pipeline to generate a sequence abundance table and taxonomy
+## assignment from reads fastq files.
+##
+## author: nlhuong90@gmail.com
+## date: 12/21/2017
+##
+## Run this command on the icme-share server
+# { time Rscript --no-save --no-restore --verbose dada2_pipeline_bigdata.R > 
+## dada2.rout 2> dada2.err ; } 2> dada2.time
 
 pool.list <- c("16S1_idemp", "16S2_idemp", "16S3_idemp","16S4_idemp")
 
-FILTER <- TRUE
-LEARN_ERRORS <- TRUE
-INFER_SEQUENCE_VARIANTS <-  TRUE
-MAKE_SEQTAB <- TRUE
-COMBINE <- TRUE
-CHIMERA_CHECK <- TRUE
+FILTER <- FALSE
+LEARN_ERRORS <- FALSE
+INFER_SEQUENCE_VARIANTS <- FALSE
+MAKE_SEQTAB <- FALSE
+COMBINE <- FALSE
+CHIMERA_CHECK <- FALSE
 ASSIGN_TAXONOMY <- TRUE
 
 nCores <- 60 #for chimera checking

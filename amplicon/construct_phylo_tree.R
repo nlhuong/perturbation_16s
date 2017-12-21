@@ -1,17 +1,26 @@
+## File description -------------------------------------------------------------
+##
+## Generate a phylogenetic tree for sequences in the phyloseq object.
+##
+## author: nlhuong90@gmail.com
+## date: 12/21/2017
+
 library(phyloseq)
 library(DECIPHER)
 library(phangorn)
 
-ALIGN <- TRUE
-DIST <- TRUE
-PHYLONJ <- TRUE
+ALIGN <- FALSE
+DIST <- FALSE
+PHYLONJ <- FALSE
 PHYLOGTR <- TRUE
 
-res_filename <- "phanghorn_fit_0.rda"
+path_to_process_data <- "/home/lanhuong/Projects/PerturbationStudy/data/processed"
+data_file <- "perturb_physeq_filtered_8Dec.rds"
+res_filename <- "phanghorn_fit.rda"
+res_prev_run <- "phanghorn_fit_0.rda"
 res_alignfile <- "decipher_align_0.rds"
 
-path_to_process_data <- "/home/lanhuong/Projects/PerturbationStudy/data/processed"
-ps <- readRDS(file.path(path_to_process_data, "perturb_physeq.rds"))
+ps <- readRDS(file.path(path_to_process_data, data_file))
 seqs <- as.character(ps@tax_table[, "Seq"])
 names(seqs) <- taxa_names(ps)
 head(seqs)
@@ -47,16 +56,20 @@ if(PHYLONJ) {
   ptm <- proc.time()
   save(list = c("alignment", "phang.align", "dm", "treeNJ", "fit"), 
        file = file.path(path_to_process_data, res_filename))
+} 
+
+if(!all(c(DIST, PHYLONJ))) {
+  load(file.path(path_to_process_data, res_prev_run))
+  cat("Loaded objects. \n")
 }
 
 if(PHYLOGTR){
+  ptm <- proc.time()
   fitGTR <- update(fit, k=4, inv=0.2)
   fitGTR <- optim.pml(fitGTR, model="GTR", optInv = TRUE, optGamma = TRUE,
-                    rearrangement = "stochastic") 
-  phang.time <- proc.time() - ptm0
+                      rearrangement = "stochastic") 
   cat("Computed GTR tree in:\n")
-  print(proc.time - ptm)
-  save(list = c("alignment", "phang.align", "dm", "treeNJ", "fit",
-                "fitGTR", "phang.time"), 
-     file = file.path(path_to_process_data, res_filename))
+  print(proc.time() - ptm)
+  save(list = c("alignment", "phang.align", "dm", "treeNJ", "fit", "fitGTR"), 
+       file = file.path(path_to_process_data, res_filename))
 }
