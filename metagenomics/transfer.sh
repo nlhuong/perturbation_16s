@@ -8,7 +8,7 @@
 ## Specify username
 USR=lanhuong
 ## Sepcify data directory to download
-DIR=$SCRATCH/data/
+DIR=../data/
 ## Would be nice if the data are gzipped...
 rsync --compress --copy-links --ignore-existing -r $USR@curie.stanford.edu:/relman04/projects/hmd/MetaG/HMD_Mar2017/*Sub/*.fq $DIR/metagenomic
 rsync --copy-links --ignore-existing -r $USR@curie.stanford.edu:/relman04/projects/hmd/MetaT/*Sub/*.fq.gz $DIR/metatranscriptomic
