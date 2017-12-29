@@ -16,6 +16,7 @@ library("argparser")
 library("readxl")
 library("feather")
 library("ggrepel")
+library("pheatmap")
 library("forcats")
 
 ## custom plot defaults

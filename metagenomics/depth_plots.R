@@ -110,6 +110,7 @@ depths_df <- depths[keep_ix, ] %>%
   ) %>%
   filter(genus == "Bacteroides") %>%
   mutate_at(vars(starts_with("M")), asinh)
+rownames(depths_df) <- depths_df$gene_id
 rm(depths)
 
 ## transformed depths
@@ -134,7 +135,6 @@ mdepths <- depths_df %>%
   )
 
 ## data for PCA biplot
-rownames(depths_mat) <- depths_df$gene_id
 depths_mat <- depths_mat[, apply(depths_mat, 2, var) > 0]
 pc_depths <- princomp(scale(depths_mat))
 scores <- pc_depths$scores %>%
