@@ -161,17 +161,23 @@ ggplot(ave_genus) +
   ) +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
-ggplot(
-  ave_genus %>%
-    filter(Genus %in% keep_genus) %>%
-    spread(source, rel_total) %>%
-    filter(`16s` > 1e-3 | `metagenomic` > 1e-3)
-  ) +
+ggplot() +
   geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
   geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
   geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = ave_genus %>%
+    filter(Genus %in% keep_genus) %>%
+    spread(source, rel_total),
+    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+    size = 1
+  ) +
   geom_text_repel(
+    data = ave_genus %>%
+    filter(Genus %in% keep_genus) %>%
+    spread(source, rel_total) %>%
+    filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
     aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
     size = 2,
-    force = 0.02
+    force = 0.2
   )
