@@ -122,7 +122,7 @@ mcoverage <- coverage %>%
 rownames(coverage) <- coverage$species_id
 cov_mat <- coverage %>%
   select(starts_with("M"))
-sp_order <- hclust(dist(cov_mat))$order
+sp_order <- pheatmap(cov_mat, silent = TRUE)$tree_row$order
 mcoverage$species_id <- factor(
   mcoverage$species_id,
   levels = rownames(cov_mat)[sp_order]
