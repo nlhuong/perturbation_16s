@@ -127,23 +127,29 @@ ggplot(
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
 ## scatterplot of abundances from the two sources, per sample
-ggplot(
-  melt_genus %>%
-    filter(
-      Meas_ID %in% keep_ids[1:12],
-      Genus %in% keep_genus
-    ) %>%
-    select(-Meas_ID, -total) %>%
-    spread(source, rel_total) %>%
-    filter(`16s` > 1e-3 | `metagenomic` > 1e-3)
-  ) +
+scatter_data = melt_genus %>%
+  filter(
+    Meas_ID %in% keep_ids[1:12],
+    Genus %in% keep_genus
+  ) %>%
+  select(-Meas_ID, -total) %>%
+  spread(source, rel_total)
+
+ggplot() +
   geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
   geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
   geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = scatter_data,
+    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`)),
+    size = 1
+  ) +
   geom_text_repel(
+    data = scatter_data %>%
+      filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
     aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
     size = 2,
-    force = 0.02
+    force = 0.2
   ) +
   facet_wrap(~SampID, scale = "free")
 
@@ -174,9 +180,9 @@ ggplot() +
   ) +
   geom_text_repel(
     data = ave_genus %>%
-    filter(Genus %in% keep_genus) %>%
-    spread(source, rel_total) %>%
-    filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
+      filter(Genus %in% keep_genus) %>%
+      spread(source, rel_total) %>%
+      filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
     aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
     size = 2,
     force = 0.2
