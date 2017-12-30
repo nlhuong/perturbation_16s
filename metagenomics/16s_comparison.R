@@ -53,6 +53,7 @@ metag <- metag[species_sums != 0, ]
 count_taxa <- function(melted_abund, taxa_level = "Genus") {
   melted_abund %>%
     group_by_("Meas_ID", taxa_level) %>%
+    mutate(count = asinh(count)) %>%
     summarise(SampID = SampID[1], total = sum(count)) %>%
     arrange(Meas_ID, desc(total)) %>%
     group_by(Meas_ID) %>%
@@ -141,13 +142,13 @@ ggplot() +
   geom_abline(alpha = 0.4, size = 0.2) +
   geom_point(
     data = scatter_data,
-    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`)),
+    aes(x = log(`16s`), y = log(`metagenomic`)),
     size = 1
   ) +
   geom_text_repel(
     data = scatter_data %>%
-      filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
-    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+      filter(`16s` > 1e-2 | `metagenomic` > 1e-2),
+    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
     size = 2,
     force = 0.2
   ) +
@@ -156,8 +157,14 @@ ggplot() +
 ## aggregate over all SampIDs now
 ave_genus <- melt_genus %>%
     filter(Genus %in% keep_genus) %>%
+    ungroup() %>%
     group_by(Genus, source) %>%
-    summarise(rel_total = mean(rel_total, na.rm = TRUE))
+  summarise(
+    total = sum(total, na.rm = TRUE)
+  ) %>%
+  group_by(source) %>%
+  mutate(rel_total = total / sum(total)) %>%
+  select(-total)
 
 ggplot(ave_genus) +
   geom_bar(
@@ -175,7 +182,7 @@ ggplot() +
     data = ave_genus %>%
     filter(Genus %in% keep_genus) %>%
     spread(source, rel_total),
-    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
     size = 1
   ) +
   geom_text_repel(
@@ -183,7 +190,7 @@ ggplot() +
       filter(Genus %in% keep_genus) %>%
       spread(source, rel_total) %>%
       filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
-    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
     size = 2,
     force = 0.2
   )
