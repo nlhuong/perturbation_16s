@@ -1,4 +1,5 @@
-
+#!/usr/bin/env Rscript
+##
 ## File description -------------------------------------------------------------
 ##
 ## Generate reads quality plots (QC plots) for each forward and reverse files 

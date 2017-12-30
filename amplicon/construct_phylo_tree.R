@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+##
 ## File description -------------------------------------------------------------
 ##
 ## Generate a phylogenetic tree for sequences in the phyloseq object.
