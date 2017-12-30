@@ -8,14 +8,14 @@ sbatch <<EOT
 #SBATCH --job-name=midas_profiling
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=pipeline%j.out
+#SBATCH --output=../logs/pipeline%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=pipeline%j.err
+#SBATCH --error=../logs/pipeline%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=10:00:00
+#SBATCH --time=15:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -28,7 +28,7 @@ sbatch <<EOT
 #SBATCH -p normal,hns
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --mem-per-cpu=2G
+#SBATCH --mem-per-cpu=4G
 #SBATCH --nodes=1
 #################
 
@@ -37,9 +37,9 @@ sbatch <<EOT
 
 #SBATCH --mail-type=END,FAIL # notifications for job done & fail
 # Remember to change this to your email
-#SBATCH --mail-user=kriss1@stanford.edu
+#SBATCH --mail-user=lanhuong@stanford.edu
 
 #now run normal batch commands
-cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
+cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
 Rscript midas_profile.R -s $1 -e $2
 EOT

@@ -12,6 +12,8 @@
 ## author: sankaran.kris@gmail.com
 ## date: 11/27/2017
 
+USR <- "lanhuong"
+
 library("stringr")
 library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
@@ -23,7 +25,7 @@ argv <- parse_args(parser)
 ###############################################################################
 ## Setup paths and load modules
 ###############################################################################
-midas_path <- "/scratch/users/kriss1/applications/MIDAS"
+midas_path <- file.path("/scratch/users", USR, "applications/MIDAS")
 python_path <- sprintf("%s:%s", Sys.getenv("PYTHONPATH"), midas_path)
 path <- sprintf("%s:%s", Sys.getenv("PATH"), file.path(midas_path, "scripts"))
 Sys.setenv("PYTHONPATH" = python_path)
@@ -36,7 +38,7 @@ system("module load biology; module load samtools/1.6")
 ## Define input and output directories
 ###############################################################################
 indir <- file.path("..", "data", argv$subdir)
-outdir <- file.path(subdir, "processed")
+outdir <- file.path(indir, "processed")
 dir.create(outdir)
 
 input_files <- list.files(indir, "*.fq", full.names = TRUE)
