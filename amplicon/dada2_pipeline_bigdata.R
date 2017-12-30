@@ -1,4 +1,5 @@
-
+#!/usr/bin/env Rscript
+##
 ## File description -------------------------------------------------------------
 ##
 ## Use DADA2 pipeline to generate a sequence abundance table and taxonomy
