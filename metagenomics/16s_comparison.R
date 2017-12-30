@@ -53,6 +53,7 @@ metag <- metag[species_sums != 0, ]
 count_taxa <- function(melted_abund, taxa_level = "Genus") {
   melted_abund %>%
     group_by_("Meas_ID", taxa_level) %>%
+    mutate(count = asinh(count)) %>%
     summarise(SampID = SampID[1], total = sum(count)) %>%
     arrange(Meas_ID, desc(total)) %>%
     group_by(Meas_ID) %>%
@@ -127,31 +128,43 @@ ggplot(
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
 ## scatterplot of abundances from the two sources, per sample
-ggplot(
-  melt_genus %>%
-    filter(
-      Meas_ID %in% keep_ids[1:12],
-      Genus %in% keep_genus
-    ) %>%
-    select(-Meas_ID, -total) %>%
-    spread(source, rel_total) %>%
-    filter(`16s` > 1e-3 | `metagenomic` > 1e-3)
-  ) +
+scatter_data = melt_genus %>%
+  filter(
+    Meas_ID %in% keep_ids[1:12],
+    Genus %in% keep_genus
+  ) %>%
+  select(-Meas_ID, -total) %>%
+  spread(source, rel_total)
+
+ggplot() +
   geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
   geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
   geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = scatter_data,
+    aes(x = log(`16s`), y = log(`metagenomic`)),
+    size = 1
+  ) +
   geom_text_repel(
-    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+    data = scatter_data %>%
+      filter(`16s` > 1e-2 | `metagenomic` > 1e-2),
+    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
     size = 2,
-    force = 0.02
+    force = 0.2
   ) +
   facet_wrap(~SampID, scale = "free")
 
 ## aggregate over all SampIDs now
 ave_genus <- melt_genus %>%
     filter(Genus %in% keep_genus) %>%
+    ungroup() %>%
     group_by(Genus, source) %>%
-    summarise(rel_total = mean(rel_total, na.rm = TRUE))
+  summarise(
+    total = sum(total, na.rm = TRUE)
+  ) %>%
+  group_by(source) %>%
+  mutate(rel_total = total / sum(total)) %>%
+  select(-total)
 
 ggplot(ave_genus) +
   geom_bar(
@@ -161,17 +174,23 @@ ggplot(ave_genus) +
   ) +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
-ggplot(
-  ave_genus %>%
-    filter(Genus %in% keep_genus) %>%
-    spread(source, rel_total) %>%
-    filter(`16s` > 1e-3 | `metagenomic` > 1e-3)
-  ) +
+ggplot() +
   geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
   geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
   geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = ave_genus %>%
+    filter(Genus %in% keep_genus) %>%
+    spread(source, rel_total),
+    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
+    size = 1
+  ) +
   geom_text_repel(
-    aes(x = sqrt(`16s`), y = sqrt(`metagenomic`), label = Genus),
+    data = ave_genus %>%
+      filter(Genus %in% keep_genus) %>%
+      spread(source, rel_total) %>%
+      filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
+    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
     size = 2,
-    force = 0.02
+    force = 0.2
   )
