@@ -17,7 +17,7 @@ library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
-parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the raw data", default = "metagenomic")
+parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "../data/metagenomic")
 argv <- parse_args(parser)
 
 ###############################################################################
@@ -35,12 +35,11 @@ system("module load biology; module load samtools/1.6")
 ###############################################################################
 ## Define input and output directories
 ###############################################################################
-indir <- file.path("..", "data", argv$subdir)
-outdir <- file.path(subdir, "processed")
+outdir <- file.path(argv$indir, "processed")
 dir.create(outdir)
 
-input_files <- list.files(indir, "*.fq", full.names = TRUE)
-input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
+input_files <- list.files(argv$indir, "*.fq*", full.names = TRUE)
+input_files <- unique(gsub("_1P||_2P", "", input_files))
 
 ## Identify and filter away procesed samples
 processed_files <- list.files(outdir, full.names = TRUE)
@@ -57,8 +56,8 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
 for (f in input_files) {
-  f1 <- paste0(f, "_1P.fq")
-  f2 <- paste0(f, "_2P.fq")
+  f1 <- gsub(".fq", "_1P.fq", f)
+  f2 <- gsub(".fq", "_2P.fq", f)
   meas <- str_extract(f1, "M[0-9]+")
 
   ## species profiling
