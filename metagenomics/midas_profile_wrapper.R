@@ -7,6 +7,10 @@
 ##
 ## author: sankaran.kris@gmail.com
 ## date: 11/27/2017
+code_dir <- "/scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics"
+setwd(code_dir)
+log_dir <- "../logs/"
+dir.create(log_dir)
 
 input_files <- list.files("../data/metagenomic/", "*.fq", full.names = TRUE)
 input_files <- unique(gsub("_1P.fq||_2P.fq", "", input_files))
