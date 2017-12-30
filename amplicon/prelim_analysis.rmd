@@ -1,0 +1,307 @@
+---
+title:  "Perturbation Study: First Look"
+author:
+  name: Lan Huong Nguyen
+  affiliation: |
+    | Institute for Computational and Mathematical Engineering, 
+    | Stanford University, CA 94305
+date: "`r BiocStyle::doc_date()`"
+output:
+  html_notebook:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+  BiocStyle::html_document2:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+keywords: microbiome, gPCA, PCA, clustering, differential abundance
+--- 
+
+# Data processing  {#processing .unnumbered}
+
+In this section we are setting the environment, loading all the necessary
+packages, as well as obtaining and processing the dataset. 
+
+
+## Packages and functions
+
+```{r setup, include=FALSE}
+rm(list = ls())
+require(knitr)
+require(rmarkdown)
+options(width = 80)
+opts_chunk$set(
+  cache = FALSE, warning = FALSE, message = FALSE, 
+  fig.align = 'center', fig.wide = TRUE, fig.path = "../figs/", # dev='pdf',
+  fig.width = 10, fig.height = 8
+)
+```
+
+
+Load the packages needed and set paths to files and outputs.
+
+```{r packages, include = FALSE}
+path_to_main <- "../../"
+path_to_process_data <- file.path(path_to_main, "data/processed/")
+
+.packages <- c("gridExtra", "ggplot2", "scales", "viridis", "RColorBrewer",
+               "phyloseq", "limma", "DESeq2", "tibble", "tidyr", "dplyr")
+sapply(.packages, require, character.only = TRUE)
+theme_set(theme_bw())
+```
+
+## Load phyloseq data
+
+```{r}
+# ps0 <- readRDS(file.path(path_to_process_data, "perturb_physeq_14Dec.rds"))
+# ps0
+```
+
+
+```{r}
+ps <- readRDS(file.path(path_to_process_data, "perturb_physeq_filtered_14Dec.rds"))
+ps
+```
+
+We can look at the experimental design / sampling:
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) 
+```
+
+```{r, fig.height=20, fig.width=15}
+p1 <- ggplot(SMP, aes(y = Subject, x = Samp_Date)) + 
+  geom_point(aes(color = Diet_Interval), size = 2.5) +
+  scale_x_date() 
+p2 <- ggplot(SMP, aes(y = Subject, x = Samp_Date)) + 
+  geom_point(aes(color = CC_Interval), size = 2.5) +
+  scale_x_date() 
+p3 <- ggplot(SMP, aes(y = Subject, x = Samp_Date)) + 
+  geom_point(aes(color = Abx_Interval), size = 2.5) +
+  scale_x_date() 
+grid.arrange(p1, p2, p3, ncol = 1)
+```
+
+```{r}
+remove_subjects <- c("AAA", "AAB", "AAN", "DAC")
+ps <- subset_samples(ps, !Subject %in% remove_subjects)
+ps
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) 
+```
+
+
+```{r, fig.height=10, fig.width=15}
+ggplot(SMP, aes(y = Subject, x = DayFromStart)) + 
+  geom_point(aes(color = Timeline), size = 2.5) 
+```
+
+
+```{r}
+summary(taxa_sums(ps@otu_table))
+summary(taxa_sums(ps@otu_table > 0))
+```
+
+We will filter out taxa which are not present in samples of at least two 
+distinct subjects.
+
+```{r}
+minTaxaSubjPrev <- 2
+# Compute prevalence across subjects
+num_subj_present <- function(physeq, subject_indicator = "Subject") {
+  smp <- data.frame(physeq@sam_data, stringsAsFactors = FALSE)
+  seqtab <- as(physeq@otu_table, "matrix")
+  sapply(1:ntaxa(physeq), function(i) {
+    subj.present <- smp[[subject_indicator]][seqtab[i, ] > 0]
+    length(unique(subj.present))})
+}
+subjects_prevalence <- num_subj_present(ps)
+# Filter taxa present in more than 1 subject
+ps <- subset_taxa(ps, subjects_prevalence > 1)
+ps
+```
+
+
+
+* PCoA
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  select(Subject, Group, First_Sample_Date, CC_Date, Diet_StartDate, 
+         Age, Gender, Height, Weight, BMI,
+         Waist_Circumference, Resting_Pulse, Blood_Pressure,
+         Test_Cholesterol_Glucose, Birth_Mode, BirthYear) %>%
+  distinct()
+```
+
+```{r}
+# Transform counts to not "over-weight" highly abundant taxa
+psIHS <- transform_sample_counts(ps, function(x) {log(x + sqrt(x^2+1))})
+```
+
+
+```{r pcoa-bray, eval = FALSE}
+# Compute PCoA with Bray-Curtis distance
+brayD.ihs <- phyloseq::distance(psIHS, method = "bray")
+bray.pcoa.raw <- ordinate(ps,  method = "MDS", distance = "bray")
+bray.pcoa.ihs <- ordinate(psIHS,  method = "MDS", distance = "bray")
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD"), 
+     file = file.path(path_to_process_data, "perturb_ordinate.rda"))
+```
+
+```{r, echo = FALSE}
+load(file.path(path_to_process_data, "perturb_ordinate.rda"))
+```
+
+
+```{r}
+# Compute variance explained
+var.exp.raw <- 100 * bray.pcoa.raw$values[,1]/sum(bray.pcoa.raw$values[,1])
+var.exp.ihs <- 100 * bray.pcoa.ihs$values[,1]/sum(bray.pcoa.ihs$values[,1])
+# Combine sample scores and sample data
+sample.scores <- cbind(bray.pcoa.raw$vectors[, 1:2], bray.pcoa.ihs$vectors[, 1:2])
+colnames(sample.scores) <- c("Axis.1.raw", "Axis.2.raw", "Axis.1.ihs", "Axis.2.ihs")
+sample.scores <- cbind(sample.scores, SMP)
+```
+
+From the plot below, we see there might be some lane effect present. This,
+suggest we would need to tacke account of it in the downstream analysis.
+
+```{r plot-pcoa-bray-subj, fig.height=10, fig.width=14}
+ggplot(sample.scores, aes(x = Axis.1.ihs, y = Axis.2.ihs, color = Subject)) +
+  geom_point(size = 2) +
+  labs(x = sprintf("Axis.1 [%s%% variance]", round(var.exp.ihs[1], 2)),
+       y = sprintf("Axis.2 [%s%% variance]", round(var.exp.ihs[2], 2))) +
+  coord_fixed(sqrt(var.exp.raw[2] / var.exp.raw[1])) + 
+  theme(text = element_text(size = 20)) 
+```
+
+```{r fig.height=10, fig.width=14}
+ggplot(sample.scores, aes(x = Axis.1.ihs, y = Axis.2.ihs, color = log10(SampleDepth))) +
+  geom_point(size = 2) + scale_color_viridis() +
+  labs(x = sprintf("Axis.1 [%s%% variance]", round(var.exp.ihs[1], 2)),
+       y = sprintf("Axis.2 [%s%% variance]", round(var.exp.ihs[2], 2))) +
+  coord_fixed(sqrt(var.exp.raw[2] / var.exp.raw[1])) + 
+  theme(text = element_text(size = 20)) 
+```
+
+
+```{r fig.height=10, fig.width=14}
+ggplot(sample.scores, aes(x = Axis.1.ihs, y = Axis.2.ihs, color = Seq_batch)) +
+  geom_point(size = 2) + 
+  labs(x = sprintf("Axis.1 [%s%% variance]", round(var.exp.ihs[1], 2)),
+       y = sprintf("Axis.2 [%s%% variance]", round(var.exp.ihs[2], 2))) +
+  coord_fixed(sqrt(var.exp.raw[2] / var.exp.raw[1])) + 
+  theme(text = element_text(size = 20)) 
+```
+
+
+```{r plot-pcoa-bray-diet, fig.height=10, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("Diet", Group)), 
+       aes(x = Axis.1.ihs, y = Axis.2.ihs, color = Diet_Interval)) +
+  geom_point() +
+  labs(x = sprintf("Axis.1 [%s%% variance]", round(var.exp.ihs[1], 2)),
+       y = sprintf("Axis.2 [%s%% variance]", round(var.exp.ihs[2], 2))) +
+  theme(text = element_text(size = 15)) +
+  facet_wrap(~Subject)
+```
+
+```{r plot-pcoa-bray-cc, fig.height=2.5, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("CC", Group)), 
+       aes(x = Axis.1.ihs, y = Axis.2.ihs, color = CC_Interval)) +
+  geom_point() +
+  labs(x = sprintf("Axis.1 [%s%% variance]", round(var.exp.ihs[1], 2)),
+       y = sprintf("Axis.2 [%s%% variance]", round(var.exp.ihs[2], 2))) +
+  theme(text = element_text(size = 15)) +
+  facet_wrap(~Subject, ncol = 5)
+```
+
+```{r plot-pcoa-bray-Abx, fig.height=14, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("Diet", Group)),
+       aes(x = Axis.1.ihs, y = Axis.2.ihs, color = Abx_Interval)) +
+  geom_point() +
+  labs(x = sprintf("Axis.1 [%s%% variance]", round(var.exp.ihs[1], 2)),
+       y = sprintf("Axis.2 [%s%% variance]", round(var.exp.ihs[2], 2))) +
+  theme(text = element_text(size = 15)) +
+  facet_wrap(~Subject, ncol = 5)
+```
+
+* TSNE
+
+```{r, eval=FALSE}
+bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, pca = TRUE,
+                               eta = 1, exaggeration_factor = nsamples(ps)/10)
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD.ihs", "bray.rtsne.ihs"), 
+     file = file.path(path_to_process_data, "perturb_ordinate.rda"))
+```
+
+```{r}
+sample.scores <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
+                       tsne.2.ihs = bray.rtsne.ihs$Y[, 2],
+                       sample.scores) 
+```
+
+
+```{r  fig.height=10, fig.width=14}
+ggplot(sample.scores, aes(x = tsne.1.ihs, y = tsne.2.ihs, color = Subject)) +
+  geom_point(size = 2) +
+  theme(text = element_text(size = 20)) 
+```
+
+```{r  fig.height=10, fig.width=14}
+ggplot(sample.scores, aes(x = tsne.1.ihs, y = tsne.2.ihs, color = DayFromStart)) +
+  geom_point(size = 2) + scale_color_viridis()+
+  theme(text = element_text(size = 20)) 
+```
+
+```{r  fig.height=10, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("Diet", Group)), 
+       aes(x = tsne.1.ihs, y = tsne.2.ihs, color = Diet_Interval)) +
+  geom_point(size = 2) + facet_wrap(~Subject, scales = "free") +
+  theme(text = element_text(size = 15)) 
+```
+
+
+```{r  fig.height=14, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("Abx", Group)), 
+       aes(x = tsne.1.ihs, y = tsne.2.ihs, color = Abx_Interval)) +
+  geom_point(size = 2) + facet_wrap(~Subject, scales = "free", ncol = 5) +
+  theme(text = element_text(size = 15)) 
+```
+
+
+```{r  fig.height=8, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("NoIntv", Group)), 
+       aes(x = tsne.1.ihs, y = tsne.2.ihs, color = DayFromStart)) +
+  geom_point(size = 2) + facet_wrap(~Subject, scales = "free", ncol = 5) +
+  theme(text = element_text(size = 15)) + scale_color_viridis()
+```
+
+```{r, fig.height=30, fig.width=14}
+ggplot(sample.scores, aes(x = tsne.1.ihs, y = tsne.2.ihs)) +
+  geom_point(aes(color = DayFromStart), size = 3) +
+  geom_point(data = sample.scores %>% filter(Timeline != "typical"),
+             aes(fill = Timeline), size = 5, pch = 23, color = "red") +
+  facet_wrap(Group~Subject, scales = "free", ncol = 4) +
+  theme(text = element_text(size = 15)) +
+  scale_color_viridis() +
+  scale_fill_brewer(palette = "Set3")
+```
+
+
+```{r  fig.height=3, fig.width=14}
+ggplot(sample.scores %>% filter(grepl("CC", Group)), 
+       aes(x = tsne.1.ihs, y = tsne.2.ihs, color = CC_Interval)) +
+  geom_point(size = 2) + facet_wrap(~Subject, scales = "free", ncol = 5) +
+  theme(text = element_text(size = 15)) 
+```
+
+```{r}
+sessionInfo()
+```
+
+
+

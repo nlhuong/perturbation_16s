@@ -1,14 +1,22 @@
-## The following code generates Reads Quality plots (QC plots)
-## For each forward and reverse files in each pool in the specified
-## 'path.split.libraries'
+
+## File description -------------------------------------------------------------
+##
+## Generate reads quality plots (QC plots) for each forward and reverse files 
+## in each pool in the specified 'path.split.libraries'
+##
+## author: nlhuong90@gmail.com
+## date: 12/21/2017
+## 
+## Run this command on the icme-share server
+# { time Rscript --no-save --no-restore --verbose dada2_qc_plots.R > 
+# qc_plots.rout 2> qc_plots.err ; } 2> qc_plots.time
 
 library(dada2)
 library(doParallel)
 library(foreach)
 library(ggplot2)
 
-## Use this on the server
-# { time Rscript --no-save --no-restore --verbose dada2_qc_plots.R > log_qc_plots.Rout 2> error_qc_plots.Rout ; } 2> time_qc_plots.txt
+
 
 path.split.libraries <- 
   "/home/lanhuong/Projects/PerturbationStudy/data/HMD_16S/split_libraries"
