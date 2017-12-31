@@ -32,6 +32,7 @@ function_annotation <- function(species_ids = NULL, MIDAS_DB = NULL) {
   if (is.null(MIDAS_DB)) {
     MIDAS_DB <- Sys.getenv("MIDAS_DB")
   }
+  stopifnot(length(MIDAS_DB) > 0)
 
   ## get subdirectories of interest
   species_dirs <- list.files(file.path(MIDAS_DB, "pan_genomes"), full.name = TRUE)
@@ -66,13 +67,14 @@ function_annotation <- function(species_ids = NULL, MIDAS_DB = NULL) {
 #'   Defaults to the environmental variable for the MIDAS database.
 #' @examples
 #' Sys.setenv("MIDAS_DB" = "/scratch/users/kriss1/applications/MIDAS/database/midas_db_v1.2")
-#' function_explanation(c("FIG00000001", "FIG00000845"))
-function_explanation <- function(function_ids, MIDAS_DB = NULL) {
+#' function_interpretation(c("FIG00000001", "FIG00000845"))
+function_interpretation <- function(function_ids, MIDAS_DB = NULL) {
   if (is.null(MIDAS_DB)) {
     MIDAS_DB <- Sys.getenv("MIDAS_DB")
   }
+  stopifnot(length(MIDAS_DB) > 0)
 
-  ## paths to the data containing explanations
+  ## paths to the data containing interpretations
   ontology_dirs <- c(
     "ec" = file.path(MIDAS_DB, "ontologies", "ec.txt"),
     "figfam" = file.path(MIDAS_DB, "ontologies", "figfam.txt"),
@@ -81,16 +83,16 @@ function_explanation <- function(function_ids, MIDAS_DB = NULL) {
   )
 
   ## loop over ontology types and extract relevant functional info
-  explanations <- list()
+  interpretations <- list()
   for (i in seq_along(ontology_dirs)) {
     message("Reading from ", ontology_dirs[i])
-    explanations[[i]] <- read_tsv(
+    interpretations[[i]] <- read_tsv(
       ontology_dirs[i],
-      col_names = c("id", "function")
+      col_names = c("function_id", "interpretation")
     ) %>%
-      filter(id %in% function_ids) %>%
-      mutate(ontology = basename(ontology_dirs[i]))
+      filter(function_id %in% function_ids) %>%
+      mutate(ontology = gsub(".txt", "", basename(ontology_dirs[i])))
   }
 
-  bind_rows(explanations)
+  bind_rows(interpretations)
 }
