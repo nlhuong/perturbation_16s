@@ -89,7 +89,7 @@ function_explanation <- function(function_ids, MIDAS_DB = NULL) {
       col_names = c("id", "function")
     ) %>%
       filter(id %in% function_ids) %>%
-      mutate(ontology = basename(ontology_dirs[i])
+      mutate(ontology = basename(ontology_dirs[i]))
   }
 
   bind_rows(explanations)
