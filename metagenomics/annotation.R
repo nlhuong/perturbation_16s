@@ -11,7 +11,7 @@
 library("readr")
 library("dplyr")
 
-#' Extract Function Annotation DataFrame
+#' Extract Function IDs across Species
 #'
 #' Given a list of species, extract the mapping between gene IDs and figfam / GO
 #' / KEGG function annotations. This information is contained in the pan_genome
@@ -26,8 +26,9 @@ library("dplyr")
 #'   on extracting the functions for.
 #' @return annotation [data.frame]
 #' @examples
+#' Sys.setenv("MIDAS_DB" = "/scratch/users/kriss1/applications/MIDAS/database/midas_db_v1.2")
 #' function_annotation(species_ids = "Acanthamoeba_endosymbiont_62344")
-function_annotation <- function(MIDAS_DB = NULL, species_ids = NULL) {
+function_annotation <- function(species_ids = NULL, MIDAS_DB = NULL) {
   if (is.null(MIDAS_DB)) {
     MIDAS_DB <- Sys.getenv("MIDAS_DB")
   }
@@ -51,4 +52,45 @@ function_annotation <- function(MIDAS_DB = NULL, species_ids = NULL) {
     }
 
   bind_rows(annotation)
+}
+
+#' Extract Interpretations for Function IDs
+#'
+#' This is just a convenience wrapper function for accessing the functional
+#' information in the ontology subdirectory of the MIDAS reference database.
+#'
+#' @param function_ids [character vector] The function IDs to get some more
+#'   human interpretable explanations for. For example, we want to know that
+#'   FIG00000001 corresponds to Cysteine desulfurase.
+#' @param MIDAS_DB [character] The directory containing the MIDAS database.
+#'   Defaults to the environmental variable for the MIDAS database.
+#' @examples
+#' Sys.setenv("MIDAS_DB" = "/scratch/users/kriss1/applications/MIDAS/database/midas_db_v1.2")
+#' function_explanation(c("FIG00000001", "FIG00000845"))
+function_explanation <- function(function_ids, MIDAS_DB = NULL) {
+  if (is.null(MIDAS_DB)) {
+    MIDAS_DB <- Sys.getenv("MIDAS_DB")
+  }
+
+  ## paths to the data containing explanations
+  ontology_dirs <- c(
+    "ec" = file.path(MIDAS_DB, "ontologies", "ec.txt"),
+    "figfam" = file.path(MIDAS_DB, "ontologies", "figfam.txt"),
+    "go" = file.path(MIDAS_DB, "ontologies", "go.txt"),
+    "path" = file.path(MIDAS_DB, "ontologies", "path.txt")
+  )
+
+  ## loop over ontology types and extract relevant functional info
+  explanations <- list()
+  for (i in seq_along(ontology_dirs)) {
+    message("Reading from ", ontology_dirs[i])
+    explanations[[i]] <- read_tsv(
+      ontology_dirs[i],
+      col_names = c("id", "function")
+    ) %>%
+      filter(id %in% function_ids) %>%
+      mutate(ontology = basename(ontology_dirs[i])
+  }
+
+  bind_rows(explanations)
 }
