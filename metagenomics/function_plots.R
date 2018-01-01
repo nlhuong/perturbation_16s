@@ -17,11 +17,15 @@ library("tidyverse")
 library("feather")
 library("readxl")
 library("argparser")
+library("pheatmap")
 #source("annotation.R")
 
 ## Define the parser
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
+parser <- add_argument(parser, "--ont", help = "Which ontology to use for annotation. Either 'ec', 'figfam', 'go', or 'path'", default = "go")
+parser <- add_argument(parser, "--k", help = "k in k-over-a filter for depths", default = 0.01)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 0.0)
 argv <- parse_args(parser)
 
 ###############################################################################
@@ -40,18 +44,51 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
 
 ## sum over functions
 annotation <- function_annotation(unique(depths$species))
-function_depths <- depths[1:200, ] %>%
+f_depths <- depths[1:1000, ] %>%
   left_join(annotation) %>%
   group_by(ontology, function_id) %>%
-  summarise_at(vars(starts_with("M")), sum, na.rm = TRUE)
+  summarise_at(
+    vars(starts_with("M")),
+    function(x) {
+      sum(asinh(x), na.rm = TRUE)
+    }
+  )
 
 ## can join in interpretable names too
-interpretation <- function_interpretation(function_depths$function_id)
-function_depths <- function_depths %>%
+interpretation <- function_interpretation(f_depths$function_id)
+f_depths <- f_depths %>%
   left_join(interpretation) %>%
-  select(ontology, function_id, interpretation, starts_with("M"))
+  select(ontology, function_id, interpretation, starts_with("M")) %>%
+  filter(ontology == argv$ont) %>%
+  ungroup()
 
-mfunc <- function_depths %>%
+f_mat <- f_depths %>%
+  select_if(is.numeric) %>%
+  as.matrix()
+rownames(f_mat) <- f_depths$function_id
+
+###############################################################################
+## Make a heatmap of these summed function depths
+###############################################################################
+keep_ix <- rowMeans(f_mat > argv$a, na.rm = TRUE) > argv$k # k over a filter
+f_mat <- f_mat[keep_ix, ]
+f_depths <- f_depths[keep_ix, ]
+
+## order functions and measurements by hierarchical clustering
+hm <- pheatmap(f_mat, silent = TRUE)
+mfunc <- f_depths %>%
   gather(Meas_ID, value, starts_with("M")) %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
-  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval")))
+  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
+  mutate(
+    Meas_ID = factor(Meas_ID, levels = colnames(f_mat)[hm$tree_col$order]),
+    function_id = factor(function_id, levels = rownames(f_mat)[hm$tree_row$order])
+  )
+
+ggplot(mfunc) +
+  geom_tile(
+    aes(x = function_id, y = Meas_ID, alpha = value)
+  ) +
+  facet_grid(
+    Subject ~ function_id, scale = "free", space = "free"
+  )
