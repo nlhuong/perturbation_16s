@@ -24,8 +24,6 @@ library("pheatmap")
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--ont", help = "Which ontology to use for annotation. Either 'ec', 'figfam', 'go', or 'path'", default = "go")
-parser <- add_argument(parser, "--k", help = "k in k-over-a filter for depths", default = 0.01)
-parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 0.0)
 argv <- parse_args(parser)
 
 ###############################################################################
@@ -44,7 +42,7 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
 
 ## sum over functions
 annotation <- function_annotation(unique(depths$species))
-f_depths <- depths[1:1000, ] %>%
+f_depths <- depths[1:10000, ] %>%
   left_join(annotation) %>%
   group_by(ontology, function_id) %>%
   summarise_at(
@@ -70,9 +68,11 @@ rownames(f_mat) <- f_depths$function_id
 ###############################################################################
 ## Make a heatmap of these summed function depths
 ###############################################################################
-keep_ix <- rowMeans(f_mat > argv$a, na.rm = TRUE) > argv$k # k over a filter
-f_mat <- f_mat[keep_ix, ]
-f_depths <- f_depths[keep_ix, ]
+## remove measurements that are always 0
+keep_ix <- colSums(f_mat) > 0
+f_mat <- f_mat[, keep_ix]
+f_depths <- f_depths %>%
+  select_at(!starts_with("M"), colnames(f_mat))
 
 ## order functions and measurements by hierarchical clustering
 hm <- pheatmap(f_mat, silent = TRUE)
