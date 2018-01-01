@@ -46,6 +46,39 @@ parser <- add_argument(parser, "--ont", help = "Which ontology to use for annota
 argv <- parse_args(parser)
 
 ###############################################################################
+## Helper functions
+###############################################################################
+#' Melt depths, with heatmap factor level ordering
+#'
+#' This melts the function abundance matrix. We could just use pheatmap, but
+#' then we wouldn't be able to facet by subject, say.
+melt_fmat <- function(f_depths, f_mat, meas, samp) {
+  hm <- pheatmap(f_mat, silent = TRUE)
+  f_depths %>%
+    gather(Meas_ID, value, starts_with("M")) %>%
+    left_join(meas %>% select(ends_with("ID"))) %>%
+    left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
+    mutate(
+      Meas_ID = factor(Meas_ID, levels = colnames(f_mat)[hm$tree_col$order]),
+      function_id = factor(function_id, levels = rownames(f_mat)[hm$tree_row$order])
+    )
+}
+
+#' Plot the Melted Function IDs
+plot_mfunc <- function(mfunc) {
+  ggplot(mfunc) +
+    geom_tile(
+      aes(x = function_id, y = Meas_ID, alpha = log(1 + value), fill = Diet_Interval)
+    ) +
+    facet_grid(Subject ~ ., scale = "free", space = "free") +
+    scale_alpha(range = c(0, 1)) +
+    theme(
+      axis.text.y = element_text(size = 4),
+      axis.text.x = element_text(size = 3, angle = -90)
+    )
+}
+
+###############################################################################
 ## Read-in and annotate gene depths with function IDs
 ###############################################################################
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
@@ -95,23 +128,17 @@ f_depths <- f_depths %>%
 
 ## order functions and measurements by hierarchical clustering
 hm <- pheatmap(f_mat, silent = TRUE)
-mfunc <- f_depths %>%
-  gather(Meas_ID, value, starts_with("M")) %>%
-  left_join(meas %>% select(ends_with("ID"))) %>%
-  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
-  mutate(
-    Meas_ID = factor(Meas_ID, levels = colnames(f_mat)[hm$tree_col$order]),
-    function_id = factor(function_id, levels = rownames(f_mat)[hm$tree_row$order])
-  )
-
-ggplot(mfunc) +
-  geom_tile(
-    aes(x = function_id, y = Meas_ID, alpha = log(1 + value))
-  ) +
-  facet_grid(Subject ~ ., scale = "free", space = "free") +
-  scale_alpha(range = c(0, 1)) +
-  theme(
-    axis.text.y = element_text(size = 4),
-    axis.text.x = element_text(size = 3, angle = -90)
-  )
+mfunc <- melt_fmat(f_depths, f_mat, meas, samp)
+plot_mfunc(mfunc)
 ggsave("go_heatmap.png", width = 13.4, height = 5.4)
+
+###############################################################################
+## Same code as above, but after variance filtering the GO IDs
+###############################################################################
+keep_ix <- apply(log(1 + f_mat), 1, var) > 0.3
+f_mat <- f_mat[keep_ix, ]
+f_depths <- f_depths[keep_ix, ]
+
+mfunc <- melt_fmat(f_depths, f_mat, meas, samp)
+plot_mfunc(mfunc)
+ggsave("go_heatmap_var_filter.png", width = 13.4, height = 5.4)
