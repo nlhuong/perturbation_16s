@@ -20,6 +20,25 @@ library("argparser")
 library("pheatmap")
 #source("annotation.R")
 
+scale_colour_discrete <- function(...)
+  scale_colour_brewer(..., palette="Set2")
+scale_fill_discrete <- function(...)
+  scale_fill_brewer(..., palette="Set2")
+
+theme_set(theme_bw())
+theme_update(
+  panel.border = element_rect(size = 0.5),
+  panel.grid = element_blank(),
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 8),
+  legend.text = element_text(size = 6),
+  axis.text = element_text(size = 6),
+  axis.title = element_text(size = 8),
+  strip.background = element_blank(),
+  strip.text = element_text(size = 8),
+  legend.key = element_blank()
+)
+
 ## Define the parser
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
@@ -40,9 +59,9 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
     Abx_Interval = factor(Abx_Interval, c("PreAbx", "MidAbx", "PostAbx"))
   )
 
-## sum over functions
+## sum over function IDs (after asinh transforming)
 annotation <- function_annotation(unique(depths$species))
-f_depths <- depths[1:10000, ] %>%
+f_depths <- depths %>%
   left_join(annotation) %>%
   group_by(ontology, function_id) %>%
   summarise_at(
@@ -68,11 +87,11 @@ rownames(f_mat) <- f_depths$function_id
 ###############################################################################
 ## Make a heatmap of these summed function depths
 ###############################################################################
-## remove measurements that are always 0
+## remove measurements that are always 0 (why does this happen?)
 keep_ix <- colSums(f_mat) > 0
 f_mat <- f_mat[, keep_ix]
 f_depths <- f_depths %>%
-  select_at(!starts_with("M"), colnames(f_mat))
+  select_at(vars(-starts_with("M"), colnames(f_mat)))
 
 ## order functions and measurements by hierarchical clustering
 hm <- pheatmap(f_mat, silent = TRUE)
@@ -87,8 +106,12 @@ mfunc <- f_depths %>%
 
 ggplot(mfunc) +
   geom_tile(
-    aes(x = function_id, y = Meas_ID, alpha = value)
+    aes(x = function_id, y = Meas_ID, alpha = log(1 + value))
   ) +
-  facet_grid(
-    Subject ~ function_id, scale = "free", space = "free"
+  facet_grid(Subject ~ ., scale = "free", space = "free") +
+  scale_alpha(range = c(0, 1)) +
+  theme(
+    axis.text.y = element_text(size = 4),
+    axis.text.x = element_text(size = 3, angle = -90)
   )
+ggsave("go_heatmap.png", width = 13.4, height = 5.4)
