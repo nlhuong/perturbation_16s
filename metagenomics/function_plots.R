@@ -18,8 +18,11 @@ library("feather")
 library("readxl")
 library("argparser")
 library("pheatmap")
-#source("annotation.R")
+source("annotation.R")
+Sys.setenv("MIDAS_DB" = "/scratch/users/kriss1/applications/MIDAS/database/midas_db_v1.2")
 
+scale_fill_interval <- function(...)
+  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
 scale_colour_discrete <- function(...)
   scale_colour_brewer(..., palette="Set2")
 scale_fill_discrete <- function(...)
@@ -54,12 +57,18 @@ argv <- parse_args(parser)
 #' then we wouldn't be able to facet by subject, say.
 melt_fmat <- function(f_depths, f_mat, meas, samp) {
   hm <- pheatmap(f_mat, silent = TRUE)
+  meas_levels <- meas %>%
+    select(Meas_ID, Subject, Samp_Date) %>%
+    unique() %>%
+    arrange(Subject, desc(Samp_Date)) %>%
+    .[["Meas_ID"]]
+
   f_depths %>%
     gather(Meas_ID, value, starts_with("M")) %>%
     left_join(meas %>% select(ends_with("ID"))) %>%
     left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
     mutate(
-      Meas_ID = factor(Meas_ID, levels = colnames(f_mat)[hm$tree_col$order]),
+      Meas_ID = factor(Meas_ID, levels = meas_levels),
       function_id = factor(function_id, levels = rownames(f_mat)[hm$tree_row$order])
     )
 }
@@ -72,6 +81,7 @@ plot_mfunc <- function(mfunc) {
     ) +
     facet_grid(Subject ~ ., scale = "free", space = "free") +
     scale_alpha(range = c(0, 1)) +
+    scale_fill_interval() +
     theme(
       axis.text.y = element_text(size = 4),
       axis.text.x = element_text(size = 3, angle = -90)
@@ -83,14 +93,15 @@ plot_mfunc <- function(mfunc) {
 ###############################################################################
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
 depths <- read_feather(file.path(merged_dir, "depths.feather"))
-meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
-  rename(Samp_ID = SampID)
 samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
   mutate(
     Diet_Interval = factor(Diet_Interval, c("PreDiet", "MidDiet", "PostDiet")),
     CC_Interval = factor(CC_Interval, c("PreCC", "MidCC", "PostCC")),
     Abx_Interval = factor(Abx_Interval, c("PreAbx", "MidAbx", "PostAbx"))
   )
+meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
+  rename(Samp_ID = SampID) %>%
+  left_join(samp)
 
 ## sum over function IDs (after asinh transforming)
 annotation <- function_annotation(unique(depths$species))
@@ -127,7 +138,6 @@ f_depths <- f_depths %>%
   select_at(vars(-starts_with("M"), colnames(f_mat)))
 
 ## order functions and measurements by hierarchical clustering
-hm <- pheatmap(f_mat, silent = TRUE)
 mfunc <- melt_fmat(f_depths, f_mat, meas, samp)
 plot_mfunc(mfunc)
 ggsave("go_heatmap.png", width = 13.4, height = 5.4)
