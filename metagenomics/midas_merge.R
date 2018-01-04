@@ -43,10 +43,13 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 samples_dir <- file.path("..", "data", argv$subdir, "processed")
 merged_dir <- file.path("..", "data", "merged")
 genes_dirs <- file.path(merged_dir, "genes")
+species_dirs <- file.path(merged_dir, "species")
 dir.create(merged_dir)
 dir.create(genes_dirs)
+dir.create(species_dirs)
 
 base_cmd <- "merge_midas.py %s %s -i %s -t dir"
+system(sprintf(base_cmd, "species", species_dirs, samples_dir))
 system(sprintf(base_cmd, "genes", genes_dirs, samples_dir))
 
 ###############################################################################
