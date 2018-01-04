@@ -47,6 +47,7 @@ dir.create(merged_dir)
 dir.create(genes_dirs)
 
 base_cmd <- "merge_midas.py %s %s -i %s -t dir"
+system(sprintf(base_cmd, "species", merged_dir, samples_dir))
 system(sprintf(base_cmd, "genes", genes_dirs, samples_dir))
 
 ###############################################################################
@@ -70,3 +71,4 @@ for (i in seq_along(genes_f)) {
 ###############################################################################
 write_feather(bind_wrapper(depths), file.path(merged_dir, "depths.feather"))
 write_feather(bind_wrapper(copy_num), file.path(merged_dir, "copy_num.feather"))
+file.rename(file.path(merged_dir, "coverage.txt"), file.path(merged_dir, "coverage.tsv"))
