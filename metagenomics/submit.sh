@@ -39,6 +39,8 @@ sbatch <<EOT
 # Remember to change this to your email
 #SBATCH --mail-user=lanhuong@stanford.edu
 
+module load R/3.4.0
+
 #now run normal batch commands
 cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
 #cd /scratch/users/kriss1//research/perturbation_16s/metagenomics

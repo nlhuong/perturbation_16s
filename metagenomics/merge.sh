@@ -8,10 +8,10 @@ sbatch <<EOT
 #SBATCH --job-name=midas_merging
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=merge%j.out
+#SBATCH --output=../logs/merge%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=merge%j.err
+#SBATCH --error=../logs/merge%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
@@ -37,7 +37,9 @@ sbatch <<EOT
 
 #SBATCH --mail-type=END,FAIL # notifications for job done & fail
 # Remember to change this to your email
-#SBATCH --mail-user=kriss1@stanford.edu
+#SBATCH --mail-user=lanhuong@stanford.edu
+
+module load R/3.4.0
 
 #now run normal batch commands
 cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
