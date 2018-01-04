@@ -40,6 +40,7 @@ sbatch <<EOT
 #SBATCH --mail-user=kriss1@stanford.edu
 
 #now run normal batch commands
-cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
+cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
+#cd /scratch/users/kriss1/research/perturbation_16s/metagenomics
 Rscript midas_merge.R
 EOT

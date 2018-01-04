@@ -37,12 +37,7 @@ system("module load biology; module load samtools/1.6")
 ###############################################################################
 ## Define input and output directories
 ###############################################################################
-<<<<<<< HEAD
-indir <- file.path("..", "data", argv$subdir)
-outdir <- file.path(indir, "processed")
-=======
 outdir <- file.path(argv$indir, "processed")
->>>>>>> f290dbbc4d7df285c65ab628e6c693b04bcc8e3b
 dir.create(outdir)
 
 input_files <- list.files(argv$indir, "*.fq*", full.names = TRUE)
