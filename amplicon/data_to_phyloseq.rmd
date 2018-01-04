@@ -227,6 +227,13 @@ We combine the data into a phyloseq object contating both RDP and Silva,
 genus-species assignments:
 
 ```{r}
+# load phylogenetic fitting files
+load("../../data/processed/ssh/phanghorn_fit.rda")
+rootedGTRtree <- phangorn::midpoint(fitGTR$tree)
+```
+
+
+```{r}
 ps <- phyloseq(otu_table(seqtab, taxa_are_rows = TRUE), 
                sample_data(sample_info),
                tax_table(newTaxtab))
@@ -248,7 +255,8 @@ saveRDS(ps, file.path(path_to_process_data, "perturb_physeq_14Dec.rds"))
 
 ```{r}
 minSampleSums <- 5000
-ps1 <- prune_samples(colnames(ps@otu_table)[colSums(ps@otu_table) >= minSampleSums], ps)
+ps1 <- prune_samples(colnames(ps@otu_table)[
+  colSums(ps@otu_table) >= minSampleSums], ps)
 ps1
 ```
 
@@ -269,12 +277,13 @@ to discard them as noise.
 ```{r}
 minTaxaPrev <- 2
 ps1 <- subset_taxa(ps1, rowSums(ps@otu_table > 0) >= 2)
+phy_tree(ps1) <- rootedGTRtree
 ps1
 ```
 
 
 ```{r}
-saveRDS(ps1, file.path(path_to_process_data, "perturb_physeq_filtered_14Dec.rds"))
+saveRDS(ps1, file.path(path_to_process_data, "perturb_physeq_filtered_27Dec.rds"))
 ```
 
 
