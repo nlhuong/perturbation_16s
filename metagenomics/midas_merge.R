@@ -71,3 +71,4 @@ for (i in seq_along(genes_f)) {
 ###############################################################################
 write_feather(bind_wrapper(depths), file.path(merged_dir, "depths.feather"))
 write_feather(bind_wrapper(copy_num), file.path(merged_dir, "copy_num.feather"))
+file.rename(file.path(merged_dir, "coverage.txt"), file.path(merged_dir, "coverage.tsv"))
