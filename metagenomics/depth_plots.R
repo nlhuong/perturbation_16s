@@ -120,6 +120,11 @@ depths_df[1:10000, ] %>%
   hist(breaks = 30, main = "asinh(Depths)", ylim = c(0, 2e5))
 
 ## extracting order for plot
+meas_levels <- mcoverage %>%
+  select(Meas_ID, Subject, Samp_Date) %>%
+  unique() %>%
+  arrange(Subject, desc(Samp_Date)) %>%
+  .[["Meas_ID"]]
 depths_mat <- depths_df %>%
   select(starts_with("M")) %>%
   as.matrix()
@@ -130,7 +135,7 @@ mdepths <- depths_df %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
   left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
   mutate(
-    Meas_ID = factor(Meas_ID, levels = colnames(depths_mat)[hm$tree_col$order]),
+    Meas_ID = factor(Meas_ID, levels = meas_levels,
     gene_id = factor(gene_id, levels = rownames(depths_mat)[hm$tree_row$order])
   )
 
