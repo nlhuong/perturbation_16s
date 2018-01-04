@@ -11,6 +11,8 @@
 ## author: sankaran.kris@gmail.com
 ## date: 11/29/2017
 
+USR <- "lanhuong"
+
 library("tidyverse")
 library("feather")
 library("argparser")
@@ -28,7 +30,7 @@ bind_wrapper <- function(x) {
 ###############################################################################
 ## Setup PATH to MIDAS
 ###############################################################################
-midas_path <- "/scratch/users/kriss1/applications/MIDAS"
+midas_path <- file.path("/scratch/users", USR, "applications/MIDAS")
 python_path <- sprintf("%s:%s", Sys.getenv("PYTHONPATH"), midas_path)
 path <- sprintf("%s:%s", Sys.getenv("PATH"), file.path(midas_path, "scripts"))
 Sys.setenv("PYTHONPATH" = python_path)

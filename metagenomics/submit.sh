@@ -40,11 +40,7 @@ sbatch <<EOT
 #SBATCH --mail-user=lanhuong@stanford.edu
 
 #now run normal batch commands
-<<<<<<< HEAD
 cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
-Rscript midas_profile.R -s $1 -e $2
-=======
-cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
+#cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
 Rscript midas_profile.R -s $1 -e $2 -i $3
->>>>>>> f290dbbc4d7df285c65ab628e6c693b04bcc8e3b
 EOT
