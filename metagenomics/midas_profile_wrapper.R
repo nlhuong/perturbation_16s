@@ -10,7 +10,7 @@
 
 library("argparser")
 parser <- arg_parser("Wrap metagenomic and metatranscriptomic profiling")
-parser <- add_argument(parser, "--workdir", help = "The directory within which to run the R process", default = "/scratch/users/kriss1/programming/research/perturbation_16s/metagenomics")
+parser <- add_argument(parser, "--workdir", help = "The directory within which to run the R process", default = "/scratch/users/kriss1/research/perturbation_16s/metagenomics")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the raw data", default = "metagenomic")
 parser <- add_argument(parser, "--logdir", help = "Relative path to directory within which to store all cluster logs", default = "../logs/")
 argv <- parse_args(parser)
@@ -25,8 +25,8 @@ input_files <- unique(gsub("_1P||_2P", "", input_files))
 ## Identify and filter away procesed samples
 processed_files <- list.files(file.path(indir, "processed"), full.names = TRUE)
 for (f in processed_files) {
-  snps_dir <- file.path(f, "snps", "output")
-  if (length(list.files(snps_dir)) > 0) {
+  genes_dir <- file.path(f, "genes", "output")
+  if (length(list.files(genes_dir)) > 0) {
     input_files <- input_files[!grepl(basename(f), input_files)]
   }
 }
