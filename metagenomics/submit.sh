@@ -28,7 +28,7 @@ sbatch <<EOT
 #SBATCH -p normal,hns
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=16G
 #SBATCH --nodes=1
 #################
 
@@ -37,12 +37,14 @@ sbatch <<EOT
 
 #SBATCH --mail-type=END,FAIL # notifications for job done & fail
 # Remember to change this to your email
-#SBATCH --mail-user=lanhuong@stanford.edu
+#SBATCH --mail-user=kriss1@stanford.edu
 
 module load R/3.4.0
+module load biology
+module load samtools/1.6
 
 #now run normal batch commands
-cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
-#cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
+# /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
+cd /scratch/users/kriss1//research/perturbation_16s/metagenomics
 Rscript midas_profile.R -s $1 -e $2 -i $3
 EOT
