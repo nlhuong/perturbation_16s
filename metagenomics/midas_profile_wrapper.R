@@ -10,7 +10,7 @@
 
 library("argparser")
 parser <- arg_parser("Wrap metagenomic and metatranscriptomic profiling")
-parser <- add_argument(parser, "--workdir", help = "The directory within which to run the R process", default = "/scratch/users/kriss1/research/perturbation_16s/metagenomics")
+parser <- add_argument(parser, "--workdir", help = "The directory within which to run the R process", default = "/scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the raw data", default = "metagenomic")
 parser <- add_argument(parser, "--logdir", help = "Relative path to directory within which to store all cluster logs", default = "../logs/")
 argv <- parse_args(parser)

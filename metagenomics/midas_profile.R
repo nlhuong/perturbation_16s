@@ -15,7 +15,7 @@
 library("stringr")
 library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
-parser <- add_argument(parser, "--user", help = "Sherlock user name, necessary for specifying directory paths", default = "kriss1")
+parser <- add_argument(parser, "--user", help = "Sherlock user name, necessary for specifying directory paths", default = "lanhuong")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
 parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "../data/metagenomic")
