@@ -64,8 +64,6 @@ for (f in input_files) {
     "run_midas.py species %s/%s -1 %s -2 %s",
     outdir, meas, f1, f2
   )
-  print("first cmd")
-  print(cmd)
   system(cmd)
 
   ## gene profiling
@@ -73,6 +71,5 @@ for (f in input_files) {
     "run_midas.py genes %s/%s -1 %s -2 %s",
     outdir, meas, f1, f2
   )
-  print(cmd)
   system(cmd)
 }
