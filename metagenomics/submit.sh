@@ -28,7 +28,7 @@ sbatch <<EOT
 #SBATCH -p normal,hns
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=16G
 #SBATCH --nodes=1
 #################
 
@@ -40,6 +40,8 @@ sbatch <<EOT
 #SBATCH --mail-user=lanhuong@stanford.edu
 
 module load R/3.4.0
+module load biology
+module load samtools/1.6
 
 #now run normal batch commands
 cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
