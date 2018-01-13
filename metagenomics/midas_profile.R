@@ -12,11 +12,10 @@
 ## author: sankaran.kris@gmail.com
 ## date: 11/27/2017
 
-USR <- "kriss1"
-
 library("stringr")
 library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
+parser <- add_argument(parser, "--user", help = "Sherlock user name, necessary for specifying directory paths", default = "kriss1")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
 parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "../data/metagenomic")
@@ -25,7 +24,7 @@ argv <- parse_args(parser)
 ###############################################################################
 ## Setup paths and load modules
 ###############################################################################
-midas_path <- file.path("/scratch/users", USR, "applications/MIDAS")
+midas_path <- file.path("/scratch/users", argv$user, "applications/MIDAS")
 python_path <- sprintf("%s:%s", Sys.getenv("PYTHONPATH"), midas_path)
 path <- sprintf("%s:%s", Sys.getenv("PATH"), file.path(midas_path, "scripts"))
 Sys.setenv("PYTHONPATH" = python_path)
