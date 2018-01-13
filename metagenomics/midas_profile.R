@@ -12,7 +12,7 @@
 ## author: sankaran.kris@gmail.com
 ## date: 11/27/2017
 
-USR <- "lanhuong"
+USR <- "kriss1"
 
 library("stringr")
 library("argparser")
@@ -31,8 +31,6 @@ path <- sprintf("%s:%s", Sys.getenv("PATH"), file.path(midas_path, "scripts"))
 Sys.setenv("PYTHONPATH" = python_path)
 Sys.setenv("PATH" = path)
 Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
-
-system("module load biology; module load samtools/1.6")
 
 ###############################################################################
 ## Define input and output directories
@@ -67,6 +65,8 @@ for (f in input_files) {
     "run_midas.py species %s/%s -1 %s -2 %s",
     outdir, meas, f1, f2
   )
+  print("first cmd")
+  print(cmd)
   system(cmd)
 
   ## gene profiling
@@ -74,5 +74,6 @@ for (f in input_files) {
     "run_midas.py genes %s/%s -1 %s -2 %s",
     outdir, meas, f1, f2
   )
+  print(cmd)
   system(cmd)
 }
