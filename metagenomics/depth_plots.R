@@ -19,6 +19,13 @@ library("pheatmap")
 library("ggrepel")
 library("forcats")
 
+## Define the parser
+parser <- arg_parser("Plot MIDAS output")
+parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
+parser <- add_argument(parser, "--k", help = "k in k-over-a filter for depths", default = 0.25)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 0.0)
+argv <- parse_args(parser)
+
 ## custom plot defaults
 scale_fill_interval <- function(...)
   scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
@@ -40,13 +47,6 @@ theme_update(
   strip.text = element_text(size = 9),
   legend.key = element_blank()
 )
-
-## Define the parser
-parser <- arg_parser("Plot MIDAS output")
-parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
-parser <- add_argument(parser, "--k", help = "k in k-over-a filter for depths", default = 0.25)
-parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 0.0)
-argv <- parse_args(parser)
 
 ## Functions used throughout
 plot_heatmap <- function(mdepths, fill_type = "Diet_Interval") {
@@ -120,7 +120,8 @@ depths_df[1:10000, ] %>%
   hist(breaks = 30, main = "asinh(Depths)", ylim = c(0, 2e5))
 
 ## extracting order for plot
-meas_levels <- mcoverage %>%
+meas_levels <- meas %>%
+  left_join(samp) %>%
   select(Meas_ID, Subject, Samp_Date) %>%
   unique() %>%
   arrange(Subject, desc(Samp_Date)) %>%
