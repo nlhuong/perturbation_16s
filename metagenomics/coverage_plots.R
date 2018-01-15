@@ -18,6 +18,14 @@ library("feather")
 library("ggrepel")
 library("pheatmap")
 library("forcats")
+library("PMA")
+
+## Define the parser
+parser <- arg_parser("Plot MIDAS output")
+parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
+parser <- add_argument(parser, "--k", help = "k in k-over-a filter for coverage", default = 0.05)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for coverage", default = 0)
+argv <- parse_args(parser)
 
 ## custom plot defaults
 scale_fill_interval <- function(...)
@@ -63,13 +71,12 @@ plot_cov <- function(mcoverage, fill_type) {
     )
 }
 
-
 plot_loadings <- function(loadings, col_type) {
   ggplot(loadings) +
     geom_hline(yintercept = 0, col = "#e6e6e6") +
     geom_vline(xintercept = 0, col = "#e6e6e6") +
     geom_text_repel(
-      aes_string(x = "Comp.1", y = "Comp.2", label = "Meas_ID", col = col_type),
+      aes_string(x = "X1", y = "X2", label = "Meas_ID", col = col_type),
       size = 2,
       force = 0.001
     ) +
@@ -77,13 +84,6 @@ plot_loadings <- function(loadings, col_type) {
     scale_color_interval() +
     facet_grid(~ Subject)
 }
-
-## Define the parser
-parser <- arg_parser("Plot MIDAS output")
-parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
-parser <- add_argument(parser, "--k", help = "k in k-over-a filter for coverage", default = 0.05)
-parser <- add_argument(parser, "--a", help = "a in k-over-a filter for coverage", default = 0)
-argv <- parse_args(parser)
 
 ## Read in data
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
@@ -147,18 +147,19 @@ mcoverage <- mcoverage %>%
   )
 
 ## pca biplot data
-pc_cov <- princomp(scale(cov_mat))
-scores <- pc_cov$scores[, 1:5] %>%
-  as.data.frame() %>%
-  rownames_to_column("species_id") %>%
+pc_cov <- SPC(scale(cov_mat), K = 5, sumabsv = 15)
+scores <- data.frame(
+  "species_id" = rownames(cov_mat),
+  pc_cov$u %*% diag(pc_cov$d)
+) %>%
   left_join(coverage %>% select(-starts_with("M")))
 
-loadings <- pc_cov$loadings[, 1:5] %>%
-  as.data.frame() %>%
-  rownames_to_column("Meas_ID") %>%
+loadings <- data.frame(
+  pc_cov$v,
+  "Meas_ID" = colnames(cov_mat)
+) %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
   left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval")))
-
 
 ###############################################################################
 ## Produce visualizations for the species COG data
@@ -172,13 +173,13 @@ ggplot(scores) +
   geom_hline(yintercept = 0, col = "#e6e6e6") +
   geom_vline(xintercept = 0, col = "#e6e6e6") +
   geom_point(
-    aes(x = Comp.1, y = Comp.2, col = genus_grouped),
+    aes(x = X1, y = X2, col = genus_grouped),
     size = 1
   ) +
   geom_text_repel(
     data = scores %>%
-      filter(Comp.1 ^ 2 + Comp.2 ^ 2 > 100),
-    aes(x = Comp.1, y = Comp.2, label = species, col = genus_grouped)
+      filter(X1 ^ 2 + X2 ^ 2 > 100),
+    aes(x = X1, y = X2, label = species, col = genus_grouped)
   )
 
 ## presumably the two subjects
