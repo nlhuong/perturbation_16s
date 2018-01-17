@@ -279,9 +279,11 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
     }
     if(length(unique(scores[["Subject"]])) > 1) {
       p_scores <- plot_scores(scores, eigs = eigs)
+    } else {
       p_scores_time_path <- plot_scores_time(scores, eigs = eigs, path = TRUE)
     }
     p_scores_time <- plot_scores_time(scores, eigs = eigs, path = FALSE)
+    
     p_loadings <- plot_loadings(loadings, eigs = eigs)
     return(list(scree = p_scree, loadings = p_loadings, 
                 scores = p_scores, scores_time = p_scores_time,
