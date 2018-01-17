@@ -7,18 +7,21 @@
 ## author: nlhuong90@gmail.com
 ## date: 01/15/2018
 
+#setwd("perturbation_16s/amplicon/")
+
 ###############################################################################
 ## Setup and data
 ###############################################################################
-#setwd("perturbation_16s/amplicon/")
 
 library(phyloseq)
 library(dplyr)
+library(tibble)
 library(ggplot2)
 library(viridis)
 library(adaptiveGPCA)
 library(doParallel)
 library(foreach)
+library(ggrepel)
 
 options(stringsAsFactors = FALSE)
 theme_set(theme_bw())
@@ -88,34 +91,34 @@ plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
 
 registerDoParallel(length(unique(ps@sam_data$Group)))
 pca_study_arms <- foreach(i = seq_along(unique(ps@sam_data$Group))) %dopar% {
- g <- unique(ps@sam_data$Group))[i] 
+ g <- unique(ps@sam_data$Group)[i] 
  ps_g <- subset_samples(ps, Group == "NoIntv" | Group == g)  
  ps_g <- filter_taxa(ps_g, minPrev = 2, group = "Subject")
  ps_g <- transform_sample_counts(ps_g, function(x) {asinh(x)})
  # PCA on centered data
- pca_res <- prcomp(scale(as(t(ps_g@otu_table), "matrix"), scale = FALSE))
+ pca_g <- prcomp(scale(as(t(ps_g@otu_table), "matrix"), scale = FALSE))
  
- loadings <- pca_res$rotation[, 1:10] %>%
+ loadings <- pca_g$rotation[, 1:10] %>%
    as.data.frame() %>%
    rownames_to_column("Seq_ID") %>%
-   left_join(data.frame(ps_g@tax_table))
+   left_join(data.frame(ps_g@tax_table) %>% rownames_to_column("Seq_ID"))
  
- scores <- pca_res$x[, 1:5] %>%
+ scores <- pca_g$x[, 1:5] %>%
    as.data.frame() %>%
    rownames_to_column("Meas_ID") %>%
    left_join(ps_g@sam_data[, 1:30] %>% as.data.frame())%>%
    arrange(Group, Subject, Samp_Date)
  
  eig_df <- data.frame(
-   eig_idx = 1:length(pca_res$sdev)
+   eig_idx = 1:length(pca_g$sdev)
    ) %>%
    mutate(
-     eig = pca_res$sdev^2,
+     eig = pca_g$sdev^2,
      var_exp = 100*eig/sum(eig)
     )
  
- plt_scree <- ggplot(eig_df) +
-   geom_bar(aes(x = eig_idx, y = var_exp))
+ plt_scree <- ggplot(eig_df[1:10, ]) +
+   geom_bar(aes(x = eig_idx, y = var_exp), stat = "identity")
  
  plt_scores <- plot_projection(
    scores, 
@@ -123,7 +126,7 @@ pca_study_arms <- foreach(i = seq_along(unique(ps@sam_data$Group))) %dopar% {
    labname = "Subject", 
    size = 3, 
    color = "Subject", 
-   eigs = pca_res$sdev^2
+   eigs = eig_df$eig
  )
  
  plt_loadings <- plot_projection(
@@ -131,21 +134,21 @@ pca_study_arms <- foreach(i = seq_along(unique(ps@sam_data$Group))) %dopar% {
    xname = "PC1", yname = "PC2", 
    size = "PC3",
    color = "Class", 
-   eigs = pca_res$sdev^2, 
+   eigs = eig_df$eig, 
    alpha = 0.3
  ) +
    geom_text_repel(
      data = loadings %>% 
        mutate(r2 = (PC1^2 + PC2^2)) %>%
-       filter(r2 > quantile(r2, 0.8)), 
-     aes(label = genus)) + #, nudge_y = 0.001*max(sqrt(r2))) +
+       filter(r2 > quantile(r2, 0.95)), 
+     aes(label = Genus)) + #, nudge_y = 0.001*max(sqrt(r2))) +
    theme(legend.position = "bottom")
  
-  return(list(plt_scree, plt_scores, plt_loadings, pca_res))
+  return(list(plt_scree, plt_scores, plt_loadings, pca_g))
 }
 names(pca_study_arms) <- unique(ps@sam_data$Group)
 
-saveRDS(pca_study_arms, file = file.path(path2out, "pca_res.rds"))
+saveRDS(pca_study_arms, file = file.path(path2out, "pca_g.rds"))
 
 pdf(file = file.path(path2out, "study_arm_pca.pdf"))
 for (g in names(pca_study_arms)) {
