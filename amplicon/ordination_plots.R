@@ -13,7 +13,7 @@
 #setwd("perturbation_16s/amplicon/")
 
 library(phyloseq)
-library(tidyverse)
+library(dplyr)
 library(ggplot2)
 library(viridis)
 library(adaptiveGPCA)
@@ -87,7 +87,8 @@ plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
 ## arms: ("Abx", "Diet_Abx", "CC_Diet", "CC_Diet_Abx", "NoIntv")
 
 registerDoParallel(length(unique(ps@sam_data$Group)))
-pca_study_arms <- foreach(g = unique(ps@sam_data$Group)) %dopar% {
+pca_study_arms <- foreach(i = seq_along(unique(ps@sam_data$Group))) %dopar% {
+ g <- unique(ps@sam_data$Group))[i] 
  ps_g <- subset_samples(ps, Group == "NoIntv" | Group == g)  
  ps_g <- filter_taxa(ps_g, minPrev = 2, group = "Subject")
  ps_g <- transform_sample_counts(ps_g, function(x) {asinh(x)})
@@ -143,6 +144,8 @@ pca_study_arms <- foreach(g = unique(ps@sam_data$Group)) %dopar% {
   return(list(plt_scree, plt_scores, plt_loadings, pca_res))
 }
 names(pca_study_arms) <- unique(ps@sam_data$Group)
+
+saveRDS(pca_study_arms, file = file.path(path2out, "pca_res.rds"))
 
 pdf(file = file.path(path2out, "study_arm_pca.pdf"))
 for (g in names(pca_study_arms)) {
