@@ -1,5 +1,6 @@
 data/*
 figs/*
 logs/*
+output/*
 amplicon/*cache/
 *.html
