@@ -116,7 +116,7 @@ num_subj_present <- function(physeq, subject_indicator = "Subject") {
 }
 subjects_prevalence <- num_subj_present(ps)
 # Filter taxa present in more than 1 subject
-ps <- subset_taxa(ps, subjects_prevalence > 1)
+ps <- subset_taxa(ps, subjects_prevalence >= minTaxaSubjPrev)
 ps
 ```
 
