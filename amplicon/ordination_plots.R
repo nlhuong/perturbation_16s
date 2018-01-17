@@ -25,7 +25,6 @@ library(adaptiveGPCA)
 library(doParallel)
 library(foreach)
 
-rm(list = ls())
 options(stringsAsFactors = FALSE)
 theme_set(theme_bw())
 theme_update(text = element_text(size = 15))
@@ -55,7 +54,6 @@ filter_taxa <- function(physeq, minPrev = 1, group = "Subject") {
                        physeq)
   return(physeq)
 }
-
 
 get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
   if(is.null(group) || !group %in% colnames(physeq@sam_data))
