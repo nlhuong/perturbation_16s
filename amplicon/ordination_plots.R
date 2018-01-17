@@ -150,7 +150,7 @@ names(pca_study_arms) <- unique(ps@sam_data$Group)
 
 saveRDS(pca_study_arms, file = file.path(path2out, "pca_g.rds"))
 
-pdf(file = file.path(path2out, "study_arm_pca.pdf"))
+pdf(file = file.path(path2figs, "study_arm_pca.pdf"))
 for (g in names(pca_study_arms)) {
   g_pca <- pca_study_arms[[g]]
   plt <- gridExtra::grid.arrange(
