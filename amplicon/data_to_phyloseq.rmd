@@ -1,0 +1,385 @@
+---
+title:  "Perturbation Study: Generate Phyloseq Object"
+author:
+  name: Lan Huong Nguyen
+  affiliation: |
+    | Institute for Computational and Mathematical Engineering, 
+    | Stanford University, CA 94305
+date: "`r BiocStyle::doc_date()`"
+output:
+  BiocStyle::html_document2:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+  html_notebook:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+keywords: microbiome, gPCA, PCA, clustering, differential abundance
+--- 
+
+# Data processing  {#processing .unnumbered}
+
+In this section we are setting the environment, loading all the necessary
+packages, as well as obtaining and processing the dataset. 
+
+
+## Packages and functions
+
+```{r setup, include=FALSE}
+rm(list = ls())
+require(knitr)
+require(rmarkdown)
+options(width = 80)
+opts_chunk$set(
+  cache = FALSE, warning = FALSE, message = FALSE, 
+  fig.align = 'center', fig.wide = TRUE, fig.path = "../figs/", # dev='pdf',
+  fig.width = 10, fig.height = 8
+)
+```
+
+
+Load the packages needed and set paths to files and outputs.
+
+```{r packages, include = FALSE}
+path_to_main <- "../../"
+path_to_dada2_res <- file.path(path_to_main, "output/16S_dada2_results/")
+path_to_process_data <- file.path(path_to_main, "data/processed/")
+sample_data_file <- "data/Mapping_Files_8Dec2017.xlsx"
+
+.packages <- c("gridExtra", "ggplot2", "scales", "viridis", "RColorBrewer",
+               "phyloseq", "limma", "DESeq2", "tibble", "tidyr", "dplyr")
+sapply(.packages, require, character.only = TRUE)
+theme_set(theme_bw())
+```
+
+
+## Load data
+
+Then, read the data stored as a `phyloseq` object.
+
+```{r get-physeq}
+psRDP <- readRDS(file.path(path_to_dada2_res, "phyloseq_RDP.rds"))
+psRDP
+
+psRDPMult <- readRDS(file.path(path_to_dada2_res, "phyloseq_RDP_multispecies.rds"))
+psRDPMult
+
+psSilva <- readRDS(file.path(path_to_dada2_res, "phyloseq_Silva.rds"))
+psSilva
+
+psSilvaMult <- readRDS(file.path(path_to_dada2_res, "phyloseq_Silva_multispecies.rds"))
+psSilvaMult
+```
+
+```{r}
+spSilva <- as(psSilva@tax_table, "matrix")[, "Species"]
+spRDP <- as(psRDP@tax_table, "matrix")[, "Species"]
+spSilvaMult <- as(psSilvaMult@tax_table, "matrix")[, "Species"]
+spRDPMult <- as(psRDPMult@tax_table, "matrix")[, "Species"]
+
+sum(!is.na(spRDP))
+sum(!is.na(spSilva))
+sum(!is.na(spRDPMult))
+sum(!is.na(spSilvaMult))
+```
+
+```{r}
+newTaxtab <- psRDP@tax_table
+newTaxtab <- cbind(newTaxtab, "SpeciesMult" = spRDPMult)
+newTaxtab <- cbind(newTaxtab, "GenusSilva" = as(psSilva@tax_table, "matrix")[, "Genus"])
+newTaxtab <- cbind(newTaxtab, "SpeciesSilva" = spSilva)
+newTaxtab <- cbind(newTaxtab, "SpeciesSilvaMult" = spSilvaMult)
+newTaxtab <- cbind(newTaxtab, Seq = rownames(newTaxtab))
+rownames(newTaxtab) <- paste0("Seq", 1:nrow(newTaxtab))
+
+seqtab <- as(psSilva@otu_table, "matrix")
+rownames(seqtab) <- rownames(newTaxtab) 
+```
+
+## Obtain sample-data 
+
+In this section we import the mapping data and process information to
+be added to a phyloseq object.
+
+```{r}
+library(readxl)
+excel_sheets(file.path(path_to_main, sample_data_file))
+```
+
+```{r}
+id_map <- read_excel(file.path(path_to_main, sample_data_file),
+                    sheet = "Meas", skip = 1)
+id_map
+```
+
+The 'Meas_ID' here will be used as sequencing sample ids. We check that the 
+sample names in our seqence table agree with the mapping file.
+
+```{r}
+head(colnames(seqtab))
+ps_smp_names <- colnames(seqtab) 
+ps_smp_names <- gsub("\\-(.*)", "", ps_smp_names)
+ps_smp_names <- gsub("(.*)\\_", "", ps_smp_names)
+head(ps_smp_names)
+length(ps_smp_names) == length(unique(ps_smp_names))
+```
+
+As we see above, the id's are unique in our sample. Now, we check that
+all the identifiers are included in the mapping file:
+
+```{r}
+all(ps_smp_names %in% id_map$Meas_ID)
+```
+
+We extract the information for the obtained samples:
+
+```{r}
+obtained_16S_samples <- data_frame(Meas_ID = ps_smp_names) %>%
+  left_join(id_map) %>%
+  select(-Stool_Aliquot, -(BB_machine:BB_time), -Extr_Row, -Extr_Col, 
+         -PCR_Replicate, -(X__1:X__5), -Notes)
+obtained_16S_samples
+```
+
+
+```{r}
+sample_data <- read_excel(file.path(path_to_main, sample_data_file),
+                          sheet = "Samp", skip = 1)
+sample_data 
+```
+
+```{r}
+subj_data <- read_excel(file.path(path_to_main, sample_data_file),
+                        sheet = "SubjNoRagged", skip = 1, 
+                        col_types = c("text", rep("date", 4), rep("guess", 864)))  %>%
+  mutate(CC = ifelse(!is.na(CC_Date), "CC", NA),
+         Diet = ifelse(!is.na(Diet_StartDate), "Diet", NA),
+         Abx = ifelse(!is.na(Abx_StartDate), "Abx", NA),
+         Group = sapply(1:nrow(.), function(i) {
+           z <- c(CC[i], Diet[i], Abx[i])
+           z <- paste(z[!is.na(z)], collapse = "_")
+           if(z == "") z <- "NoIntv"
+           return(z)
+           })) %>%
+  select(Subject, Group, First_Sample_Date, CC_Date, Diet_StartDate, Abx_StartDate,
+         Age:Test_Cholesterol_Glucose,
+         Birth_Mode, BirthYear, GRAMWT_G_USDA:`Vegetables for adjust- Freq`,
+         Qualtrics_Data, Qualtrics_ID)
+head(subj_data)
+```
+
+```{r}
+# Fix from 2001 mistake
+subj_data$First_Sample_Date[subj_data$Subject == "CAP"] <- as.POSIXct("2016-05-22", tz = "UTC")
+```
+
+
+```{r}
+sample_info <- obtained_16S_samples %>%
+  left_join(sample_data, by = c("SampID" = "Samp_ID")) %>%
+  left_join(subj_data, by = c("Subject")) %>%
+  data.frame(stringsAsFactors = FALSE) 
+```
+
+```{r}
+# This function returns TRUE wherever elements are the same, 
+# if na.rm=TRUE, function return FALSE whenever any of v1, v2 is NA,
+# if na.rm=FALSE the function returns TRUE where both v1 and v2 are NA.
+compareNA <- function(v1, v2, na.rm = TRUE) {
+  same <- (v1 == v2) 
+  same[is.na(same)] <- FALSE
+  if(!na.rm) same[is.na(v1) & is.na((v2))] <- TRUE
+  return(same)
+}
+```
+
+
+```{r}
+sample_info <- sample_info %>%
+  mutate(
+    Samp_Date = as.Date(Samp_Date),
+    First_Sample_Date = as.Date(First_Sample_Date), 
+    Diet_StartDate = as.Date(Diet_StartDate),
+    CC_Date = as.Date(CC_Date), 
+    Abx_StartDate = as.Date(Abx_StartDate),
+    Timeline = ifelse(compareNA(Samp_Date, CC_Date), "CC", "typical"),
+    Timeline = ifelse(compareNA(Diet_Interval, "MidDiet"), "MidDiet", Timeline),
+    Timeline = ifelse(compareNA(Abx_Interval, "ABX"), "ExtraABX", Timeline),
+    Timeline = ifelse(compareNA(Abx_Interval, "Midabx"), "MidAbx", Timeline),
+    Timeline = ifelse(compareNA(Abx_Interval, "MidAbx"), "MidAbx", Timeline),
+    DayFromStart = as.numeric(difftime(Samp_Date, First_Sample_Date, units = "days"))
+  ) %>%
+  select(Meas_ID, Group, Subject, Timeline, DayFromStart, 
+         Samp_Date, Samp_Type, Full_Code, SampID, 
+         First_Sample_Date, Diet_StartDate, CC_Date, Abx_StartDate, 
+         Diet_Interval, Diet_RelDay, CC_Interval, CC_RelDay, Abx_Interval, Abx_RelDay,
+         Age, Gender, Height, Weight, BMI, Waist_Circumference, 
+         Resting_Pulse, Blood_Pressure, Test_Cholesterol_Glucose, 
+         Birth_Mode, BirthYear, everything()) 
+
+rownames(sample_info) <- sample_info$"Meas_ID"
+colnames(seqtab) <- sample_info$Meas_ID
+```
+
+
+We combine the data into a phyloseq object contating both RDP and Silva,
+genus-species assignments:
+
+```{r}
+# load phylogenetic fitting files
+load("../../data/processed/ssh/phanghorn_fit.rda")
+rootedGTRtree <- phangorn::midpoint(fitGTR$tree)
+```
+
+
+```{r}
+ps <- phyloseq(otu_table(seqtab, taxa_are_rows = TRUE), 
+               sample_data(sample_info),
+               tax_table(newTaxtab))
+ps
+```
+
+```{r}
+rm(psSilva, psRDP, psRDPMult, psSilvaMult)
+```
+
+```{r}
+saveRDS(ps, file.path(path_to_process_data, "perturb_physeq_14Dec.rds"))
+```
+
+
+## Filter 
+
+### Filter Samples
+
+```{r}
+minSampleSums <- 5000
+ps1 <- prune_samples(colnames(ps@otu_table)[
+  colSums(ps@otu_table) >= minSampleSums], ps)
+ps1
+```
+
+
+```{r}
+idx_singleton <- rowSums(ps@otu_table > 0) <= 1
+
+cat("Number of sequences appearing in only a single sample:", sum(idx_singleton), "\n")
+cat("Number of reads belonging to these reads:", 
+    sum(ps@otu_table[idx_singleton, ]), "\n")
+cat("Singleton reads as a fraction of the total number of reads:", 
+    sum(ps@otu_table[idx_singleton, ])/sum(ps@otu_table), "\n")
+```
+
+Since these singletons constitute only ~0.02% of the total reads, we decide
+to discard them as noise.
+
+```{r}
+minTaxaPrev <- 2
+ps1 <- subset_taxa(ps1, rowSums(ps@otu_table > 0) >= 2)
+phy_tree(ps1) <- rootedGTRtree
+ps1
+```
+
+
+```{r}
+saveRDS(ps1, file.path(path_to_process_data, "perturb_physeq_filtered_27Dec.rds"))
+```
+
+
+## Construct phylogenetic tree
+
+We gather the sequences from 'ps' phyloseq object, which appeared in at 
+least two different samples in the sequence table returned from DADA2.
+These inferred sequence variants are used to construct a phylogenetic tree in a
+de novo fashion. We to perform a multiple-alignment using 
+[DECIPHER](http://decipher.cee.wisc.edu/index.html) and construct a phylogenetic 
+tree with [phangorn](https://github.com/KlausVigo/phangorn) R package.
+We first construct a neighbor-joining tree, and then fit a GTR+G+I 
+(Generalized time-reversible with Gamma rate variation) maximum likelihood tree 
+initialized at the neighbor-joining tree.
+
+```{r, eval=FALSE}
+# The code takes ~1h to run (25m alignment, ) and was run on the server.
+library(phyloseq)
+library(DECIPHER)
+library(phangorn)
+
+ALIGN <- FALSE
+
+path_to_process_data <- "/home/lanhuong/Projects/PerturbationStudy/data/processed"
+ps <- readRDS(file.path(path_to_process_data, "perturb_physeq.rds"))
+seqs <- as.character(ps@tax_table[, "Seq"])
+names(seqs) <- taxa_names(ps)
+
+if(ALIGN) {
+  ptm <- proc.time()
+  alignment <- AlignSeqs(DNAStringSet(seqs), anchor= NA, verbose=FALSE)
+  (alg.time <- proc.time() - ptm)
+  detach("package:DECIPHER", unload=TRUE)
+  saveRDS(alignment, file.path(path_to_process_data, "decipher_align.rds"))
+  cat("Completed alingment. \n")
+} else {
+  alignment <- readRDS(file.path(path_to_process_data, "decipher_align.rds"))
+  cat("Loaded alingment. \n")
+}
+
+ptm <- proc.time()
+phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
+dm <- dist.ml(phang.align)
+cat("Computed dist ml. \n")
+save(list = c("alignment", "alg.time", "phang.align", "dm"), 
+     file = file.path(path_to_process_data, "phangorn_fit.rda"))
+
+treeNJ <- NJ(dm) 
+fit <- pml(treeNJ, data = phang.align)
+cat("Computed NJ tree \n")
+save(list = c("alignment", "alg.time", "phang.align", "dm", "treeNJ", "fit"), 
+     file = file.path(path_to_process_data, "phangorn_fit.rda"))
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR <- optim.pml(fitGTR, model="GTR", optInv = TRUE, optGamma = TRUE,
+                    rearrangement = "stochastic") 
+(phang.time <- proc.time() - pmt)
+cat("Computed GTR tree \n")
+save(list = c("alignment", "alg.time", "phang.align", "dm", "treeNJ", "fit", 
+              "fitGTR", "phang.time"), 
+     file = file.path(path_to_process_data, "phangorn_fit.rda"))
+detach("package:phangorn", unload=TRUE)
+```
+
+```{r, echo = FALSE}
+load(file.path(path_to_process_data, "phangorn_fit.rda"))
+```
+
+We now root the tree at the midpoint using the `phangorn::midpoint` function.
+
+```{r}
+rootedNJtree <- phangorn::midpoint(fit$tree)
+rootedGTRtree <- phangorn::midpoint(fitGTR$tree)
+```
+
+
+The resulting trees we obtained can be plotted as follows.
+
+```{r fig.height=8, fig.width=8}
+# Plot the starting tree
+plt.njtree <- plot_tree(rootedNJtree, method = "treeonly", ladderize = "left") +  
+  ggtitle("NJ tree")
+# Plot the optimized tree
+plt.gtrtree <- plot_tree(rootedGTRtree, method = "treeonly", ladderize = "left") + 
+  ggtitle("GTR tree")
+grid.arrange(plt.njtree, plt.gtrtree, nrow = 1)
+```
+
+
+```{r echo=FALSE}
+rm(list = c("alignment", "alg.time", "phang.align", "dm", "treeNJ", 
+            "fit", "fitGTR", "phang.time"))
+```
+
+
+
+```{r}
+sessionInfo()
+```
+
