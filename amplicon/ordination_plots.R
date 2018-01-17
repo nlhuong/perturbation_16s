@@ -30,7 +30,6 @@ subject_file <- "subject"
 ###############################################################################
 ## Setup and data
 ###############################################################################
-rm(list = ls())
 
 library(dplyr)
 library(tibble)
@@ -267,8 +266,6 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
   }
   return(plt + theme(text = element_text(size = 20))) 
 } 
-plot_scores_time(scores, eigs = eigs)
-
 
 generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
   ord_plts <- lapply(ord_lst, function(g_ord) {
@@ -308,7 +305,7 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
 res_group_file <- paste0("pca_", group_file, ".rds")
 res_subject_file <- paste0("pca_", subject_file, ".rds")
 plot_group_file <- paste0("pca_", group_file, ".pdf")
-plot_subject_file <- paste0("pca_", subject_file, "pdf")
+plot_subject_file <- paste0("pca_", subject_file, ".pdf")
 
 if(RUNPCA){
   cat("Running PCA \n")
@@ -342,7 +339,7 @@ if(PLOTPCA){
 res_group_file <- paste0("agppca_", group_file, ".rds")
 res_subject_file <- paste0("agpca_", subject_file, ".rds")
 plot_group_file <- paste0("agpca_", group_file, ".pdf")
-plot_subject_file <- paste0("agpca_", subject_file, "pdf")
+plot_subject_file <- paste0("agpca_", subject_file, ".pdf")
 
 if(RUNAGPCA){
   cat("Running adaptive GPCA \n")
@@ -374,7 +371,7 @@ if(PLOTAGPCA){
 res_group_file <- paste0("tsnebray_", group_file, ".rds")
 res_subject_file <- paste0("tsnebray_", subject_file, ".rds")
 plot_group_file <- paste0("tsnebray_", group_file, ".pdf")
-plot_subject_file <- paste0("tsnebray_", subject_file, "pdf")
+plot_subject_file <- paste0("tsnebray_", subject_file, ".pdf")
 
 if(RUNTSNE) {
   cat("Running tSNE \n")
