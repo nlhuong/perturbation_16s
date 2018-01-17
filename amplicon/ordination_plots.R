@@ -10,6 +10,8 @@
 ###############################################################################
 ## Setup and data
 ###############################################################################
+#setwd("perturbation_16s/amplicon/")
+
 library(phyloseq)
 library(tidyverse)
 library(ggplot2)
@@ -22,9 +24,9 @@ options(stringsAsFactors = FALSE)
 theme_set(theme_bw())
 theme_update(text = element_text(size = 15))
 
-path2data <- "perturbation_16s/data/processed/"
-path2figs <- "perturbation_16s/figs"
-path2out <- "perturbation_16s/output"
+path2data <- "../data/processed/"
+path2figs <- "../figs"
+path2out <- "../output"
 
 ps0 <- readRDS(file.path(path2data, "perturb_physeq_filtered_27Dec.rds"))
 remove_subjects <- c("AAA", "AAB", "AAN", "DAC")
@@ -144,11 +146,11 @@ names(pca_study_arms) <- unique(ps@sam_data$Group)
 
 pdf(file = file.path(path2out, "study_arm_pca.pdf"))
 for (g in names(pca_study_arms)) {
-  g.mabund <- mabund %>% filter(Group == g)
-  pheat <- plot_heatmap(g.mabund,
-                        fill_type = NULL, taxrank = NULL) +
-    ggtitle(paste("Group:", g))
-  print(pheat)
+  g_pca <- pca_study_arms[[g]]
+  plt <- gridExtra::grid.arrange(
+    g_pca[[1]], g_pca[[2]], g_pca[[3]],
+    ncol = 3, top = paste0("Study Arm: ", g))
+  print(plt)
 }
 dev.off()
 
