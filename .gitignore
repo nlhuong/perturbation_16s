@@ -1,5 +1,7 @@
 data/*
+output/*
 figs/*
 logs/*
 amplicon/*cache/
 *.html
+.Rproj.user
