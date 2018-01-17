@@ -30,6 +30,7 @@ subject_file <- "subject"
 ###############################################################################
 ## Setup and data
 ###############################################################################
+rm(list = ls())
 
 library(dplyr)
 library(tibble)
@@ -79,6 +80,7 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
   groups <- unique(physeq@sam_data[[group]])
   
   registerDoParallel(min(ncores, length(groups), 0.5*detectCores())) 
+
   res <- foreach(i = seq_along(groups)) %dopar% {
     g <- unique(physeq@sam_data[[group]])[i] 
     g_samples <- rownames(physeq@sam_data)[physeq@sam_data[[group]] == g] 
@@ -107,12 +109,45 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
       eigs <- data.frame(
         eig_idx = 1:length(g_ord$vars),
         eig = g_ord$vars, var_exp = g_ord$vars)
+
     } else if (tolower(method) == "tsne") {
       brayD <- phyloseq::distance(g_physeq, method = "bray")
       g_ord <- Rtsne::Rtsne(brayD, is_distance = TRUE, dims = 2, pca = TRUE,
                    eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
       scores <- as.data.frame(g_ord$Y)
       rownames(scores) <- sample_names(g_physeq)
+    } else {
+      stop("method not supported")
+    }
+    if(!is.null(loadings)){
+      colnames(loadings) <- paste0("Axis", 1:ncol(loadings))
+      loadings <- loadings %>%
+        rownames_to_column("Seq_ID") %>%
+        left_join(g_taxtab)
+    }
+    colnames(scores) <- paste0("Axis", 1:ncol(scores))
+    scores <- scores %>%
+      rownames_to_column("Meas_ID") %>%
+      left_join(g_physeq@sam_data %>% as.data.frame())%>%
+      arrange(Group, Subject, Samp_Date, DayFromStart, Timeline)
+
+    return(list(eigs = eigs, scores = scores, loadings = loadings))
+  }
+  names(res) <- groups
+  return(res)
+}
+
+
+plot_projection <- function(data, xname, yname, labname = NULL, size = 3,
+                            color = NULL, eigs = NULL, ...){
+  if(all(!is.null(color), color %in% colnames(data))){
+    plt <- ggplot(data, aes_string(x = xname, y = yname, color = color)) 
+  } else {
+    plt <- ggplot(data, aes_string(x = xname, y = yname)) 
+  }
+  if(all(!is.null(labname), labname %in% colnames(data))) {
+    if(size %in% colnames(data)) {
+      plt <- plt + geom_text(aes_string(label = labname, size = size), ...)
     } else {
       stop("method not supported")
     }
@@ -165,15 +200,12 @@ plot_projection <- function(data, xname, yname, eigs = NULL, labname = NULL,
 }
 
 plot_loadings <- function(loadings, size = 3, eigs = NULL, 
-                          color = "Class", label = "Genus", frac = 0.01){
+                          color = "Class", label = "Genus"){
   
   loadings_fltr <- loadings %>%
     mutate(r2 = (Axis1^2 + Axis2^2)) %>%
     filter(
-      # Axis1 > quantile(Axis1, 1 - frac) | Axis1 < quantile(Axis1, frac),
-      # Axis2 > quantile(Axis2, 1- frac) | Axis2 < quantile(Axis2, frac))
       r2 > quantile(r2, 0.97))
-      
     plot_projection(
       loadings, 
       xname = "Axis1", 
@@ -238,8 +270,7 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
 plot_scores_time(scores, eigs = eigs)
 
 
-generate_pdf <- function(ord_lst, filename, width = 15, height = 30,
-                         frac = 0.01) {
+generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
   ord_plts <- lapply(ord_lst, function(g_ord) {
     eigs <- p_scree <- p_scores <- p_scores_time <- p_scores_time_path <- NULL
     scores <- g_ord$scores 
@@ -254,7 +285,7 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30,
       p_scores_time_path <- plot_scores_time(scores, eigs = eigs, path = TRUE)
     }
     p_scores_time <- plot_scores_time(scores, eigs = eigs, path = FALSE)
-    p_loadings <- plot_loadings(loadings, eigs = eigs, frac = frac)
+    p_loadings <- plot_loadings(loadings, eigs = eigs)
     return(list(scree = p_scree, loadings = p_loadings, 
                 scores = p_scores, scores_time = p_scores_time,
                 scores_time_path = p_scores_time_path))
@@ -303,7 +334,6 @@ if(PLOTPCA){
                filename = file.path(path2figs, plot_subject_file), 
                width = 15, height = 25)
 }
-
 
 ###############################################################################
 ## Adaptive GPCA
@@ -370,7 +400,5 @@ if(PLOTTSNE){
                filename = file.path(path2figs, plot_subject_file), 
                width = 15, height = 25)
 }
-
-
 
 
