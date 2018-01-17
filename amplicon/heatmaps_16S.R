@@ -10,6 +10,7 @@
 ###############################################################################
 ## Setup and data
 ###############################################################################
+#setwd("perturbation_16s/amplicon/")
 
 ## Load libraries
 .packages <- c("gtable","grid", "ggplot2", "viridis", "RColorBrewer", 
@@ -39,11 +40,8 @@ theme_update(
   legend.key = element_blank()
 )
 
-
-
 ## Read data
-setwd("code/perturbation_16s/amplicon/")
-path_to_data <- file.path("../data", "processed", "perturb_physeq_filtered_27Dec.rds")
+path_to_data <- "../data/processed/perturb_physeq_filtered_27Dec.rds"
 ps <- readRDS(path_to_data)
 
 ## Plotting functions 

@@ -11,6 +11,8 @@
 ###############################################################################
 ## Setup and data
 ###############################################################################
+#setwd("perturbation_16s/amplicon/")
+
 library(phyloseq)
 library(tidyverse)
 library(ggplot2)
@@ -20,9 +22,9 @@ options(stringsAsFactors = FALSE)
 theme_set(theme_bw())
 theme_update(text = element_text(size = 15))
 
-path2data <- "perturbation_16s/data/processed/"
-path2figs <- "perturbation_16s/figs"
-path2out <- "perturbation_16s/output"
+path2data <- "../data/processed/"
+path2figs <- "../figs"
+path2out <- "../output"
 
 ps0 <- ps <- readRDS(file.path(path2data, "perturb_physeq_filtered_27Dec.rds"))
 
