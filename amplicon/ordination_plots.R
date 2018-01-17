@@ -111,8 +111,11 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
 
     } else if (tolower(method) == "tsne") {
       brayD <- phyloseq::distance(g_physeq, method = "bray")
-      g_ord <- Rtsne::Rtsne(brayD, is_distance = TRUE, dims = 2, pca = TRUE,
-                   eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
+      g_ord <- Rtsne::Rtsne(
+        brayD, dims = 2, 
+        is_distance = TRUE, pca = FALSE,
+        perplexity = min(30, nrow(nsamples(g_physeq))/3 - 1),
+        eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
       scores <- as.data.frame(g_ord$Y)
       rownames(scores) <- sample_names(g_physeq)
     } else {
