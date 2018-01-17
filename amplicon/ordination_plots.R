@@ -92,7 +92,8 @@ plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
 registerDoParallel(length(unique(ps@sam_data$Group)))
 pca_study_arms <- foreach(i = seq_along(unique(ps@sam_data$Group))) %dopar% {
  g <- unique(ps@sam_data$Group)[i] 
- ps_g <- subset_samples(ps, Group == "NoIntv" | Group == g)  
+ g_taxa <- taxa_names(ps)[ps@sam_data$Group == "NoIntv" | ps@sam_data$Group == g]
+ ps_g <- prune_taxa(g_taxa, ps)
  ps_g <- filter_taxa(ps_g, minPrev = 2, group = "Subject")
  ps_g <- transform_sample_counts(ps_g, function(x) {asinh(x)})
  # PCA on centered data
