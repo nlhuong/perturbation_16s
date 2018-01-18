@@ -336,7 +336,7 @@ if(PLOTPCA){
   
   generate_pdf(ord_lst = pca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 25)
+               width = 15, height = 30)
 }
 
 ###############################################################################
@@ -359,7 +359,7 @@ if(RUNAGPCA){
   saveRDS(agpca_subject_res, file = file.path(path2out, res_subject_file))
 } else {
   agpca_res <- readRDS(file = file.path(path2out, res_group_file))
-  agpca_res <- readRDS(file = file.path(path2out, res_subject_file))
+  agpca_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
   
 }
 if(PLOTAGPCA){
@@ -368,7 +368,7 @@ if(PLOTAGPCA){
                width = 15, height = 30)
   generate_pdf(ord_lst = agpca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 25)
+               width = 15, height = 30)
 }
 
 
@@ -398,11 +398,11 @@ if(RUNTSNE) {
 if(PLOTTSNE){
   generate_pdf(ord_lst = tsne_res, 
              filename = file.path(path2figs, plot_group_file), 
-             width = 15, height = 30)
+             width = 8, height = 12)
   
   generate_pdf(ord_lst = tsne_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 25)
+               width = 8, height = 12)
 }
 
 
