@@ -109,9 +109,12 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
         eig_idx = 1:length(g_ord$vars),
         eig = g_ord$vars, var_exp = g_ord$vars)
 
-    } else if (tolower(method) == "tsne") {
-      #X <- phyloseq::distance(g_physeq, method = "bray")
-      X <- t(as(g_physeq@otu_table, "matrix"))
+    } else if (grepl("tsne", tolower(method))) {
+      if(tolower(method) == "tsnebray") { 
+        X <- phyloseq::distance(g_physeq, method = "bray")
+      } else {
+        X <- t(as(g_physeq@otu_table, "matrix"))
+      }
       g_ord <- Rtsne::Rtsne(
         X, dims = 2, 
         is_distance = (class(X) =="dist"), 
@@ -252,7 +255,7 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
     ) 
   } else {
     plt <- plt +
-      geom_point(aes(color = DayFromStart))  
+      geom_point(aes(color = DayFromStart), size = size)  
   }
   plt <- plt +
     geom_point(
@@ -330,8 +333,8 @@ if(RUNPCA){
   pca_subject_res <- get_ordinations(ps, group = "Subject", method = "PCA", ncores = 20)
   saveRDS(pca_subject_res, file = file.path(path2out, res_subject_file))
 } else {
-  pca_res <- readRDS(file = file.path(path2out, res_subject_file))
-  pca_subject_res <- readRDS(file = file.path(path2out, res_group_file))
+  pca_res <- readRDS(file = file.path(path2out, res_group_file))
+  pca_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
 }
 
 if(PLOTPCA){
@@ -380,6 +383,38 @@ if(PLOTAGPCA){
 ###############################################################################
 ## tSNE
 ###############################################################################
+res_group_file <- paste0("tsnebray_", group_file, ".rds")
+res_subject_file <- paste0("tsnebray_", subject_file, ".rds")
+plot_group_file <- paste0("tsnebray_", group_file, ".pdf")
+plot_subject_file <- paste0("tsnebray_", subject_file, ".pdf")
+
+if(RUNTSNE) {
+  cat("Running tSNE on Bray\n")
+  ## Process data for each study arm separately 
+  tsne_res <- get_ordinations(ps, group = "Group", method = "tsne", ncores = 20)
+  saveRDS(tsne_res, file = file.path(path2out, res_group_file))
+  
+  ## Process each subject separately
+  tsne_subject_res <- get_ordinations(ps, group = "Subject", 
+                                      method = "tsnebray", 
+                                      ncores = 20)
+  saveRDS(tsne_subject_res, file = file.path(path2out, res_subject_file))
+} else {
+  tsne_res <- readRDS(file = file.path(path2out, res_group_file))
+  tsne_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
+}
+
+if(PLOTTSNE){
+  generate_pdf(ord_lst = tsne_res, 
+             filename = file.path(path2figs, plot_group_file), 
+             width = 8, height = 12)
+  
+  generate_pdf(ord_lst = tsne_subject_res, 
+               filename = file.path(path2figs, plot_subject_file), 
+               width = 8, height = 12)
+}
+
+
 res_group_file <- paste0("tsne_", group_file, ".rds")
 res_subject_file <- paste0("tsne_", subject_file, ".rds")
 plot_group_file <- paste0("tsne_", group_file, ".pdf")
@@ -409,5 +444,3 @@ if(PLOTTSNE){
                filename = file.path(path2figs, plot_subject_file), 
                width = 8, height = 12)
 }
-
-
