@@ -333,8 +333,8 @@ if(RUNPCA){
   pca_subject_res <- get_ordinations(ps, group = "Subject", method = "PCA", ncores = 20)
   saveRDS(pca_subject_res, file = file.path(path2out, res_subject_file))
 } else {
-  pca_res <- readRDS(file = file.path(path2out, res_subject_file))
-  pca_subject_res <- readRDS(file = file.path(path2out, res_group_file))
+  pca_res <- readRDS(file = file.path(path2out, res_group_file))
+  pca_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
 }
 
 if(PLOTPCA){
