@@ -10,12 +10,12 @@
 #setwd("perturbation_16s/amplicon/")
 rm(list = ls())
 
-RUNPCA <- TRUE
-RUNAGPCA <- TRUE
-RUNTSNE <- TRUE
+RUNPCA <- FALSE
+RUNAGPCA <- FALSE
+RUNTSNE <- FALSE
 
-PLOTPCA <- TRUE
-PLOTAGPCA <- TRUE
+PLOTPCA <- FALSE
+PLOTAGPCA <- FALSE
 PLOTTSNE <- TRUE
 
 path2data <- "../data/processed/"
@@ -114,7 +114,7 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
       g_ord <- Rtsne::Rtsne(
         brayD, dims = 2, 
         is_distance = TRUE, pca = FALSE,
-        perplexity = min(30, nrow(nsamples(g_physeq))/3 - 1),
+        perplexity = min(30, floor((nrow(as.matrix(brayD)) - 1)/3)),
         eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
       scores <- as.data.frame(g_ord$Y)
       rownames(scores) <- sample_names(g_physeq)
@@ -272,7 +272,8 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
 
 generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
   ord_plts <- lapply(ord_lst, function(g_ord) {
-    eigs <- p_scree <- p_scores <- p_scores_time <- p_scores_time_path <- NULL
+    eigs <- p_scree <- p_loadings <- 
+      p_scores <- p_scores_time <- p_scores_time_path <- NULL
     scores <- g_ord$scores 
     loadings <- g_ord$loadings
     if(!is.null(g_ord$eigs)){
@@ -286,8 +287,9 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
       p_scores_time_path <- plot_scores_time(scores, eigs = eigs, path = TRUE)
     }
     p_scores_time <- plot_scores_time(scores, eigs = eigs, path = FALSE)
-    
-    p_loadings <- plot_loadings(loadings, eigs = eigs)
+    if(!is.null(loadings)){
+      p_loadings <- plot_loadings(loadings, eigs = eigs)
+    }
     return(list(scree = p_scree, loadings = p_loadings, 
                 scores = p_scores, scores_time = p_scores_time,
                 scores_time_path = p_scores_time_path))
