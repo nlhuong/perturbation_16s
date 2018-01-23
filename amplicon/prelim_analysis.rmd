@@ -36,7 +36,7 @@ require(knitr)
 require(rmarkdown)
 options(width = 80, stringsAsFactors = FALSE)
 opts_chunk$set(
-  cache = TRUE, warning = FALSE, message = FALSE, 
+  cache = FALSE, warning = FALSE, message = FALSE, 
   fig.align = 'center', fig.wide = TRUE, fig.path = "../figs/", # dev='pdf',
   fig.width = 10, fig.height = 8
 )
@@ -86,17 +86,31 @@ p3 <- p0 + geom_point(aes(color = Abx_Interval), size = 2.5)
 grid.arrange(p1, p2, p3, ncol = 1)
 ```
 
+
 ```{r}
 remove_subjects <- c("AAA", "AAB", "AAN", "DAC")
 ps <- subset_samples(ps, !Subject %in% remove_subjects)
 ps
-SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) 
+
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(
+    Interval = paste0(Diet_Interval, "_", CC_Interval, "_", Abx_Interval),
+    Interval = gsub("_NA", "", Interval),
+    Interval = gsub("NA_", "", Interval)
+  )
 ```
 
 
 ```{r timeline, fig.height=10, fig.width=12}
-ggplot(SMP, aes(y = Subject, x = DayFromStart)) + 
-  geom_point(aes(color = Timeline), size = 2.5) 
+ggplot(SMP %>% filter(Subject != "NA_QC", DayFromStart > 0), 
+       aes(y = Subject, x = DayFromStart)) + 
+  geom_point(aes(color = Interval), size = 2.5) +
+  facet_grid(Group ~ ., scales = "free", space = "free") +
+  scale_color_manual(values = sample(colorRampPalette(brewer.pal(9, "Set1"))(21)))
+#xlim(as.Date("2014-08-01"), as.Date("2016-06-01"))
 ```
 
 ## Filter taxa {#filter .unnumbered}
