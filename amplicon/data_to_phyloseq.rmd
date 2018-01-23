@@ -54,6 +54,56 @@ theme_set(theme_bw())
 ```
 
 
+
+## Dada2 Pipeline 
+
+The raw data was processed wih DADA2 pipeline with the source code
+and parameters saved in 'dada2_pipeline.R' and 'dada2_params_used.txt'
+files. Additionally, we used Silva reference database to assign taxonomy.
+The reference files used were: 'silva_nr_v128_train_set.fa.gz' and
+'silva_species_assignment_v128.fa.gz' downloaded from this url
+
+### Reads Statistics
+
+```{r}
+track.reads <- read.csv(file.path(path_to_dada2_res, "track_all_pools.csv"), 
+                        row.names = 1)
+tbl_df(track.reads)
+```
+
+```{r}
+total.reads <- colSums(track.reads[, 4:ncol(track.reads)])/10^6
+total.reads 
+percent.kept <- 100*total.reads/total.reads[1]
+percent.kept
+```
+
+
+```{r}
+pool_stats <- track.reads %>% 
+  select(-sample.id, -file.name) %>%
+  group_by(pool) %>%
+  summarize_all(sum) %>%
+  as.data.frame()
+
+pool_stats[, 2:6] <- apply(pool_stats[, 2:6], 2, 
+                           function(x) round(100 * x/ pool_stats[, 2], digits = 1))
+pool_stats
+```
+
+```{r}
+tab <- rbind(data.frame(pool = "All", t(round(percent.kept, digits = 1))), pool_stats)
+
+colnames(tab) <- c("pool", "input", "filtered", "inferred", "len-trimmed", "no-bimera")
+tab[, -5]
+```
+
+```{r}
+rm(particip.reads, particip.samples, percent.kept)
+```
+
+
+
 ## Load data
 
 Then, read the data stored as a `phyloseq` object.
@@ -73,23 +123,52 @@ psSilvaMult
 ```
 
 ```{r}
-spSilva <- as(psSilva@tax_table, "matrix")[, "Species"]
-spRDP <- as(psRDP@tax_table, "matrix")[, "Species"]
-spSilvaMult <- as(psSilvaMult@tax_table, "matrix")[, "Species"]
-spRDPMult <- as(psRDPMult@tax_table, "matrix")[, "Species"]
+silvaTax <- as(psSilva@tax_table, "matrix")
+rdpTax <- as(psRDP@tax_table, "matrix")
+silvaMult <- as(psSilvaMult@tax_table, "matrix")
+rdpMult <- as(psRDPMult@tax_table, "matrix")
 
-sum(!is.na(spRDP))
-sum(!is.na(spSilva))
-sum(!is.na(spRDPMult))
-sum(!is.na(spSilvaMult))
+sum(!is.na(rdpTax[, "Species"]))
+sum(!is.na(silvaTax[, "Species"]))
+sum(!is.na(rdpMult[, "Species"]))
+sum(!is.na(silvaMult[, "Species"]))
 ```
 
 ```{r}
+nSeqs <- ntaxa(psSilva)
+
+df <- rbind(
+  data.frame(DB = "RDP", rdpTax),
+data.frame(DB = "Silva", silvaTax),
+  data.frame(DB = "RDP_Mult", rdpMult),
+  data.frame(DB = "Silva_Mult", silvaMult)
+)
+
+df %>%
+  group_by(DB) %>%
+  summarise_all(.funs = list(
+    function(x) sum(!is.na(x))
+  )
+)
+
+
+df %>%
+  group_by(DB) %>%
+  summarise_all(.funs = list(
+    function(x) round(100*sum(!is.na(x))/nSeqs, 1)
+  )
+)
+
+
+```
+
+
+```{r}
 newTaxtab <- psRDP@tax_table
-newTaxtab <- cbind(newTaxtab, "SpeciesMult" = spRDPMult)
-newTaxtab <- cbind(newTaxtab, "GenusSilva" = as(psSilva@tax_table, "matrix")[, "Genus"])
-newTaxtab <- cbind(newTaxtab, "SpeciesSilva" = spSilva)
-newTaxtab <- cbind(newTaxtab, "SpeciesSilvaMult" = spSilvaMult)
+newTaxtab <- cbind(newTaxtab, "SpeciesMult" = rdpMult[, "Species"])
+newTaxtab <- cbind(newTaxtab, "GenusSilva" = silvaTax[, "Genus"])
+newTaxtab <- cbind(newTaxtab, "SpeciesSilva" = silvaTax[, "Species"])
+newTaxtab <- cbind(newTaxtab, "SpeciesSilvaMult" = silvaMult[, "Species"])
 newTaxtab <- cbind(newTaxtab, Seq = rownames(newTaxtab))
 rownames(newTaxtab) <- paste0("Seq", 1:nrow(newTaxtab))
 
