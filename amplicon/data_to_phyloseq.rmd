@@ -42,10 +42,10 @@ opts_chunk$set(
 Load the packages needed and set paths to files and outputs.
 
 ```{r packages, include = FALSE}
-path_to_main <- "../../"
+path_to_main <- "../.."
 path_to_dada2_res <- file.path(path_to_main, "output/16S_dada2_results/")
 path_to_process_data <- file.path(path_to_main, "data/processed/")
-sample_data_file <- "data/Mapping_Files_8Dec2017.xlsx"
+sample_data_file <- "../data/Mapping_Files_22Jan2018.xlsx"
 
 .packages <- c("gridExtra", "ggplot2", "scales", "viridis", "RColorBrewer",
                "phyloseq", "limma", "DESeq2", "tibble", "tidyr", "dplyr")
@@ -183,11 +183,11 @@ be added to a phyloseq object.
 
 ```{r}
 library(readxl)
-excel_sheets(file.path(path_to_main, sample_data_file))
+excel_sheets(sample_data_file)
 ```
 
 ```{r}
-id_map <- read_excel(file.path(path_to_main, sample_data_file),
+id_map <- read_excel(sample_data_file,
                     sheet = "Meas", skip = 1)
 id_map
 ```
@@ -223,13 +223,13 @@ obtained_16S_samples
 
 
 ```{r}
-sample_data <- read_excel(file.path(path_to_main, sample_data_file),
+sample_data <- read_excel(sample_data_file,
                           sheet = "Samp", skip = 1)
 sample_data 
 ```
 
 ```{r}
-subj_data <- read_excel(file.path(path_to_main, sample_data_file),
+subj_data <- read_excel(sample_data_file,
                         sheet = "SubjNoRagged", skip = 1, 
                         col_types = c("text", rep("date", 4), rep("guess", 864)))  %>%
   mutate(CC = ifelse(!is.na(CC_Date), "CC", NA),
@@ -307,7 +307,7 @@ genus-species assignments:
 
 ```{r}
 # load phylogenetic fitting files
-load("../../data/processed/ssh/phanghorn_fit.rda")
+load("../data/processed/ssh/phanghorn_fit.rda")
 rootedGTRtree <- phangorn::midpoint(fitGTR$tree)
 ```
 
@@ -324,7 +324,7 @@ rm(psSilva, psRDP, psRDPMult, psSilvaMult)
 ```
 
 ```{r}
-saveRDS(ps, file.path(path_to_process_data, "perturb_physeq_14Dec.rds"))
+saveRDS(ps, "../data/processed/perturb_physeq_22Jan18.rds")
 ```
 
 
@@ -362,7 +362,7 @@ ps1
 
 
 ```{r}
-saveRDS(ps1, file.path(path_to_process_data, "perturb_physeq_filtered_27Dec.rds"))
+saveRDS(ps1, "../data/processed/perturb_physeq_filtered_22Jan18.rds")
 ```
 
 
