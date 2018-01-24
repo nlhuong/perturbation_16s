@@ -249,7 +249,7 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
     plt <- plt + 
       geom_path(
         aes(group = Subject, color = DayFromStart), 
-        alpha = 0.5) +
+        alpha = 0.8, lwd = 1) +
       geom_text(
         aes(color = DayFromStart, label = Subject)
     ) 
@@ -261,11 +261,11 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
     geom_point(
       data = scores %>% filter(Timeline != "typical"), 
       aes(fill = Timeline, shape = Timeline),
-      size = 1.5*size, lwd=10
+      size = 2*size, lwd=10
     ) +
     scale_color_viridis() + 
     scale_shape_manual(values = c(23:25, 21, 22)) 
-  
+
   if(!is.null(eigs)){
     var.explained <- round(100 * eigs/sum(eigs), 2)
     plt <- plt + 
@@ -319,8 +319,8 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
 
 res_group_file <- paste0("pca_", group_file, ".rds")
 res_subject_file <- paste0("pca_", subject_file, ".rds")
-plot_group_file <- paste0("pca_", group_file, ".pdf")
-plot_subject_file <- paste0("pca_", subject_file, ".pdf")
+plot_group_file <- paste0("pca_", group_file, "_2.pdf")
+plot_subject_file <- paste0("pca_", subject_file, "_2.pdf")
 
 if(RUNPCA){
   cat("Running PCA \n")
@@ -340,11 +340,11 @@ if(RUNPCA){
 if(PLOTPCA){
   generate_pdf(ord_lst = pca_res, 
                filename = file.path(path2figs, plot_group_file), 
-               width = 15, height = 30)
+               width = 10, height = 22)
   
   generate_pdf(ord_lst = pca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 30)
+               width = 10, height = 22)
 }
 
 ###############################################################################
@@ -373,10 +373,10 @@ if(RUNAGPCA){
 if(PLOTAGPCA){
   generate_pdf(ord_lst = agpca_res, 
                filename = file.path(path2figs, plot_group_file), 
-               width = 15, height = 30)
+               width = 8, height = 20)
   generate_pdf(ord_lst = agpca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 30)
+               width = 8, height = 20)
 }
 
 
