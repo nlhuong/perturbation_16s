@@ -105,3 +105,15 @@ exp_design_plot <- function(df) {
 exp_design_plot(samp)
 ggsave("exp_design_metagenomic.png", dpi = 500, width = 9.77, height = 4.92)
 exp_design_plot(samp %>% filter(!no_interv))
+
+## number of reads per sample
+reads <- data_frame(
+  "file" = fqs,
+  "n_reads" = NA
+)
+
+for (i in seq_along(fqs)) {
+  message(sprintf("Processing %s / %s", i, length(fqs)))
+  reads[i, "n_reads"]  <- system(sprintf("awk '{s++}END{print s/4}' %s", fqs[i]), intern = TRUE)
+}
+write.csv(reads)
