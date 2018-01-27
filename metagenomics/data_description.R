@@ -84,26 +84,29 @@ samp <- samp %>%
 exp_design_plot <- function(df) {
   ggplot(df) +
     geom_point(
-      aes(x = Samp_Date, y = Subject, col = Diet_Interval), pch = 15,
-      size = 0.6, alpha = 0.7, position = position_nudge(y = 0.3)
+      aes(x = Samp_Date, y = Subject, col = Diet_Interval),
+      pch = 73, size = 0.6, position = position_nudge(y = 0.3)
     ) +
     geom_point(
       aes(x = Samp_Date, y = Subject, col = CC_Interval),
-      pch = 15, size = 0.6, alpha = 0.7
+      pch = 73, size = 0.6
     ) +
     geom_point(
       aes(x = Samp_Date, y = Subject, col = Abx_Interval),
-      pch = 15, size = 0.6, alpha = 0.7, position = position_nudge(y = -0.3)
+      pch = 73, size = 0.6, position = position_nudge(y = -0.3)
     ) +
     guides(
-      col = guide_legend(override.aes = list("size" = 1, "alpha" = 0.8, "stroke" = 1), reverse = TRUE)
+      col = guide_legend(override.aes = list("size" = 3), reverse = TRUE)
     ) +
     facet_grid(metag_complete ~ ., space = "free_y", scale = "free") +
-    scale_x_datetime()
+    scale_x_datetime() +
+    theme(
+      strip.text.y = element_text(angle = 0)
+    )
 }
 
 exp_design_plot(samp)
-ggsave("exp_design_metagenomic.png", dpi = 500, width = 9.77, height = 4.92)
+ggsave("exp_design_metagenomic.png", dpi = 700, width = 6.06, height = 6.62)
 exp_design_plot(samp %>% filter(!no_interv))
 
 ## number of reads per sample
