@@ -1,0 +1,107 @@
+#! /usr/bin/env Rscript
+
+## File description -------------------------------------------------------------
+##
+## Some characterization of the metagenomic samples before any profiling has
+## been done.
+##
+## author: sankaran.kris@gmail.com
+## date: 01/27/2017
+
+library("readxl")
+library("tidyverse")
+library("RColorBrewer")
+
+scale_colour_discrete <- function(...)
+  scale_colour_brewer(..., palette="Set1")
+scale_fill_discrete <- function(...)
+  scale_fill_brewer(..., palette="Set1")
+
+theme_set(theme_bw())
+theme_update(
+  panel.border = element_rect(size = 0.5),
+  panel.background = element_rect(fill = "#f7f7f7"),
+  panel.grid = element_blank(),
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 8),
+  legend.text = element_text(size = 6),
+  axis.text = element_text(size = 6),
+  axis.title = element_text(size = 8),
+  strip.background = element_blank(),
+  strip.text = element_text(size = 8),
+  legend.key = element_blank(),
+  legend.background = element_rect(fill = "#dadada")
+)
+
+## number of metagenomic samples (considering forwards vs. reversed as one)
+fqs <- list.files("../data/metagenomic/", "*.fq", full.names = TRUE)
+length(fqs) / 2
+
+fqs <- readLines("../data/metag_sample_list.txt")
+fq_ids <- str_extract(fqs, "M[0-9]+")
+
+## metagenomics version of experiment design
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
+                 "PostCC", "PreAbx", "MidAbx", "PostAbx")
+samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
+  mutate(
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs),
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
+
+meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
+  rename(Samp_ID = SampID)
+mg_samp_ids <- meas %>%
+  filter(Meas_Type == "MetaG") %>%
+  .[["Samp_ID"]]
+no_interv <- samp %>%
+  group_by(Subject) %>%
+  summarise(
+    no_interv = all(Diet_Interval == "NoInterv") &&
+    all(CC_Interval == "NoInterv") &&
+    all(Abx_Interval == "NoInterv")
+  ) %>%
+  filter(no_interv) %>%
+  .[["Subject"]]
+sequenced_ids <- meas %>%
+  filter(Meas_ID %in% fq_ids) %>%
+  .[["Samp_ID"]]
+samp$metag_complete <- "none"
+samp$metag_complete[samp$Samp_ID %in% mg_samp_ids] <- "collected"
+samp$metag_complete[samp$Samp_ID %in% sequenced_ids] <- "sequenced"
+
+samp <- samp %>%
+  mutate(
+    metag_complete = factor(metag_complete, levels = c("sequenced", "collected", "none")),
+    no_interv = Subject %in% no_interv
+  )
+
+exp_design_plot <- function(df) {
+  ggplot(df) +
+    geom_point(
+      aes(x = Samp_Date, y = Subject, col = Diet_Interval), pch = 15,
+      size = 0.6, alpha = 0.7, position = position_nudge(y = 0.3)
+    ) +
+    geom_point(
+      aes(x = Samp_Date, y = Subject, col = CC_Interval),
+      pch = 15, size = 0.6, alpha = 0.7
+    ) +
+    geom_point(
+      aes(x = Samp_Date, y = Subject, col = Abx_Interval),
+      pch = 15, size = 0.6, alpha = 0.7, position = position_nudge(y = -0.3)
+    ) +
+    guides(
+      col = guide_legend(override.aes = list("size" = 1, "alpha" = 0.8, "stroke" = 1), reverse = TRUE)
+    ) +
+    facet_grid(metag_complete ~ ., space = "free_y", scale = "free") +
+    scale_x_datetime()
+}
+
+exp_design_plot(samp)
+ggsave("exp_design_metagenomic.png", dpi = 500, width = 9.77, height = 4.92)
+exp_design_plot(samp %>% filter(!no_interv))
