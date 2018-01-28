@@ -35,10 +35,8 @@ theme_update(
 
 ## number of metagenomic samples (considering forwards vs. reversed as one)
 fqs <- list.files("../data/metagenomic/", "*.fq", full.names = TRUE)
-length(fqs) / 2
-
-fqs <- readLines("../data/metag_sample_list.txt")
 fq_ids <- str_extract(fqs, "M[0-9]+")
+length(fqs) / 2
 
 ## metagenomics version of experiment design
 interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
@@ -99,7 +97,6 @@ exp_design_plot <- function(df) {
       col = guide_legend(override.aes = list("size" = 3), reverse = TRUE)
     ) +
     facet_grid(metag_complete ~ ., space = "free_y", scale = "free") +
-    scale_x_datetime() +
     theme(
       strip.text.y = element_text(angle = 0)
     )
@@ -110,13 +107,32 @@ ggsave("exp_design_metagenomic.png", dpi = 700, width = 6.06, height = 6.62)
 exp_design_plot(samp %>% filter(!no_interv))
 
 ## number of reads per sample
-reads <- data_frame(
-  "file" = fqs,
-  "n_reads" = NA
-)
+## reads <- data_frame(
+##   "file" = fqs,
+##   "n_reads" = NA
+## )
 
-for (i in seq_along(fqs)) {
-  message(sprintf("Processing %s / %s", i, length(fqs)))
-  reads[i, "n_reads"]  <- system(sprintf("awk '{s++}END{print s/4}' %s", fqs[i]), intern = TRUE)
-}
-write.csv(reads)
+## for (i in seq_along(fqs)) {
+##   message(sprintf("Processing %s / %s", i, length(fqs)))
+##   reads[i, "n_reads"]  <- system(sprintf("awk '{s++}END{print s/4}' %s", fqs[i]), intern = TRUE)
+## }
+## write.csv(reads, file = "../data/metagenomic/reads.csv", row.names = FALSE)
+reads <- read.csv("../data/metagenomic/reads.csv") %>%
+  mutate(
+    Meas_ID = str_extract(file, "M[0-9]+"),
+    forwards = grepl("1P", file)
+  ) %>%
+  left_join(meas) %>%
+  left_join(samp) %>%
+  filter(Samp_Type != "ExtrCont")
+
+ggplot(reads) +
+  geom_point(
+    aes(
+      x = Samp_Date, y = n_reads
+    ),
+    size = 0.5,
+    alpha = 0.5
+  ) +
+  facet_wrap(~Subject, scale = "free_x")
+ggsave("read_depths.png", dpi = 700)
