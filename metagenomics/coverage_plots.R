@@ -11,7 +11,6 @@
 ###############################################################################
 ## Setup and data
 ###############################################################################
-library("tidyverse")
 library("argparser")
 library("readxl")
 library("feather")
@@ -19,19 +18,20 @@ library("ggrepel")
 library("pheatmap")
 library("forcats")
 library("PMA")
+library("tidyverse")
 
 ## Define the parser
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k", help = "k in k-over-a filter for coverage", default = 0.05)
-parser <- add_argument(parser, "--a", help = "a in k-over-a filter for coverage", default = 0)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for coverage", default = 0.07)
 argv <- parse_args(parser)
 
 ## custom plot defaults
 scale_fill_interval <- function(...)
-  scale_fill_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
+  scale_fill_brewer(..., palette = "Set1")
 scale_color_interval <- function(...)
-  scale_color_manual(..., values = c("#15c7b0", "#c71585", "#15c7b0"), na.value = "#2f4f4f")
+  scale_color_brewer(..., palette = "Set1")
 scale_colour_discrete <- function(...)
   scale_colour_brewer(..., palette="Set2")
 
@@ -90,12 +90,18 @@ merged_dir <- file.path("..", "data", argv$subdir, "merged")
 coverage <- read_tsv(file.path(merged_dir, "coverage.tsv"))
 meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
   rename(Samp_ID = SampID)
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
+                 "PostCC", "PreAbx", "MidAbx", "PostAbx")
 samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
   mutate(
-    Diet_Interval = factor(Diet_Interval, c("PreDiet", "MidDiet", "PostDiet")),
-    CC_Interval = factor(CC_Interval, c("PreCC", "MidCC", "PostCC")),
-    Abx_Interval = factor(Abx_Interval, c("PreAbx", "MidAbx", "PostAbx"))
-  )
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
 
 ###############################################################################
 ## Prepare data for visualizing species COG data
@@ -103,6 +109,15 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
 keep_ix <- rowMeans(coverage[, -1] > argv$k) > argv$a
 coverage <- coverage[keep_ix, ]
 coverage[, -1] <- asinh(coverage[, -1])
+
+# some samples seem missing...
+meas %>%
+  filter(Meas_ID == "M3654")
+samp %>%
+  filter(Samp_ID == "S1639")
+bad_samples <- c("M3728", "M3673", "M3695", "M3204", "M3064", "M3109", "M3188",
+                 "M3654")
+coverage <- coverage[, !(colnames(coverage) %in% bad_samples)]
 
 coverage <- as.data.frame(coverage) %>%
   separate(
@@ -116,14 +131,14 @@ coverage <- as.data.frame(coverage) %>%
   )
 
 mcoverage <- coverage %>%
-  gather(Meas_ID, coverage, starts_with("M")) %>%
+  gather(Meas_ID, coverage,  starts_with("M")) %>%
   left_join(meas %>% select(Meas_ID, Samp_ID)) %>%
   left_join(samp %>% select(Samp_ID, Subject, Samp_Date, ends_with("Interval")))
 
 rownames(coverage) <- coverage$species_id
 cov_mat <- coverage %>%
   select(starts_with("M"))
-sp_order <- pheatmap(cov_mat, silent = TRUE)$tree_row$order
+sp_order <- pheatmap(cov_mat, silent = TRUE, cluster_cols = FALSE)$tree_row$order
 mcoverage$species_id <- factor(
   mcoverage$species_id,
   levels = rownames(cov_mat)[sp_order]
@@ -137,7 +152,7 @@ meas_levels <- mcoverage %>%
   .[["Meas_ID"]]
 genus_levels <- mcoverage %>%
   group_by(genus_grouped) %>%
-  summarise(sum = sum(coverage)) %>%
+  dplyr::summarise(sum = sum(coverage)) %>%
   arrange(desc(sum)) %>%
   .[["genus_grouped"]]
 mcoverage <- mcoverage %>%
