@@ -23,7 +23,7 @@ library("forcats")
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k", help = "k in k-over-a filter for depths", default = 0.25)
-parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 0.0)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 2)
 argv <- parse_args(parser)
 
 ## custom plot defaults
@@ -138,6 +138,10 @@ meas_levels <- meas %>%
 depths_mat <- depths_df %>%
   select(starts_with("M")) %>%
   as.matrix()
+col_sums <- colSums(depths_mat)
+bad_ix <- col_sums < 8e3 | col_sums > 5.5e4
+depths_mat <- depths_mat[, !bad_ix]
+
 hm <- pheatmap(depths_mat, silent = TRUE, cluster_cols = FALSE)
 
 mdepths <- depths_df %>%
@@ -145,7 +149,7 @@ mdepths <- depths_df %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
   left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
   mutate(
-    Meas_ID = factor(Meas_ID, levels = meas_levels,
+    Meas_ID = factor(Meas_ID, levels = meas_levels),
     gene_id = factor(gene_id, levels = rownames(depths_mat)[hm$tree_row$order])
   )
 
@@ -161,8 +165,7 @@ loadings <- pc_depths$loadings[, 1:5] %>%
   as.data.frame() %>%
   rownames_to_column("Meas_ID") %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
-  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
-  mutate(Meas_ID = factor(Meas_ID, levels = colnames(depths_mat)[hm$tree_col$order]))
+  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval")))
 
 ###############################################################################
 ## Make plots for the analysis
