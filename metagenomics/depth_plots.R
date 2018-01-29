@@ -85,25 +85,34 @@ plot_loadings <- function(loadings, col_type) {
 
 ## Read in data
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
-depths <- read_feather(file.path(merged_dir, "depths.feather"))
+depths <- read_feather(file.path(merged_dir, "depths.feather")) %>%
+  mutate(genus = str_extract(species, "[^_]+"))
 meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
   rename(Samp_ID = SampID)
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
+                 "PostCC", "PreAbx", "MidAbx", "PostAbx")
 samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
   mutate(
-    Diet_Interval = factor(Diet_Interval, c("PreDiet", "MidDiet", "PostDiet")),
-    CC_Interval = factor(CC_Interval, c("PreCC", "MidCC", "PostCC")),
-    Abx_Interval = factor(Abx_Interval, c("PreAbx", "MidAbx", "PostAbx"))
-  )
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
 
 ###############################################################################
 ## Prepare data for gene depths plots
 ###############################################################################
-depths <- depths[substr(depths$species, 1, 11) == "Bacteroides", ]
+depths <- depths %>%
+  filter(genus %in% c("Parabacteroides", "Eubacterium", "Bacteroides"))
 depths[is.na(depths)] <- 0
 keep_ix <- rowMeans(depths[, -c(1, 2)] > argv$a) > argv$k
 
 depths_df <- depths[keep_ix, ] %>%
   as.data.frame() %>%
+  select(-genus) %>%
   separate(
     species,
     c("genus", "species_name", "strain_id"), "_",
@@ -129,7 +138,7 @@ meas_levels <- meas %>%
 depths_mat <- depths_df %>%
   select(starts_with("M")) %>%
   as.matrix()
-hm <- pheatmap(depths_mat, silent = TRUE)
+hm <- pheatmap(depths_mat, silent = TRUE, cluster_cols = FALSE)
 
 mdepths <- depths_df %>%
   gather(Meas_ID, depth, starts_with("M")) %>%
