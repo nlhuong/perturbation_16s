@@ -101,6 +101,8 @@ samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
     Abx_Interval = factor(Abx_Interval, interv_levs)
   ) %>%
   filter(Samp_Type != "ExtrCont")
+bad_samples <- c("M3728", "M3673", "M3695", "M3204", "M3064", "M3109", "M3188",
+                 "M3654")
 
 ###############################################################################
 ## Prepare data for gene depths plots
@@ -197,3 +199,62 @@ ggplot(scores) +
 plot_loadings(loadings, "Diet_Interval")
 plot_loadings(loadings, "CC_Interval")
 plot_loadings(loadings, "Abx_Interval")
+
+###############################################################################
+## Diagnostics about read mapping
+###############################################################################
+
+mapping_summaries <- function(process_dir) {
+  sample_dirs <- list.files(process_dir, full.names = TRUE)
+
+  gene_summary <- list()
+  for (i in seq_along(sample_dirs)) {
+    summary_path <- file.path(sample_dirs[i], "genes", "summary.txt")
+    if (file.exists(summary_path)) {
+      gene_summary[[i]] <- read_tsv(summary_path)
+      gene_summary[[i]]$Meas_ID <- basename(sample_dirs[i])
+    }
+  }
+  bind_rows(gene_summary)
+}
+
+## process_dir <- file.path("..", "data", argv$subdir, "processed")
+## gene_summary <- mapping_summaries(process_dir)
+gene_summary <- read_csv("../data/metagenomic/merged/gene_summary.csv") %>%
+  left_join(meas) %>%
+  left_join(samp) %>%
+  separate(species_id, c("genus", "species", "strain")) %>%
+  mutate(
+    genus_grouped = fct_lump(genus, n = 7)
+  ) %>%
+  filter(!(Meas_ID %in% bad_samples))
+
+ggplot(gene_summary) +
+  geom_point(
+    aes(x = fraction_covered, y = log(mean_coverage, 10), col = genus_grouped),
+    alpha = 0.5, size = 0.5
+  ) +
+  guides(col = guide_legend(override.aes = list(alpha = 1, size = 2))) +
+  facet_wrap(~ Subject) +
+  labs(
+    col = "Genus",
+    y = "log[10](average coverage)",
+    x = "Fraction of pangenome covered"
+    ) +
+  theme(legend.position = "bottom")
+ggsave("mapped_reads.png", dpi = 500, width = 4.82, height = 2.82)
+
+ggplot(gene_summary) +
+  geom_histogram(
+    aes(x = log(mapped_reads, 10), fill = genus_grouped)
+  ) +
+  facet_grid(genus_grouped~Subject) +
+  labs(
+    x = "log[10](mapped reads)",
+    fill = "Genus"
+  ) +
+  theme(
+    strip.text.y = element_text(angle = 0, hjust = 0),
+    legend.position = "bottom"
+  )
+ggsave("mapped_reads_hist.png", dpi = 500, width = 5.02, height = 4.53)
