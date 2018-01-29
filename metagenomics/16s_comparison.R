@@ -37,15 +37,33 @@ theme_update(
   legend.key = element_blank()
 )
 
-ps <- readRDS("../data/16s/perturb_physeq_8Dec.rds")
+ps <- readRDS("../data/16s/perturb_physeq_8Dec.rds") %>%
+  subset_samples(Subject %in% c("DBU", "DBV", "EAQ", "EAY", "EBF")) # samples with metagenomics
 metag <- read_tsv("../data/metagenomic/merged/coverage.tsv") %>%
   separate(species_id, c("Genus", "species", "strain_id"), remove = FALSE)
-meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1)
+meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
+  rename(Samp_ID = SampID)
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
+                 "PostCC", "PreAbx", "MidAbx", "PostAbx")
+samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
+  mutate(
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
 
 species_sums <- metag %>%
   select(starts_with("M")) %>%
   rowSums()
+
+bad_samples <- c("M3728", "M3673", "M3695", "M3204", "M3064", "M3109", "M3188",
+                 "M3654")
 metag <- metag[species_sums != 0, ]
+metag <- metag[ !(colnames(metag) %in% bad_samples)]
 
 ###############################################################################
 ## Functions used throughout
@@ -54,7 +72,7 @@ count_taxa <- function(melted_abund, taxa_level = "Genus") {
   melted_abund %>%
     group_by_("Meas_ID", taxa_level) %>%
     mutate(count = asinh(count)) %>%
-    summarise(SampID = SampID[1], total = sum(count)) %>%
+    summarise(Samp_ID = Samp_ID[1], total = sum(count)) %>%
     arrange(Meas_ID, desc(total)) %>%
     group_by(Meas_ID) %>%
     mutate(rel_total = total / sum(total)) %>%
@@ -70,7 +88,7 @@ taxa <- tax_table(ps) %>%
 
 melt_metag <- metag %>%
   gather(Meas_ID, count, starts_with("M")) %>%
-  left_join(meas %>% select("Meas_ID", "SampID"))
+  left_join(meas %>% select("Meas_ID", "Samp_ID"))
 
 melt_16s <- ps %>%
   get_taxa() %>%
@@ -78,7 +96,7 @@ melt_16s <- ps %>%
   rownames_to_column("seq_id") %>%
   gather(Meas_ID, count, -seq_id) %>%
   left_join(taxa %>% select("seq_id", "Genus")) %>%
-  left_join(meas %>% select("Meas_ID", "SampID"))
+  left_join(meas %>% select("Meas_ID", "Samp_ID"))
 
 sums_metag <- count_taxa(melt_metag) %>%
   mutate(source = "metagenomic")
@@ -105,10 +123,10 @@ genus <- melt_genus %>%
 ## barplot of relative abundances across genuses, from both data sets
 keep_ids <- meas %>%
   filter(Meas_ID %in% c(colnames(metag), sample_names(ps))) %>%
-  group_by(SampID) %>%
+  group_by(Samp_ID) %>%
   mutate(n_types = n()) %>%
   filter(n_types > 1) %>%
-  arrange(SampID) %>%
+  arrange(Samp_ID) %>%
   .[["Meas_ID"]]
 
 keep_genus <- levels(melt_genus$Genus)[1:100]
@@ -124,73 +142,46 @@ ggplot(
     stat = "identity",
     position = "dodge"
   ) +
-  facet_grid(SampID ~ ., scale = "free_y") +
+  facet_grid(Samp_ID ~ ., scale = "free_y") +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
 
 ## scatterplot of abundances from the two sources, per sample
-scatter_data = melt_genus %>%
-  filter(
-    Meas_ID %in% keep_ids[1:12],
-    Genus %in% keep_genus
-  ) %>%
+scatter_data <- melt_genus %>%
+  filter(Genus %in% keep_genus) %>%
+  left_join(samp) %>%
   select(-Meas_ID, -total) %>%
   spread(source, rel_total)
 
+genus_centroid <- scatter_data %>%
+  group_by(Subject, Genus, Abx_Interval) %>%
+  summarise(
+    `16s` = median(`16s`),
+    metagenomic = median(metagenomic, na.rm = TRUE)
+  )
+
 ggplot() +
-  geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
-  geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
   geom_abline(alpha = 0.4, size = 0.2) +
   geom_point(
     data = scatter_data,
-    aes(x = log(`16s`), y = log(`metagenomic`)),
-    size = 1
+    aes(x = log(`16s`), y = log(`metagenomic`), col = Abx_Interval),
+    size = 0.5, alpha = 0.2
   ) +
-  geom_text_repel(
-    data = scatter_data %>%
-      filter(`16s` > 1e-2 | `metagenomic` > 1e-2),
-    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
-    size = 2,
-    force = 0.2
-  ) +
-  facet_wrap(~SampID, scale = "free")
-
-## aggregate over all SampIDs now
-ave_genus <- melt_genus %>%
-    filter(Genus %in% keep_genus) %>%
-    ungroup() %>%
-    group_by(Genus, source) %>%
-  summarise(
-    total = sum(total, na.rm = TRUE)
-  ) %>%
-  group_by(source) %>%
-  mutate(rel_total = total / sum(total)) %>%
-  select(-total)
-
-ggplot(ave_genus) +
-  geom_bar(
-    aes(x = Genus, y = rel_total, fill = source),
-    stat = "identity",
-    position = "dodge"
-  ) +
-  theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0))
-
-ggplot() +
-  geom_vline(xintercept = 0, alpha = 0.4, size = 0.2) +
-  geom_hline(yintercept = 0, alpha = 0.4, size = 0.2) +
-  geom_abline(alpha = 0.4, size = 0.2) +
   geom_point(
-    data = ave_genus %>%
-    filter(Genus %in% keep_genus) %>%
-    spread(source, rel_total),
-    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
-    size = 1
+    data = genus_centroid,
+    aes(x = log(`16s`), y = log(`metagenomic`), fill = Abx_Interval),
+    size = 1, pch = 21, stroke = 0.2
   ) +
   geom_text_repel(
-    data = ave_genus %>%
-      filter(Genus %in% keep_genus) %>%
-      spread(source, rel_total) %>%
-      filter(`16s` > 1e-3 | `metagenomic` > 1e-3),
+    data = genus_centroid %>%
+      filter(
+        `16s` > 0,
+        metagenomic > 0,
+        abs(log(`16s`) - log(metagenomic)) > 3
+      ),
     aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
     size = 2,
     force = 0.2
-  )
+  ) +
+  facet_wrap(~Subject) +
+  theme(legend.position = "bottom")
+ggsave("comparison_scatter.png", width = 5.28, height = 3.54, dpi = 600)
