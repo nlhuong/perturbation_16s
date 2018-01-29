@@ -38,22 +38,38 @@ scale_colour_discrete <- function(...)
 theme_set(theme_bw())
 theme_update(
   panel.border = element_rect(size = 0.5),
+  panel.background = element_rect(fill = "#f7f7f7"),
   panel.grid = element_blank(),
   axis.ticks = element_blank(),
   legend.title = element_text(size = 8),
-  legend.text = element_text(size = 9),
-  axis.text = element_text(size = 9),
+  legend.text = element_text(size = 6),
+  axis.text = element_text(size = 6),
   axis.title = element_text(size = 8),
   strip.background = element_blank(),
-  strip.text = element_text(size = 9),
-  legend.key = element_blank()
+  strip.text = element_text(size = 8),
+  legend.key = element_blank(),
+  legend.background = element_rect(fill = "#dadada")
 )
 
 ## Functions used throughout
-plot_cov <- function(mcoverage, fill_type) {
-  ggplot(mcoverage) +
+plot_cov <- function(mcoverage) {
+  mcoverage_concat <- mcoverage %>%
+    gather(perturb_type, perturb, ends_with("Interval")) %>%
+    unite(species_pert, species_id, perturb_type, remove = FALSE)
+  pert_types <- unique(mcoverage_concat$perturb_type)
+  species_pert_lev <-  paste(
+    rep(levels(mcoverage$species_id), times = length(pert_types)),
+    rep(pert_types, each = nlevels(mcoverage$species_id)),
+    sep = "_"
+  )
+  mcoverage_concat$species_pert <- factor(
+    mcoverage_concat$species_pert,
+    levels = species_pert_lev
+  )
+
+  ggplot(mcoverage_concat) +
     geom_tile(
-      aes_string(x = "species_id", y = "Meas_ID", alpha = "coverage", fill = fill_type)
+      aes(x = species_pert, y = Meas_ID, alpha = coverage, fill = perturb)
     ) +
     facet_grid(
       Subject ~ genus_grouped,
@@ -61,7 +77,7 @@ plot_cov <- function(mcoverage, fill_type) {
       space = "free"
     ) +
     scale_fill_interval() +
-    scale_alpha(range = c(0, 1)) +
+    scale_alpha(range = c(0.01, 1)) +
     theme(
       axis.text = element_blank(),
       axis.title.y = element_blank(),
@@ -71,18 +87,35 @@ plot_cov <- function(mcoverage, fill_type) {
     )
 }
 
-plot_loadings <- function(loadings, col_type) {
+plot_loadings <- function(loadings, d1 = 1, d2 = 1) {
   ggplot(loadings) +
-    geom_hline(yintercept = 0, col = "#e6e6e6") +
-    geom_vline(xintercept = 0, col = "#e6e6e6") +
-    geom_text_repel(
-      aes_string(x = "X1", y = "X2", label = "Meas_ID", col = col_type),
-      size = 2,
-      force = 0.001
+    geom_point(
+      aes(x = X1, y = X2, col = Diet_Interval),
+      size = 1,
+      pch = 15,
+      position = position_nudge(y = -0.0015),
+      alpha = 0.6
     ) +
-    guides(col = guide_legend(override.aes = list(size = 6))) +
+    geom_point(
+      aes(x = X1, y = X2, col = CC_Interval),
+      size = 1,
+      pch = 15,
+      alpha = 0.6
+    ) +
+    geom_point(
+      aes(x = X1, y = X2, col = Abx_Interval),
+      size = 1,
+      pch = 15,
+      position = position_nudge(y = 0.0015),
+      alpha = 0.6
+    ) +
+    labs(
+      x = sprintf("Axis 1 [%s%%]", round(d1, 3)),
+      y = sprintf("Axis 2 [%s%%]", round(d2, 3))
+    ) +
     scale_color_interval() +
-    facet_grid(~ Subject)
+    guides(col = guide_legend(override.aes = list(size = 6))) +
+    facet_wrap(~ Subject, scales = "free")
 }
 
 ## Read in data
@@ -179,11 +212,12 @@ loadings <- data.frame(
 ###############################################################################
 ## Produce visualizations for the species COG data
 ###############################################################################
-plot_cov(mcoverage, "CC_Interval")
-plot_cov(mcoverage, "Diet_Interval")
-plot_cov(mcoverage, "Abx_Interval")
+plot_cov(mcoverage)
+ggsave("coverage_heatmap.png", dpi = 500)
 
 ## basic pca biplot
+d1 <- 100 * pc_cov$d[1] / sum(pc_cov$d)
+d2 <- 100 * pc_cov$d[2] / sum(pc_cov$d)
 ggplot(scores) +
   geom_hline(yintercept = 0, col = "#e6e6e6") +
   geom_vline(xintercept = 0, col = "#e6e6e6") +
@@ -191,13 +225,20 @@ ggplot(scores) +
     aes(x = X1, y = X2, col = genus_grouped),
     size = 1
   ) +
+  labs(
+    x = sprintf("Axis 1 [%s%%]", round(d1, 3)),
+    y = sprintf("Axis 2 [%s%%]", round(d2, 3))
+  ) +
+  coord_fixed(sqrt(d2 / d1)) +
   geom_text_repel(
     data = scores %>%
       filter(X1 ^ 2 + X2 ^ 2 > 100),
     aes(x = X1, y = X2, label = species, col = genus_grouped)
-  )
+  ) +
+  theme(legend.position = "bottom")
+ggsave("coverage_scores.png", height = 5.09, width = 5.09, dpi = 500)
 
 ## presumably the two subjects
-plot_loadings(loadings, "CC_Interval")
-plot_loadings(loadings, "Diet_Interval")
-plot_loadings(loadings, "Abx_Interval")
+plot_loadings(loadings, d1, d2) +
+  theme(legend.position = "bottom")
+ggsave("coverage_loadings.png", width = 7.89, height = 4.04, dpi = 500)
