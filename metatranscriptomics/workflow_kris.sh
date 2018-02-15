@@ -45,7 +45,11 @@ samtools fastq -n -F 4 -0 mouse1_univec_bwa_contaminats.fastq mouse1_univec_bwa.
 samtools fastq -n -f 4 -0 mouse1_univec_bwa.fastq mouse1_univec_bwa.bam
 $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
     --fastq_filter mouse1_univec_bwa.fastq --fastaout mouse1_univec_bwa.fasta # hack to convert to fasta
-blat -noHead -minIdentity=90 -minScore=65  $REF_DIR/UniVec_Core mouse1_univec_bwa.fasta -fine -q=rna -t=dna -out=blast8 mouse1_univec.blatout
+blat $REF_DIR/UniVec_Core \
+     mouse1_univec_bwa.fasta \
+     -fine -q=rna -t=dna -out=blast8 \
+     -noHead -minIdentity=90 -minScore=65  \
+     mouse1_univec.blatout
 $SCRIPT_DIR/1_BLAT_Filter.py mouse1_univec_bwa.fastq mouse1_univec.blatout mouse1_univec_blat.fastq mouse1_univec_blat_contaminats.fastq
 
 ## removing host reads (we will want ftp://ftp.ensembl.org/pub/current_fasta/homo_sapiens/cds/Homo_sapiens.GRCh38.cds.all.fa.gz)
@@ -134,17 +138,28 @@ $SCRIPT_DIR/5_Contig_Map.py \
 ## genome annotation
 bwa index -a bwtsw $REF_DIR/microbial_all_cds.fasta
 samtools faidx $REF_DIR/microbial_all_cds.fasta
-diamond makedb -p 8 --in $REF/nr -d $REF/nr
+diamond makedb -p $n_threads --in $REF/nr -d $REF/nr
 
 bwa mem -t $n_threads \
-    microbial_all_cds.fasta \
+    $REF_DIR/microbial_all_cds.fasta \
     mouse1_contigs.fasta > mouse1_contigs_annotation_bwa.sam
 bwa mem -t $n_threads \
-    microbial_all_cds.fasta \
+    $REF_DIR/microbial_all_cds.fasta \
     mouse1_unassembled.fasta > mouse1_unassembled_annotation_bwa.sam
 
+# if we want to refine bwa alignments using flat
+#
+# samtools fastq -n -f 4 -0 mouse1_contigs_annotation_bwa.fastq mouse1_contigs_annotation_bwa.bam
+# $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
+#     --fastq_filter mouse1_univec_bwa.fastq --fastaout mouse1_univec_bwa.fasta # hack to convert to fasta
+# blat $REF_DIR/microbial_all_cds.fasta \
+#      mouse1_contigs_annotation.fasta \
+#      -fine -q=rna -t=dna -out=blast8 \
+#      -noHead -minIdentity=90 -minScore=65  \
+#      mouse1_contigs_annotation.blatout
+
 $SCRIPT_DIR/6_BWA_Gene_Map.py \
-    microbial_all_cds.fasta \
+    $REF_DIR/microbial_all_cds.fasta \
     mouse1_contigs_map.tsv \
     mouse1_genes_map.tsv \
     mouse1_genes.fasta \
@@ -160,10 +175,22 @@ mkdir -p dmnd_tmp
 diamond blastx -d nr \
         -q mouse1_contigs_unmapped.fasta \
         -o mouse1_contigs.dmdout \
-        -p 4 -f 6 -t dmnd_tmp -k 10 \
+        -p $n_threads -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
-diamond blastx -d nr \
+diamond blastx -d $REF_DIR/nr \
         -q mouse1_unassembled_unmapped.fasta \
         -o mouse1_unassembled.diamondout \
-        -p 4 -f 6 -t dmnd_tmp -k 10 \
+        -p $n_threads -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
+
+$SCRIPT_DIR/7_Diamond_Protein_Map.py \
+    $REF_DIR/nr \
+    mouse1_contigs_map.tsv \
+    mouse1_genes_map.tsv \
+    mouse1_proteins.fasta \
+    mouse1_contigs_unmapped.fasta \
+    mouse1_contigs.dmdout \
+    mouse1_contigs_unannotated.fasta \
+    mouse1_unassembled_unmapped.fasta \
+    mouse1_unassembled.dmdout \
+    mouse1_unassembled_unannotated.fasta
