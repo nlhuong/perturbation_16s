@@ -13,7 +13,7 @@
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=08:00:00
+#SBATCH --time=04:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -26,9 +26,8 @@
 #SBATCH -p normal,hns
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --mem-per-cpu=24G
-#SBATCH --threads=1
-#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=3GB
+#SBATCH --cores=4
 #################
 
 # Have SLURM send you an email when the job ends or fails, careful, the email could end up in your clutter folder
