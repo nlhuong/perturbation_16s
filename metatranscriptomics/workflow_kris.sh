@@ -26,9 +26,18 @@ cd $WORK_DIR
 mv $WF_DIR/*.py .
 
 ## generate the fastqc report
+ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
+java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
+     SE $WF_DIR/mouse1.fastq $WF_DIR/mouse1_trim.fastq \
+     ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
 $APP_DIR/FastQC/fastqc $WF_DIR/mouse1.fastq
+$APP_DIR/FastQC/fastqc $WF_DIR/mouse1_trim.fastq
 mv $WF_DIR/*.html $MT_DIR/QC/
 
-## trim adapters / low quality bases
-ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
-java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar SE $WF_DIR/mouse1.fastq $WF_DIR/mouse1_trim.fastq ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
+## we'll have to run a paired end merging step in our analysis
+## vsearch --fastq_mergepairs mouse1_trim.fastq --reverse mouse2_trim.fastq --fastqout mouse_merged_trim.fastq --fastqout_notmerged_fwd mouse1_merged_trim.fastq --fastqout_notmerged_rev mouse2_merged_trim.fastq
+
+## global quality filtering
+$APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
+    --fastq_filter $WF_DIR/mouse1_trim.fastq --fastq_maxee 2.0 \
+    --fastqout $WF_DIR/mouse1_qual.fastq
