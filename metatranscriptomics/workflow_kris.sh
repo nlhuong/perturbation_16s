@@ -41,3 +41,5 @@ mv $WF_DIR/*.html $MT_DIR/QC/
 $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
     --fastq_filter $WF_DIR/mouse1_trim.fastq --fastq_maxee 2.0 \
     --fastqout $WF_DIR/mouse1_qual.fastq
+
+$APP_DIR/cdhit/cd-hit-auxtools/cd-hit-dup -i $WF_DIR/mouse1_qual.fastq -o $WF_DIR/mouse1_unique.fastq
