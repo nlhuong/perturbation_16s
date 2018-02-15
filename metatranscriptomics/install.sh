@@ -22,3 +22,10 @@ chmod -R +x Trimmomatic-0.36
 ## vsearch
 wget https://github.com/torognes/vsearch/releases/download/v2.7.0/vsearch-2.7.0-linux-x86_64.tar.gz
 tar xzf vsearch-2.7.0-linux-x86_64.tar.gz
+
+## cd-hit
+git clone git@github.com:weizhongli/cdhit.git
+cd cdhit
+make
+cd cd-hit-auxtools
+make
