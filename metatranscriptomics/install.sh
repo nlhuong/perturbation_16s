@@ -29,3 +29,7 @@ cd cdhit
 make
 cd cd-hit-auxtools
 make
+
+## BLAT
+wget http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/blat/blat
+chmod +x blat
