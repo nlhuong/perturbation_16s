@@ -55,3 +55,7 @@ cd ../../
 ## spades assembler
 wget http://cab.spbu.ru/files/release3.11.1/SPAdes-3.11.1-Linux.tar.gz
 tar -zxvf SPAdes-3.11.1-Linux.tar.gz
+
+## Diamond
+wget http://github.com/bbuchfink/diamond/releases/download/v0.9.17/diamond-linux64.tar.gz
+tar xzf diamond-linux64.tar.gz
