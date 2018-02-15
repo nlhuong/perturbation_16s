@@ -49,3 +49,6 @@ rm all.ffn.tar.gz
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
 rm nr.gz
+
+# wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/uniref90.fasta.gz
+# tar -zxvf uniref90.fasta.gz
