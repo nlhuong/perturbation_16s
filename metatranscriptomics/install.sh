@@ -46,11 +46,10 @@ git clone https://github.com/bioinformatics-centre/kaiju.git
 cd kaiju/src
 make
 
-cd ../..
 mkdir $DB_DIR
 cd $DB_DIR
 $APP_DIR/kaiju/bin/makeDB.sh -r # make NCBI reference DB
-cd ../../
+cd $APP_DIR
 
 ## spades assembler
 wget http://cab.spbu.ru/files/release3.11.1/SPAdes-3.11.1-Linux.tar.gz
