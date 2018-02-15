@@ -84,16 +84,35 @@ samtools fastq -n -f 4 -0 mouse1_mouse_bwa.fastq mouse1_mouse_bwa.bam
 $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
     --fastq_filter mouse1_mouse_bwa.fastq \
     --fastaout mouse1_mouse_bwa.fasta
-blat -noHead -minIdentity=90 -minScore=65  mouse_cds.fa mouse1_mouse_bwa.fasta -fine -q=rna -t=dna -out=blast8 mouse1_mouse.blatout
-$WORK_DIR/1_BLAT_Filter.py mouse1_mouse_bwa.fastq mouse1_mouse.blatout mouse1_mouse_blat.fastq mouse1_mouse_blat_contaminats.fastq
+blat -noHead -minIdentity=90 -minScore=65 mouse_cds.fa mouse1_mouse_bwa.fasta -fine -q=rna \
+     -t=dna -out=blast8 mouse1_mouse.blatout
+$WORK_DIR/1_BLAT_Filter.py \
+    mouse1_mouse_bwa.fastq \
+    mouse1_mouse.blatout \
+    mouse1_mouse_blat.fastq \
+    mouse1_mouse_blat_contaminats.fastq
 
 ## Remove rRNA present in the sample
+wget ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz
+gunzip Rfam.cm.gz
+
 $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-    --fastq_filter mouse1_mouse_blat.fastq --fastaout mouse1_mouse_blat.fasta
+    --fastq_filter \
+    mouse1_mouse_blat.fastq \
+    --fastaout \
+    mouse1_mouse_blat.fasta
 $APP_DIR/infernal-1.1.2-linux-intel-gcc/binaries/cmsearch \
     -o mouse1_rRNA.log \
-    --tblout mouse1_rRNA.infernalout --anytrunc --rfam -E 0.001 Rfam.cm mouse1_mouse_blat.fasta
-$WORK_DIR/2_Infernal_Filter.py mouse1_mouse_blat.fastq mouse1_rRNA.infernalout mouse1_unique_mRNA.fastq mouse1_unique_rRNA.fastq
+    --tblout mouse1_rRNA.infernalout \
+    --anytrunc --rfam \
+    -E 0.001 \
+    Rfam.cm \
+    mouse1_mouse_blat.fasta
+$WORK_DIR/2_Infernal_Filter.py \
+    mouse1_mouse_blat.fastq \
+    mouse1_rRNA.infernalout \
+    mouse1_unique_mRNA.fastq \
+    mouse1_unique_rRNA.fastq
 
 ## rereplication, and final quality assessment
 $WORK_DIR/3_Reduplicate.py mouse1_qual.fastq mouse1_unique_mRNA.fastq mouse1_unique.fastq.clstr mouse1_mRNA.fastq
