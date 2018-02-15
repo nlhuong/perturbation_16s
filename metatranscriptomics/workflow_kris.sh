@@ -43,3 +43,25 @@ $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
     --fastqout $WF_DIR/mouse1_qual.fastq
 
 $APP_DIR/cdhit/cd-hit-auxtools/cd-hit-dup -i $WF_DIR/mouse1_qual.fastq -o $WF_DIR/mouse1_unique.fastq
+
+## remove unwanted vector sequences
+wget ftp://ftp.ncbi.nih.gov/pub/UniVec/UniVec_Core
+mv UniVec_Core $WF_DIR
+cd $WF_DIR
+
+module load biology
+module load bwa/0.7.17
+module load samtools/1.6
+module load ncbi-blast+/2.6.0
+bwa index -a bwtsw UniVec_Core
+samtools faidx UniVec_Core
+makeblastdb -in UniVec_Core -dbtype nucl
+
+bwa mem -t 4 UniVec_Core mouse1_unique.fastq > mouse1_univec_bwa.sam
+samtools view -bS mouse1_univec_bwa.sam > mouse1_univec_bwa.bam
+samtools fastq -n -F 4 -0 mouse1_univec_bwa_contaminats.fastq mouse1_univec_bwa.bam
+samtools fastq -n -f 4 -0 mouse1_univec_bwa.fastq mouse1_univec_bwa.bam
+$APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
+    --fastq_filter mouse1_univec_bwa.fastq --fastaout mouse1_univec_bwa.fasta # hack to convert to fasta
+blat -noHead -minIdentity=90 -minScore=65  UniVec_Core mouse1_univec_bwa.fasta -fine -q=rna -t=dna -out=blast8 mouse1_univec.blatout
+$WORK_DIR/1_BLAT_Filter.py mouse1_univec_bwa.fastq mouse1_univec.blatout mouse1_univec_blat.fastq mouse1_univec_blat_contaminats.fastq
