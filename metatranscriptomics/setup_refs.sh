@@ -17,6 +17,7 @@ mv precomputed_files.tar.gz $PROCESS_DIR
 cd $PROCESS_DIR
 tar --wildcards -xvf precomputed_files.tar.gz *.py
 tar -xvf precomputed_files.tar.gz mouse1.fastq
+rm precomputed_files.tar.gz
 
 cd $SCRIPT_DIR
 mv $PROCESS_DIR/*.py .
@@ -33,13 +34,18 @@ mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
 # Protein families
 wget ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz
 gunzip Rfam.cm.gz
+rm Rfam.cm.gz
 
 # Genome and protein annotation dbs
 wget ftp://ftp.ncbi.nlm.nih.gov/genomes/archive/old_refseq/Bacteria/all.ffn.tar.gz
 mkdir microbial_references
 tar -zxvf all.ffn.tar.gz -C microbial_references/
-find . -name 'microbial_references*.ffn' -exec cat {} \;> microbial_all_cds.fasta
+cd microbial_references
+find . -name '*ffn' -exec cat {} \;> ../microbial_all_cds.fasta # merge genomes into one fasta
+cd ../
 rm -r microbial_references/
+rm all.ffn.tar.gz
 
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
+rm nr.gz
