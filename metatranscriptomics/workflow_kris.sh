@@ -118,3 +118,25 @@ $WORK_DIR/2_Infernal_Filter.py \
 $WORK_DIR/3_Reduplicate.py mouse1_qual.fastq mouse1_unique_mRNA.fastq mouse1_unique.fastq.clstr mouse1_mRNA.fastq
 $APP_DIR/FastQC/fastqc mouse1_mRNA.fastq
 mv *.html ../QC/
+
+## taxonomic annotation of reads
+export kdb=$APP_DIR/kaiju/kaijudb
+$APP_DIR/kaiju/bin/kaiju \
+    -t $kdb/nodes.dmp \
+    -f $kdb/kaiju_db.fmi \
+    -i mouse1_mRNA.fastq \
+    -z 4 \
+    -o mouse1_classification.tsv
+
+$WORK_DIR/4_Constrain_Classification.py \
+    genus mouse1_classification.tsv \
+    $kdb/nodes.dmp \
+    $kdb/names.dmp \
+    mouse1_classification_genus.tsv
+
+$APP_DIR/kaiju/bin/kaijuReport \
+    -t $kdb/nodes.dmp \
+    -n $kdb$names.dmp \
+    -i mouse1_classification_genus.tsv \
+    -o mouse1_classification_summary.txt \
+    -r genus
