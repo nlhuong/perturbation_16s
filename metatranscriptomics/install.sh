@@ -6,7 +6,9 @@
 ## author: krissankaran@stanford.edu
 ## date: 2/14/2018
 
-cd ~/.local/bin/
+export APP_DIR=~/.local/bin/
+export DB_DIR=/scratch/users/kriss1/research/perturbation_16s/data/kaijudb
+cd $APP_DIR
 
 ## fastqc
 module load java/1.8.0_131
@@ -44,7 +46,12 @@ git clone https://github.com/bioinformatics-centre/kaiju.git
 cd kaiju/src
 make
 
-cd ../
-mkdir kaijudb
-cd kaijudb
-../bin/makeDB.sh -r # make NCBI reference DB
+cd ../..
+mkdir $DB_DIR
+cd $DB_DIR
+$APP_DIR/kaiju/bin/makeDB.sh -r # make NCBI reference DB
+cd ../../
+
+## spades assembler
+wget http://cab.spbu.ru/files/release3.11.1/SPAdes-3.11.1-Linux.tar.gz
+tar -zxvf SPAdes-3.11.1-Linux.tar.gz
