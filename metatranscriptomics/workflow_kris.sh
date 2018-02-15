@@ -85,10 +85,11 @@ $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
     --fastq_filter mouse1_mouse_bwa.fastq \
     --fastaout mouse1_mouse_bwa.fasta
 blat -noHead -minIdentity=90 -minScore=65  mouse_cds.fa mouse1_mouse_bwa.fasta -fine -q=rna -t=dna -out=blast8 mouse1_mouse.blatout
-./1_BLAT_Filter.py mouse1_mouse_bwa.fastq mouse1_mouse.blatout mouse1_mouse_blat.fastq mouse1_mouse_blat_contaminats.fastq
+$WORK_DIR/1_BLAT_Filter.py mouse1_mouse_bwa.fastq mouse1_mouse.blatout mouse1_mouse_blat.fastq mouse1_mouse_blat_contaminats.fastq
 
 ## Remove rRNA present in the sample
-vsearch --fastq_filter mouse1_mouse_blat.fastq --fastaout mouse1_mouse_blat.fasta
+$APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
+    --fastq_filter mouse1_mouse_blat.fastq --fastaout mouse1_mouse_blat.fasta
 $APP_DIR/infernal-1.1.2-linux-intel-gcc/binaries/cmsearch \
     -o mouse1_rRNA.log \
     --tblout mouse1_rRNA.infernalout --anytrunc --rfam -E 0.001 Rfam.cm mouse1_mouse_blat.fasta
