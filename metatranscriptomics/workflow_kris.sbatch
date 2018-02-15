@@ -39,4 +39,5 @@
 
 #now run normal batch commands
 cd /scratch/users/kriss1/research/perturbation_16s/metatranscriptomics/
+source .env
 bash workflow_kris.sh
