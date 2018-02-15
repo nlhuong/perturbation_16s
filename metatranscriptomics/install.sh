@@ -33,3 +33,7 @@ make
 ## BLAT
 wget http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/blat/blat
 chmod +x blat
+
+## Infernal
+wget http://eddylab.org/infernal/infernal-1.1.2-linux-intel-gcc.tar.gz
+tar -zxvf infernal-1.1.2-linux-intel-gcc.tar.gz
