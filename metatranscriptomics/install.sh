@@ -18,3 +18,7 @@ chmod +x fastqc
 wget http://www.usadellab.org/cms/uploads/supplementary/Trimmomatic/Trimmomatic-0.36.zip
 unzip Trimmomatic-0.36.zip
 chmod -R +x Trimmomatic-0.36
+
+## vsearch
+wget https://github.com/torognes/vsearch/releases/download/v2.7.0/vsearch-2.7.0-linux-x86_64.tar.gz
+tar xzf vsearch-2.7.0-linux-x86_64.tar.gz
