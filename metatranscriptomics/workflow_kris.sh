@@ -11,6 +11,7 @@
 export WORK_DIR=$PWD
 export MT_DIR=../data/metatranscriptomic/
 export WF_DIR=$MT_DIR/workflow_raw/
+export APP_DIR=~/.local/bin/
 rm -rf $WF_DIR
 mkdir $WF_DIR
 mkdir $MT_DIR/QC/
@@ -25,5 +26,9 @@ cd $WORK_DIR
 mv $WF_DIR/*.py .
 
 ## generate the fastqc report
-fastqc $WF_DIR/mouse1.fastq
+$APP_DIR/FastQC/fastqc $WF_DIR/mouse1.fastq
 mv $WF_DIR/*.html $MT_DIR/QC/
+
+## trim adapters / low quality bases
+ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
+java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar SE $WF_DIR/mouse1.fastq $WF_DIR/mouse1_trim.fastq ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
