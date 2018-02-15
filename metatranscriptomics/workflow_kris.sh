@@ -7,8 +7,12 @@
 ## author: krissankaran@stanford.edu
 ## date: 2/14/2018
 
-## download and organize the data / scripts
+## some parameters
+export n_threads=4
 export WORK_DIR=$PWD
+export kdb=$WORK_DIR/../data/kaijudb/
+
+## download and organize the data / scripts
 export MT_DIR=../data/metatranscriptomic/
 export WF_DIR=$MT_DIR/workflow_raw/
 export APP_DIR=~/.local/bin/
@@ -57,7 +61,7 @@ bwa index -a bwtsw UniVec_Core
 samtools faidx UniVec_Core
 makeblastdb -in UniVec_Core -dbtype nucl
 
-bwa mem -t 4 UniVec_Core mouse1_unique.fastq > mouse1_univec_bwa.sam
+bwa mem -t $n_threads UniVec_Core mouse1_unique.fastq > mouse1_univec_bwa.sam
 samtools view -bS mouse1_univec_bwa.sam > mouse1_univec_bwa.bam
 samtools fastq -n -F 4 -0 mouse1_univec_bwa_contaminats.fastq mouse1_univec_bwa.bam
 samtools fastq -n -f 4 -0 mouse1_univec_bwa.fastq mouse1_univec_bwa.bam
@@ -76,7 +80,7 @@ bwa index -a bwtsw mouse_cds.fa
 samtools faidx mouse_cds.fa
 makeblastdb -in mouse_cds.fa -dbtype nucl
 
-bwa mem -t 4 mouse_cds.fa mouse1_univec_blat.fastq > mouse1_mouse_bwa.sam
+bwa mem -t $n_threads mouse_cds.fa mouse1_univec_blat.fastq > mouse1_mouse_bwa.sam
 samtools view -bS mouse1_mouse_bwa.sam > mouse1_mouse_bwa.bam
 samtools fastq -n -F 4 -0 mouse1_mouse_bwa_contaminats.fastq mouse1_mouse_bwa.bam
 samtools fastq -n -f 4 -0 mouse1_mouse_bwa.fastq mouse1_mouse_bwa.bam
@@ -115,12 +119,15 @@ $WORK_DIR/2_Infernal_Filter.py \
     mouse1_unique_rRNA.fastq
 
 ## rereplication, and final quality assessment
-$WORK_DIR/3_Reduplicate.py mouse1_qual.fastq mouse1_unique_mRNA.fastq mouse1_unique.fastq.clstr mouse1_mRNA.fastq
+$WORK_DIR/3_Reduplicate.py \
+    mouse1_qual.fastq \
+    mouse1_unique_mRNA.fastq \
+    mouse1_unique.fastq.clstr \
+    mouse1_mRNA.fastq
 $APP_DIR/FastQC/fastqc mouse1_mRNA.fastq
 mv *.html ../QC/
 
 ## taxonomic annotation of reads
-export kdb=$APP_DIR/kaiju/kaijudb
 $APP_DIR/kaiju/bin/kaiju \
     -t $kdb/nodes.dmp \
     -f $kdb/kaiju_db.fmi \
@@ -140,3 +147,15 @@ $APP_DIR/kaiju/bin/kaijuReport \
     -i mouse1_classification_genus.tsv \
     -o mouse1_classification_summary.txt \
     -r genus
+
+## Assemble and map reads onto contigs
+$APP_DIR/SPAdes-3.11.1-Linux/bin/spades.py \
+    --rna -s mouse1_mRNA.fastq -o mouse1_spades
+mv mouse1_spades/transcripts.fasta mouse1_contigs.fasta
+bwa index -a bwtsw mouse1_contigs.fasta
+bwa mem -t $n_threads mouse1_contigs.fasta mouse1_mRNA.fastq > mouse1_contigs.sam
+$WORK_DIR/5_Contig_Map.py \
+    mouse1_mRNA.fastq \
+    mouse1_contigs.sam \
+    mouse1_unassembled.fastq \
+    mouse1_contigs_map.tsv
