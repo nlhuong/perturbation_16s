@@ -138,7 +138,7 @@ $SCRIPT_DIR/5_Contig_Map.py \
 ## genome annotation
 bwa index -a bwtsw $REF_DIR/microbial_all_cds.fasta
 samtools faidx $REF_DIR/microbial_all_cds.fasta
-diamond makedb -p $n_threads --in $REF/nr -d $REF/nr
+diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
 
 bwa mem -t $n_threads \
     $REF_DIR/microbial_all_cds.fasta \
@@ -172,10 +172,10 @@ $SCRIPT_DIR/6_BWA_Gene_Map.py \
 
 ## align to protein database (nr)
 mkdir -p dmnd_tmp
-diamond blastx -d nr \
+diamond blastx -p 4 -d $REF_DIR/nr \
         -q mouse1_contigs_unmapped.fasta \
         -o mouse1_contigs.dmdout \
-        -p $n_threads -f 6 -t dmnd_tmp -k 10 \
+        -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
 diamond blastx -d $REF_DIR/nr \
         -q mouse1_unassembled_unmapped.fasta \

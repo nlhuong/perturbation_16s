@@ -38,6 +38,6 @@
 #SBATCH --mail-user=kriss1@stanford.edu
 
 #now run normal batch commands
-cd /scratch/users/kriss1/research/perturbation_16s/metatranscriptomics/
+cd /scratch/users/kriss1/research/perturbation_16s/metatranscriptomics/kris
 source .env
-bash workflow_kris.sh
+bash workflow.sh
