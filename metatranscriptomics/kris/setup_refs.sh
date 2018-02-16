@@ -27,7 +27,8 @@ cd $REF_DIR
 wget ftp://ftp.ncbi.nih.gov/pub/UniVec/UniVec_Core
 
 # Mouse reference genome
-wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_musculus.GRCm38.cds.all.fa.gz
+wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_m# environmental varaiables
+usculus.GRCm38.cds.all.fa.gz
 gzip -d Mus_musculus.GRCm38.cds.all.fa.gz
 mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
 
@@ -48,7 +49,6 @@ rm all.ffn.tar.gz
 
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
-rm nr.gz
 
 # wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/uniref90.fasta.gz
 # tar -zxvf uniref90.fasta.gz
