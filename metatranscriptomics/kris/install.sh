@@ -49,6 +49,8 @@ make
 mkdir $DB_DIR
 cd $DB_DIR
 $APP_DIR/kaiju/bin/makeDB.sh -r # make NCBI reference DB
+$APP_DIR/kaiju/bin/mkbwt -o kaiju_db -nThreads 1 kaiju_db.faa
+$APP_DIR/kaiju/bin/mkfmi kaiju_db
 cd $APP_DIR
 
 ## spades assembler
