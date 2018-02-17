@@ -104,21 +104,21 @@ mv *.html ../QC/
 
 ## taxonomic annotation of reads
 $APP_DIR/kaiju/bin/kaiju \
-    -t $kdb/nodes.dmp \
-    -f $kdb/kaiju_db.fmi \
+    -t $KDB/nodes.dmp \
+    -f $KDB/kaiju_db.fmi \
     -i mouse1_mRNA.fastq \
-    -z 4 \
+    -z $n_threads \
     -o mouse1_classification.tsv
 
 $SCRIPT_DIR/4_Constrain_Classification.py \
     genus mouse1_classification.tsv \
-    $kdb/nodes.dmp \
-    $kdb/names.dmp \
+    $KDB/nodes.dmp \
+    $KDB/names.dmp \
     mouse1_classification_genus.tsv
 
 $APP_DIR/kaiju/bin/kaijuReport \
-    -t $kdb/nodes.dmp \
-    -n $kdb$names.dmp \
+    -t $KDB/nodes.dmp \
+    -n $KDB$names.dmp \
     -i mouse1_classification_genus.tsv \
     -o mouse1_classification_summary.txt \
     -r genus
@@ -172,15 +172,15 @@ $SCRIPT_DIR/6_BWA_Gene_Map.py \
 
 ## align to protein database (nr)
 mkdir -p dmnd_tmp
-diamond blastx -p 4 -d $REF_DIR/nr \
+diamond blastx -p $n_threads -d $REF_DIR/nr \
         -q mouse1_contigs_unmapped.fasta \
         -o mouse1_contigs.dmdout \
         -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
-diamond blastx -d $REF_DIR/nr \
+diamond blastx -p $n_threads -d $REF_DIR/nr \
         -q mouse1_unassembled_unmapped.fasta \
         -o mouse1_unassembled.diamondout \
-        -p $n_threads -f 6 -t dmnd_tmp -k 10 \
+        -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
 
 $SCRIPT_DIR/7_Diamond_Protein_Map.py \
