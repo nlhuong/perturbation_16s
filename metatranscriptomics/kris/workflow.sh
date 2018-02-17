@@ -118,7 +118,7 @@ $SCRIPT_DIR/4_Constrain_Classification.py \
 
 $APP_DIR/kaiju/bin/kaijuReport \
     -t $KDB/nodes.dmp \
-    -n $KDB$names.dmp \
+    -n $KDB/names.dmp \
     -i mouse1_classification_genus.tsv \
     -o mouse1_classification_summary.txt \
     -r genus

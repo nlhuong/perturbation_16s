@@ -27,8 +27,7 @@ cd $REF_DIR
 wget ftp://ftp.ncbi.nih.gov/pub/UniVec/UniVec_Core
 
 # Mouse reference genome
-wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_m# environmental varaiables
-usculus.GRCm38.cds.all.fa.gz
+wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_musculus.GRCm38.cds.all.fa.gz
 gzip -d Mus_musculus.GRCm38.cds.all.fa.gz
 mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
 
