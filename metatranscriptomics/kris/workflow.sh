@@ -118,7 +118,7 @@ $SCRIPT_DIR/4_Constrain_Classification.py \
 
 $APP_DIR/kaiju/bin/kaijuReport \
     -t $KDB/nodes.dmp \
-    -n $KDB$names.dmp \
+    -n $KDB/names.dmp \
     -i mouse1_classification_genus.tsv \
     -o mouse1_classification_summary.txt \
     -r genus
@@ -179,7 +179,7 @@ diamond blastx -p $n_threads -d $REF_DIR/nr \
         --id 85 --query-cover 65 --min-score 60
 diamond blastx -p $n_threads -d $REF_DIR/nr \
         -q mouse1_unassembled_unmapped.fasta \
-        -o mouse1_unassembled.diamondout \
+        -o mouse1_unassembled.dmdout \
         -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
 
