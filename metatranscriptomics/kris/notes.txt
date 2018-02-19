@@ -293,7 +293,37 @@ MEKLSISTEYITLGQVLKEVGAIDTGGMAKWYLSEYEVYVNGEL
 ENRRGKKLFSGDRVKLADETSIEIVHE
 
 which introduces some new WP IDs and also no longer codes for basepairs. At the
-end though, we end up with classified taxonomically classified reads.
+end though, we end up with classified taxonomically classified reads, in the
+file `mouse_classification.tsv`
+
+U       NS500322:33:H5CC5BGXX:1:11101:10002:14802       0
+U       NS500322:33:H5CC5BGXX:1:11101:10002:19848       0
+C       NS500322:33:H5CC5BGXX:1:11101:10002:7505        59374
+C       NS500322:33:H5CC5BGXX:1:11101:10007:11490       326298
+
+The first column above is a marker of whether or not the read got classified,
+the second is a read ID, and the third is the taxonomic classification of the
+read. They've also returned classifications at the genus level, given in
+`mouse_classification_genus.tsv`
+
+C       NS500322:33:H5CC5BGXX:1:11102:18001:18268       816
+U       NS500322:33:H5CC5BGXX:1:11102:12577:12215       0
+U       NS500322:33:H5CC5BGXX:1:11102:18768:7297        0
+C       NS500322:33:H5CC5BGXX:1:11101:20015:13246       186803
+C       NS500322:33:H5CC5BGXX:1:11102:7558:3383 186803
+
+There's also a very high level summary of how much each genera is represented,
+given in `mouse_classification_summary.txt`
+
+        %           reads       genus
+-------------------------------------------
+ 2.753981            2276       Lachnoclostridium
+ 2.100576            1736       Roseburia
+ 2.096946            1733       Oscillibacter
+ 1.925125            1591       Flavonifractor
+ 1.875514            1550       Bacteroides
+ 1.557282            1287       Clostridium
+ 1.516142            1253       Butyrivibrio
 
 Next, we want to functionally annotate the reads. The idea here is to (1)
 assemble the reads into long contigs, (2) see what genes are on those contigs,
@@ -415,7 +445,7 @@ more directly via reads (the workflow includes a script for calculating RPKM,
 though I'm not sure if this is what we'll want to use).
 
 The genes that we've identified in our sample can also be collected into a
-single fasta, mouse1_genes.fasta, which has the form
+single fasta, `mouse1_genes.fasta`, which has the form
 
 >gi|479158859|ref|NC_021016.1|:c337718-337026 Butyrate-producing bacterium SSC/2, complete genome
 ATGATTTATTCACATGAAGTAGAACAAATGTGTACAGTAGCTCAGGGTGTAAACCATGGA
@@ -466,5 +496,27 @@ DNQPAVDIHVLQGERPMAADNKTLGRFQLTDIPAAPRGIPQIEVTFDIDKNGIVSVKAKDLGTQKEQTIVIQSNSGLTDE
 EIEKMMKDAEANAEADAKRKEEVDLRNEVDQAIFATEKTIKETEGKGFDTERDAAQSALDDLKKAQESGNLDDMKAKLEA
 LNEKAQALAVKLYEQAAAAQQAQAGAEGAQTADNSGDDVVDGEFTEK
 
-and the raw output from DIAMOND looks like
+The output from Diamond is (1) `mouse1_contigs.dmdout`, which aligns contigs to
+genes, (2) `mouse1_unassembled.dmdout`, which gives alignments for reads that
+never associated with any contig. The output in either case has a similar
+structure, with a contig / read mapped to a protein ID. The last column is an
+E-value, giving the confidence of the alignment. The contigs diamond output
+looks like
 
+NODE_74_length_538_cov_5.017429_g73_i0  WP_016290808.1  100.0   172     0       0       22      537     1       172     1.0e-82 315.5
+NODE_324_length_317_cov_3.693277_g323_i0        CDB31317.1      85.7    105     15      0       2       316     269     373     4.6e-46 193.0
+NODE_181_length_378_cov_2.655518_g180_i0        WP_006525141.1  92.8    125     9       0       377     3       55      179     2.1e-61 244.2
+NODE_181_length_378_cov_2.655518_g180_i0        WP_009429874.1  92.8    125     9       0       377     3       55      179     7.9e-61 242.3
+NODE_181_length_378_cov_2.655518_g180_i0        WP_006626845.1  91.2    125     11      0       377     3       55      179     1.3e-60 241.5
+
+We can look up the protein IDs in the NR database -- for example, the first and
+second proteins are
+
+WP_016290808.1 hypothetical protein [Lachnospiraceae bacterium 28-4]EOS31698.1 hypothetical protein C807_01008 [Lachnospiraceae bacterium 28-4]
+CDB31317.1 glutamate dehydrogenase [Firmicutes bacterium CAG:137]
+
+Again, this annotates contigs, but we still need to quantify the amounts of
+these proteins being coded for in any sample. We could use the average coverage
+of different contigs as a proxy, alternatively we can look again at the file
+aligning reads to contigs and use whatever metric that we think is most
+appropriate (e.g., RPKM, FPKM, ...)
