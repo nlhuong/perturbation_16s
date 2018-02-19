@@ -10,9 +10,9 @@
 #setwd("perturbation_16s/amplicon/")
 rm(list = ls())
 
-RUNPCA <- FALSE
-RUNAGPCA <- FALSE
-RUNTSNE <- FALSE
+RUNPCA <- TRUE
+RUNAGPCA <- TRUE
+RUNTSNE <- TRUE
 
 PLOTPCA <- TRUE
 PLOTAGPCA <- TRUE
@@ -22,7 +22,7 @@ path2data <- "../data/processed/"
 path2figs <- "../figs"
 path2out <- "../output"
 
-datafile <- "perturb_physeq_filtered_27Dec.rds"
+datafile <- "perturb_physeq_filtered_22Jan18.rds"
 group_file <- "study_arm"
 subject_file <- "subject"
 
@@ -119,8 +119,8 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
         X, dims = 2, 
         is_distance = (class(X) =="dist"), 
         pca = !(class(X) =="dist"),
-        perplexity = min(30, floor((nsamples(g_physeq) - 1)/3)))
-        #eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
+        perplexity = min(30, floor((nsamples(g_physeq) - 1)/3)),
+        eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
       scores <- as.data.frame(g_ord$Y)
       rownames(scores) <- sample_names(g_physeq)
     } else {
@@ -319,8 +319,8 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
 
 res_group_file <- paste0("pca_", group_file, ".rds")
 res_subject_file <- paste0("pca_", subject_file, ".rds")
-plot_group_file <- paste0("pca_", group_file, "_2.pdf")
-plot_subject_file <- paste0("pca_", subject_file, "_2.pdf")
+plot_group_file <- paste0("pca_", group_file, ".pdf")
+plot_subject_file <- paste0("pca_", subject_file, ".pdf")
 
 if(RUNPCA){
   cat("Running PCA \n")
@@ -373,10 +373,10 @@ if(RUNAGPCA){
 if(PLOTAGPCA){
   generate_pdf(ord_lst = agpca_res, 
                filename = file.path(path2figs, plot_group_file), 
-               width = 8, height = 20)
+               width = 10, height = 22)
   generate_pdf(ord_lst = agpca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 8, height = 20)
+               width = 10, height = 22)
 }
 
 
