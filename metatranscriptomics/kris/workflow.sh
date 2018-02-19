@@ -179,7 +179,7 @@ diamond blastx -p $n_threads -d $REF_DIR/nr \
         --id 85 --query-cover 65 --min-score 60
 diamond blastx -p $n_threads -d $REF_DIR/nr \
         -q mouse1_unassembled_unmapped.fasta \
-        -o mouse1_unassembled.diamondout \
+        -o mouse1_unassembled.dmdout \
         -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
 
