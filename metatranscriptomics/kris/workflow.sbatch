@@ -6,14 +6,14 @@
 #SBATCH --job-name=metatranscriptomics
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=../logs/metat%j.out
+#SBATCH --output=../../logs/metat%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=../logs/metat%j.err
+#SBATCH --error=../../logs/metat%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=12:00:00
+#SBATCH --time=9:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -26,7 +26,7 @@
 #SBATCH -p normal,hns
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --mem-per-cpu=3GB
+#SBATCH --mem-per-cpu=8GB
 #SBATCH --cores=4
 #################
 
