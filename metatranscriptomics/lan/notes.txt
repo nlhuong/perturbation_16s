@@ -1,0 +1,66 @@
+
+1. Ask Les what are the Adapters for our study.
+2. We have Paired-ends files how different is it to run the pipeline?
+
+3. STEP 5 removing rRNA sequences --> 2_(...).py script needed editing to work with
+python 3, as SeqRecord type from Biopython is not hashable anymore, instead of set()
+we used a python  dictionary.
+
+this step cmsearch also takes a very long time, maybe we can use another software
+e.g. SortMeRNA in one in SAMSA2.
+
+4. Setting up Kaiju database issues makeDB.sh -r didn't create the kaiju_db.fmi
+(possibly) too long time? Check if all the files are downloaded from RefSeq
+in ./genomes folder. rerunning makeDB.sh -r --noDL -t 25. Note that
+makeDB.sh must have been eddited so that -t 25 actually allow user changing
+the number of threads used to extract the gz files in ./genomes
+
+## STEP 1
+
+# Trimmomatics
+TrimmomaticSE: Started with arguments:
+ /home/lanhuong/Projects/PerturbationStudy/perturbation_16s/data/metatranscriptomics/mouse/input//mouse1.fastq /home/lanhuong/Projects/PerturbationStudy/perturbation_16s/data/metatranscriptomics/mouse/output//mouse1_trim.fastq ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
+Automatically using 1 threads
+Using Long Clipping Sequence: 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA'
+Using Long Clipping Sequence: 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC'
+ILLUMINACLIP: Using 0 prefix pairs, 2 forward/reverse sequences, 0 forward only sequences, 0 reverse only sequences
+Quality encoding detected as phred33
+Input Reads: 100000 Surviving: 94415 (94.42%) Dropped: 5585 (5.58%)
+TrimmomaticSE: Completed successfully
+
+
+# vsearch
+vsearch v2.7.0_linux_x86_64, 3023.4GB RAM, 144 cores
+https://github.com/torognes/vsearch
+
+Reading input file 100%
+86351 sequences kept (of which 0 truncated), 8064 sequences discarded.
+
+## STEP 2
+
+# remove duplicates with cdhit
+From input: mouse1_qual.fastq
+Total number of sequences: 86351
+Longest: 160
+Shortest: 50
+Sorted by length ...
+Start clustering duplicated sequences ...
+primer = 0
+Clustered     10000 sequences with      9857 clusters ...
+Clustered     20000 sequences with     19613 clusters ...
+Clustered     30000 sequences with     29433 clusters ...
+Clustered     40000 sequences with     39321 clusters ...
+Clustered     50000 sequences with     49249 clusters ...
+Clustered     60000 sequences with     59196 clusters ...
+Clustered     70000 sequences with     69115 clusters ...
+Clustered     80000 sequences with     79060 clusters ...
+Number of reads: 86351
+Number of clusters found: 85404
+Number of clusters with abundance above the cutoff (=1): 85404
+Number of clusters with abundance below the cutoff (=1): 0
+Writing clusters to files ...
+Done!
+
+
+
+
