@@ -15,9 +15,8 @@ AACTGCTCGGTCTCCTTATCGAATACATGAATCTTATCAATGTCAAAGGCGAACTAAATGCAGTCACAAGGCCTGGAAGT
 +
 <7AAA7FFF.7FFFFF<)FF<FF)F<)FFAFFF<F<AFAFFF<FAFFAF).F<FF.F<FAF).FFFF.)F.FF.)<A7AAF<FFFF..)77F).FFFF.7<77.AA7F))F..FFF77)AAFF)F<FF.
 ```
-
 We first trim away low quality reads using trimmomatic. This is in
-mouse1_trim.fastq. In the previous read, we've basically trimmed away the stuff
+`mouse1_trim.fastq`. In the previous read, we've basically trimmed away the stuff
 at the end.
 
 ```
@@ -26,7 +25,6 @@ AACTGCTCGGTCTCCTTATCGAATACATGAATCTTATCAATGTCAAAGGCGAACTAAATGCAGTCACAAGGCCTGGAAGT
 +
 <7AAA7FFF.7FFFFF<)FF<FF)F<)FFAFFF<F<AFAFFF<FAFFAF).F<FF.F<FAF).FFFF.)F.FF.)<A7AAF<FFFF
 ```
-
 `mouse1_qual.fastq` then applies a global quality criterion to just throw away
 some low quality reads. Our read from before is still in the file though.
 
@@ -36,10 +34,9 @@ AACTGCTCGGTCTCCTTATCGAATACATGAATCTTATCAATGTCAAAGGCGAACTAAATGCAGTCACAAGGCCTGGAAGT
 +
 <7AAA7FFF.7FFFFF<)FF<FF)F<)FFAFFF<F<AFAFFF<FAFFAF).F<FF.F<FAF).FFFF.)F.FF.)<A7AAF<FFFF
 ```
-
 Deduplication creates two files, `mouse1_unique.fastq` and
 `mouse1_unique.fastq.clstr`. The second file shows which unique read each of the
-original reads corresponds to. For example, the correspondence looks like
+original reads corresponds to.
 
 ```
 >Cluster 18
@@ -49,8 +46,8 @@ original reads corresponds to. For example, the correspondence looks like
 1       160nt, >NS500322:33:H5CC5BGXX:1:11101:14506:6642... at 1:160:1:160/+/100.00%
 >Cluster 20
 0       160nt, >NS500322:33:H5CC5BGXX:1:11102:10415:10822... *
-```
 
+```
 and we also can see what the sequences are for the new "clusters," this is in
 `mouse1_unique.fastq`. The first two clusters are,
 
@@ -85,8 +82,8 @@ TGCATGCACCATTCCTTGCGGCGGCGGTGCTCAACGGCCTCAACCTACTACTGGGCTGCTTCCTAATGCA
 GGAGTCGCATAAGGGAGAGCGTCGACCGATGCCCTTGAGAGCCTTCAACCCAGTCAGCTCCTTCCGGTGG
 GCGCGGGGCATGACTATCGTCGCCGCACTTATGACTGTCTTCTTTATCATGCAACTCGTAGGACAGGTGC
 CGGCAGCGCTCTGGGTCATTTTCGGCGAGGACCGCTTTCGCTGGAGCGCGACGATGATCGGCCTGTCGCT
-```
 
+```
 or, a little later on,
 
 ```
@@ -98,8 +95,8 @@ CACGGCCATTATGGCC
 CACGCACGCTCAGATA
 >gnl|uv|NGB00285.1:1-12 EcoRI adaptor used in I.M.A.G.E. library Xenla_13LiCl and other libraries
 GAATTCCCCGGG
-```
 
+```
 and it goes on for ~14,000 more lines, for a grand total of 3137 vectors /
 contaminants.
 
@@ -111,7 +108,6 @@ NS500322:33:H5CC5BGXX:1:11103:11980:5642	4	*	0	0	*	*	0	0	GTACCGTATGGAGTAGTAAAAGA
 NS500322:33:H5CC5BGXX:1:11103:13003:11362	4	*	0	0	*	*	0	0	GTGTAGACTGGTTCGCCTGTGCAAGCATAGACTGTCCTGCCTGTGCAAGAATGTTGTTCTTGCTGTACTGAACCATTTCAGATGCCATATCTGTATCACGGATACGGGATTCTGCTGACTGAGTATTCTCAGCTGCTACATCCAGGTTAGCAATGGTGTGAAAAAFFFFFFFFFFFFFFFFFF.FFFFFFFFFFFFFFFFFFFAFF<FFFFAFFFFFFFFFFFF.FFFFF7AFFAFFFF7FFFFFF7AFFFFFFFFFFFFFFFFFAFFFFFFAFFFFFFAFFFF.FFFFF<<FFFAF.FFF7FA<F<F<FF<<<<<FFAF	AS:i:0	XS:i:0
 NS500322:33:H5CC5BGXX:1:11103:11031:6123	4	*	0	0	*	*	0	0	GTCGGTCTGGTGCCCCGCGTCGTTGACGTAGAACTCCCGGCTGACCTCCGCCCCGCAGGCGGAGAGCACGGAGGCCAGGGTGTCCCCCAGCACGCCGCCCCGGGCGTTGCCCATGTGCATGGGGCCGGTGGGGATGGCGGAGACGAACTCCACCATGCTT
 ```
-
 This first line corresponds to a read that is aligned to one of the
 contaminants. The original read looked like
 
@@ -121,20 +117,20 @@ ATTTTGTTTAATGATTTATTTTTTTTATTTTTTTAAATTTTTGTTGTATCTTTTTTTTTTTTATTTTTTTTTTTTTATTT
 +
 .<AAAFF)FFFAFAFFFFAAFFAFF<.FFFFFFAFFFFFFFFAFFFFFFFFFFFFFFFFFF..AFF<FFF<.FF7F..A.)FFF.FFFF.FAFFF7)FFFFFFF)FFFFFF<.)FFFFFFFF)FFFFFFFFFAA)FFFFAFA7.<A7<<A7A<7<A<)7<
 ```
-
 which I suppose looks like the primer,
 
 ```
 >gnl|uv|NGB00007.1:1-45 CLONTECH PCR-Select cDNA synthesis primer
 TTTTGTACAAGCTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTVN
-```
 
+```
 though really the only similarity I can see is that they both have lots of T's.
 I'm not sure how to interpret the other three lines. In the end though, we can
 use samtools to create a new set of unique reads that don't map to the
-contaminants. This is called mouse1_univec_bwa.fastq, and it looks just like the
+contaminants. This is called `mouse1_univec_bwa.fastq`, and it looks just like the
 original unique reads,
 
+```
 @NS500322:33:H5CC5BGXX:1:11101:20015:13246
 GCGCGGTTTAATGCTTCCTTAATTACGATTGCTCCTAAATCTGCTGCCGGGGTATTGCTTAAAGCTCCTCCCATTCTGCCAATTGCGGTACGGCATGCGCCTGCTAAAACTACTTTGTTTGCCATTTTCTCGTCTCCTTTACAAACTTGTCTTAAAGCTG
 +
@@ -143,7 +139,7 @@ AAAAAFFFFFFFFFAFFFFFFFFFFFFFFFFFFFFFF7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF7FFFFFFF
 GGCAGGCCGGACGCGTCCTGGGCGGCTTCCAGGGCGGAGGCGGCGGCAAACTTGGCAGCGCTGCCGAAGCCGGGGCAGTGGTCGGTGCCGGCCAGGTCGTTGTCAATGGTCTTGGGTATGCCGATCACCCGCAGCTCATAGCCCGCCTGCTCCGCCAGCC
 +
 AAAAAFFFFF<FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF<A.FFFFFFAFFFFFFFFFAFFFFFFFFFFFFFFFFFFFF.FFFFFFFFFFFFFFFFAAFFFFF<FFFFFFFFFFFAFF)FFF<AAFAFFFFFFFFFFFFFFFF<AFAA.FAA
-
+```
 but has fewer lines. We can also save all the contaminant reads in another file,
 `mouse1_univec_bwa_contaminants.fastq`, and as expected, they look a little fishy,
 
@@ -157,14 +153,13 @@ TTTTAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
 +
 AAAAAFFFFAFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF<FAFFFFFFFFFFFFFFFFFFAFFFA<FFFF<FFFFF
 ```
-
 A thing about alignment is that different approaches can give you different
 answers. In the workflow we're following, the bwa-defined contaminant-free reads
-are aligned to UniVec_Core using BLAT instead. However, none of the reads map --
+are aligned to `UniVec_Core` using BLAT instead. However, none of the reads map --
 the BWA alignment seems to have been sufficient in this toy example.
 
 From here, almost the exact same logic is used to remove reads from the host
-mouse genome, which is stored in mouse_cds.fa. It's nothing that interesting to
+mouse genome, which is stored in `mouse_cds.fa`. It's nothing that interesting to
 look at, a few lines look like
 
 ```
@@ -177,8 +172,8 @@ AGTTACAAGACATCCATAACTGCCCTACAGTGGTACAGACAGAAGTCAGGCAAAGGCCCT
 GCCCAGCTAATCTTAATACGTTCAAATGAGAGAGAGAAGCGCAATGGAAGACTCAGAGCC
 ACCCTTGACACCTCCAGCCAGAGCAGCTCCTTGTCCATCACTGCTACTCGGTGTGAAGAC
 ACCGCTGTGTACTTCTGTGCTACTGATG
-```
 
+```
 ### rRNA filtering
 
 Next, we'll remove the reads that align to rRNA or tRNA sequences, since we're
@@ -211,11 +206,10 @@ HMM          A        C        G        U
             m->m     m->i     m->d     i->m     i->i     d->m     d->d
   COMPO   1.32772  1.38871  1.55377  1.29436
 ```
-
-You could try googling for these sequences -- I found this page,
-http://rfam.xfam.org/family/RF00999. In the end though, we mainly care about
-whether our reads look like these non-mRNAs. Inferenal gives us output like
-this,
+You could try googling for these sequences -- I found [this
+page](http://rfam.xfam.org/family/RF00999). In the end though, we mainly care
+about whether our reads look like these non-mRNAs. Inferenal gives us output
+like this,
 
 ```
 #target name                             accession query name           accession mdl mdl from   mdl to seq from   seq to strand trunc pass   gc  bias  score   E-value inc description of target
@@ -230,8 +224,8 @@ NS500322:33:H5CC5BGXX:1:11102:13308:5641  -         tRNA                 RF00005
 NS500322:33:H5CC5BGXX:1:11101:1195:4484   -         tRNA                 RF00005    cm        1       71       85       12      -    no    1 0.57   0.0   71.2   3.4e-15 !   -
 NS500322:33:H5CC5BGXX:1:11104:6267:10357  -         tRNA                 RF00005    cm        1       71      117       44      -    no    1 0.65   0.0   70.1     7e-15 !   -
 NS500322:33:H5CC5BGXX:1:11102:9099:13750  -         tRNA                 RF00005    cm        1       71      146       63      -    no    1 0.55   0.0   69.9   7.7e-15 !   -
-```
 
+```
 Each line is a read that seems to align with an RNA sequence, specified by by
 the accession IDs.
 
@@ -300,7 +294,6 @@ CATGCTGGCCGGACGCCGCCTGTGCAAATGCCATCCCTGGCATGCGGGCGGACTCGATCCGGTGCCGCCG
 CAGCAATCATCCACATCTCCATCTGCAACCAAACCCGCATCGGCCAGCCGATCGTGTGGTTGCGGCCATT
 CCTGA
 ```
-
 These are accompanied with taxonomic annotation files, like `nodes.dmp`, which
 maps each taxonomic entity (first column) to its parent (second columns),
 
@@ -312,8 +305,8 @@ maps each taxonomic entity (first column) to its parent (second columns),
 9       |       32199   |       species |       BA      |       0       |       1       |       11      |       1       |       0       |       1       |       1       |       0       |               |
 10      |       1706371 |       genus   |               |       0       |       1       |       11      |       1       |       0       |       1       |       0       |       0       |               |
 ```
-
 and `names.dmp`, which gives scientific names for each of the nodes,
+
 ```
 1       |       all     |               |       synonym |
 1       |       root    |               |       scientific name |
@@ -325,7 +318,6 @@ and `names.dmp`, which gives scientific names for each of the nodes,
 2       |       bacteria        |       bacteria <blast2>       |       blast name      |
 2       |       eubacteria      |               |       genbank common name     |
 ```
-
 The genomes and these names are linked via a `kaijudb`, though I'm not sure of the
 mechanics. The database has lines like,
 
@@ -342,7 +334,6 @@ KNIIDALKVIDSEEINIVFTGAMSPFVIRPTDHDHYLHLFSPVRTY
 MEKLSISTEYITLGQVLKEVGAIDTGGMAKWYLSEYEVYVNGEL
 ENRRGKKLFSGDRVKLADETSIEIVHE
 ```
-
 which introduces some new WP IDs and also no longer codes for basepairs. At the
 end though, we end up with classified taxonomically classified reads, in the
 file `mouse_classification.tsv`
@@ -353,7 +344,6 @@ U       NS500322:33:H5CC5BGXX:1:11101:10002:19848       0
 C       NS500322:33:H5CC5BGXX:1:11101:10002:7505        59374
 C       NS500322:33:H5CC5BGXX:1:11101:10007:11490       326298
 ```
-
 The first column above is a marker of whether or not the read got classified,
 the second is a read ID, and the third is the taxonomic classification of the
 read. They've also returned classifications at the genus level, given in
@@ -366,12 +356,11 @@ U       NS500322:33:H5CC5BGXX:1:11102:18768:7297        0
 C       NS500322:33:H5CC5BGXX:1:11101:20015:13246       186803
 C       NS500322:33:H5CC5BGXX:1:11102:7558:3383 186803
 ```
-
 There's also a very high level summary of how much each genera is represented,
 given in `mouse_classification_summary.txt`
 
 ```
-        %           reads       genus
+%           reads       genus
 -------------------------------------------
  2.753981            2276       Lachnoclostridium
  2.100576            1736       Roseburia
@@ -381,7 +370,6 @@ given in `mouse_classification_summary.txt`
  1.557282            1287       Clostridium
  1.516142            1253       Butyrivibrio
 ```
-
 Next, we want to functionally annotate the reads. The idea here is to (1)
 assemble the reads into long contigs, (2) see what genes are on those contigs,
 by comparing to a reference database, and (3) map these reads to the contigs.
@@ -473,8 +461,7 @@ the rest are IDs of reads that map to that contig. Note that it is also useful
 to keep track of reads that were never incorporated into any contig, this is the
 content of `mouse1_unassembled.fasta`. It's just a list of reads,
 
-```
-@NS500322:33:H5CC5BGXX:1:11102:18001:18268
+```@NS500322:33:H5CC5BGXX:1:11102:18001:18268
 GTCGGATCTAATGAATAGTCTGCATTATTCTTTCCATCCCATGCATATACAGCGTGTTGTTTAGCCTCATCTGCCGTTGCAAATTCAGGAACGAAATCATAAGTTTTACGGAATTCGTCTTTACTCAACTGTACATCTTTATGGTTGAATATCTTATCC
 +
 A<AAAFFFFAFFFAF<FFFFFFFFFFFFFFFFF7FFFFFF.FFFFFFFFFFF7FFFFFFFF.FFFFFF<FFFFFFFFFA7FFFFF<AFFFAFF<FFFA<FFFFF)FFFFFFFFFFAFFF<AFA.FF7FFFFFFFF<7AF7AFFFFAFFFAFFFFAFFA7
@@ -483,7 +470,6 @@ GCGCTTTTTCAATTGTCCCCTGGCAGTCAGCCGCATCAAAATCCGGGCTGACCTGGTTGGCAAGGAAGGAATCCACAAAT
 +
 AAAAAFFFFFFFFFFFFFFFFFFFFFFFFFFFFF.FFFFFAFFFFFFFFFAFFFFFFFFFFAFFFFFFFAFFFF<F<FFFFFFFFFFFF.FFFFFFFAFA.FFF<FFFFFFFFF<FFFFAAFFFFFFFFFFFFFFFFFF.FFAFFFFF<AA<<<FFFFAA
 ```
-
 Now that we have these contigs, we can try to see what genes are on them. This
 is done by aligning (using BWA) the contigs to the same NCBI-based
 `microbial_all_cds.fasta` file from before. We can also align the unassembled
@@ -491,13 +477,12 @@ reads to these references, to see if there are any genes on these smaller reads
 that we can still salvage. This results in `mouse1_contigs_annotation_bwa.sam` and
 `mouse1_unassembled_annotation_bwa.sam`, respectively. For example, the first
 contig below aligns with a gene for "elongation factor Tu" in a particular
-Clostridium species (https://www.ncbi.nlm.nih.gov/nuccore/NC_014376.1)
+[Clostridium species](https://www.ncbi.nlm.nih.gov/nuccore/NC_014376.1)
 
 ```
 NODE_756_length_231_cov_5.500000_g755_i0	16	gi|302384444|ref|NC_014376.1|:c4082527-4081334	374	2	58M173S	*	0	0	GTCAGGTAGGCGTTCCTTATATCGTAGTATTCATGAACAAGTGCGATATGGTTGACGACGCTGAGCTTCTGGAATTAGTAGAAATGGAAATCACAGAGCAGTTAGAAGAATACGGATTCAATGACTGTCCGATCATCCAGGGTTCTGCATTAAAAGCTCTCGAAGATCCGAACGGAGAGTGGGCAGATAAAGTTATGGAATTAATGGCAACCGTTGACGACTATATTCCGG	*	NM:i:2	MD:Z:19C5T32	AS:i:48	XS:i:45	XA:Z:gi|568262354|ref|NC_023134.1|:c3768865-3767675,-371,55M176S,2;gi|479181986|ref|NC_021024.1|:c882267-881074,-374,58M173S,3;gi|479336697|ref|NC_021047.1|:1200366-1201559,-374,58M173S,3;gi|479192860|ref|NC_021035.1|:1368951-1370144,-374,58M173S,3;
 NODE_757_length_229_cov_5.140000_g756_i0	4	*	0	0	*	*	0	0	GGAAAACAAAATCTTCCATTAAAAATTTAATAAGCATCAAAGGTTTCAGACAGAGTGGATGTGCAGTACACGAAAAAGTAACGGATTGCTGAAGCGGAATTTGCCAGAGCGTTACAGTGCATTGAGTACAGGAGAAGCGTGGAAAGCACAATGGGTGAAATGGAAGAAAAGAGAACTGAAAAACTGAATAAGGAGGTATGGTCCATTGGATGAGGAGTTCTGAGAGGGC	*	AS:i:0	XS:i:0
 ```
-
 As before, we can arrange the these mappings into a TSV which has one gene per
 row. The first gene has length 2343 and is mapped to by 10 contigs, the second
 has length 1023 and is mappted to by 19 contigs.
@@ -506,7 +491,6 @@ has length 1023 and is mappted to by 19 contigs.
 gi|269791619|ref|NC_013522.1|:707761-710103     2343    10      NS500322:33:H5CC5BGXX:1:11101:14990:1180        NS500322:33:H5CC5BGXX:1:11101:1898:19903        NS500322:33:H5CC5BGXX:1:11101:3194:8141 NS500322:33:H5CC5BGXX:1:11102:16400:19331       NS500322:33:H5CC5BGXX:1:11102:18310:19979       NS500322:33:H5CC5BGXX:1:11103:4557:12397        NS500322:33:H5CC5BGXX:1:11104:12911:20037       NS500322:33:H5CC5BGXX:1:11104:18344:17759       NS500322:33:H5CC5BGXX:1:11104:19704:7121        NS500322:33:H5CC5BGXX:1:11104:8170:13958
 gi|317131008|ref|NC_014828.1|:2789167-2790189   1023    19      NS500322:33:H5CC5BGXX:1:11101:10637:1714        NS500322:33:H5CC5BGXX:1:11101:16538:15523       NS500322:33:H5CC5BGXX:1:11101:20361:19050       NS500322:33:H5CC5BGXX:1:11101:3556:4830 NS500322:33:H5CC5BGXX:1:11101:5516:6902 NS500322:33:H5CC5BGXX:1:11101:9222:9260 NS500322:33:H5CC5BGXX:1:11102:10773:5544        NS500322:33:H5CC5BGXX:1:11102:14840:9382        NS500322:33:H5CC5BGXX:1:11102:1939:17058        NS500322:33:H5CC5BGXX:1:11102:2119:10986        NS500322:33:H5CC5BGXX:1:11102:7598:5356 NS500322:33:H5CC5BGXX:1:11103:10595:2102        NS500322:33:H5CC5BGXX:1:11103:12351:9040        NS500322:33:H5CC5BGXX:1:11104:12217:17551       NS500322:33:H5CC5BGXX:1:11104:14963:10194       NS500322:33:H5CC5BGXX:1:11104:18573:2028        NS500322:33:H5CC5BGXX:1:11104:2036:2360 NS500322:33:H5CC5BGXX:1:11104:5247:14589        NS500322:33:H5CC5BGXX:1:11105:9439:1151
 ```
-
 At this point, we basically have the data we'd need to create a useful
 functional annotation vector, where each element gives some normalized value of
 the expression level of each gene, either in terms of known contig converage or
@@ -539,7 +523,6 @@ GTCGACTGCCCGGGCCATGCCGACTATGTTAAAAACATGATCACCGGCGCAGCCCAGATG
 GACGGCGCGATCTTAGTTGTATCCGCAGCCGACGGCCCAATGCCGCAGACCCGTGAACAC
 ATCCTGTTAAGCCGTCAGGTAGGCGTACCATACATCATCGTCTTCTTAAACAAAGCCGAC
 ```
-
 We can use the same approach to perform other sorts of annotation on these
 contigs. For example, we can align to the NR protein database instead of the
 NCBI gene reference. Since we're aligning contigs to proteins, we'll use blastx,
@@ -583,7 +566,6 @@ NODE_181_length_378_cov_2.655518_g180_i0        WP_006525141.1  92.8    125     
 NODE_181_length_378_cov_2.655518_g180_i0        WP_009429874.1  92.8    125     9       0       377     3       55      179     7.9e-61 242.3
 NODE_181_length_378_cov_2.655518_g180_i0        WP_006626845.1  91.2    125     11      0       377     3       55      179     1.3e-60 241.5
 ```
-
 We can look up the protein IDs in the NR database -- for example, the first and
 second proteins are
 
@@ -591,7 +573,6 @@ second proteins are
 WP_016290808.1 hypothetical protein [Lachnospiraceae bacterium 28-4]EOS31698.1 hypothetical protein C807_01008 [Lachnospiraceae bacterium 28-4]
 CDB31317.1 glutamate dehydrogenase [Firmicutes bacterium CAG:137]
 ```
-
 Again, this annotates contigs, but we still need to quantify the amounts of
 these proteins being coded for in any sample. We could use the average coverage
 of different contigs as a proxy, alternatively we can look again at the file
