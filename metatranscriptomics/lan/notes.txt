@@ -15,51 +15,48 @@ in ./genomes folder. rerunning makeDB.sh -r --noDL -t 25. Note that
 makeDB.sh must have been eddited so that -t 25 actually allow user changing
 the number of threads used to extract the gz files in ./genomes
 
-## STEP 1
+Making a database is verryyyy long the BWT part (mkbwt) seem to not work in 
+parallel eventhough -n option is submitted.
 
-# Trimmomatics
-TrimmomaticSE: Started with arguments:
- /home/lanhuong/Projects/PerturbationStudy/perturbation_16s/data/metatranscriptomics/mouse/input//mouse1.fastq /home/lanhuong/Projects/PerturbationStudy/perturbation_16s/data/metatranscriptomics/mouse/output//mouse1_trim.fastq ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
-Automatically using 1 threads
-Using Long Clipping Sequence: 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA'
-Using Long Clipping Sequence: 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC'
-ILLUMINACLIP: Using 0 prefix pairs, 2 forward/reverse sequences, 0 forward only sequences, 0 reverse only sequences
-Quality encoding detected as phred33
-Input Reads: 100000 Surviving: 94415 (94.42%) Dropped: 5585 (5.58%)
-TrimmomaticSE: Completed successfully
+Extracting file taxdump.tar.gz
+Creating directory genomes/
+Extracting protein sequences from downloaded files...
+Creating Borrows-Wheeler transform...
+# infilename= kaiju_db.faa
+# outfilename= kaiju_db
+# Alphabet= ACDEFGHIKLMNPQRSTVWY
+# nThreads= 25
+# length= 0.000000
+# checkpoint= 3
+# caseSens=OFF
+# revComp=OFF
+# term= *
+# revsort=OFF
+# help=OFF
+Sequences read time = 93.240000s
+SLEN 10399162357
+NSEQ 32159057
+ALPH *ACDEFGHIKLMNPQRSTVWY
+SA NCHECK=0
+Sorting done,  time = 10140.420000s
+Creating FM-Index...
+# filenm= kaiju_db
+# removecmd= NULL (null)
+# help=OFF
+Reading BWT from file kaiju_db.bwt ... DONE
+BWT of length 10109730834 has been read with 32159057 sequencs, alphabet=*ACDEFGHIKLMNPQRSTVWY
+Reading suffix array from file kaiju_db.sa ... DONE
+Writing BWT header and SA to file  kaiju_db.fmi ... DONE
+Constructing FM index
+10% ... 20% ... 30% ... 40% ... 50% ... 60% ... 70% ... 80% ... 90% ... 100% ... index2 done ...
+DONE
+Writing FM file index to file ... DONE
 
+  !!  You can now delete files kaiju_db.bwt and kaiju_db.sa  !!
 
-# vsearch
-vsearch v2.7.0_linux_x86_64, 3023.4GB RAM, 144 cores
-https://github.com/torognes/vsearch
-
-Reading input file 100%
-86351 sequences kept (of which 0 truncated), 8064 sequences discarded.
-
-## STEP 2
-
-# remove duplicates with cdhit
-From input: mouse1_qual.fastq
-Total number of sequences: 86351
-Longest: 160
-Shortest: 50
-Sorted by length ...
-Start clustering duplicated sequences ...
-primer = 0
-Clustered     10000 sequences with      9857 clusters ...
-Clustered     20000 sequences with     19613 clusters ...
-Clustered     30000 sequences with     29433 clusters ...
-Clustered     40000 sequences with     39321 clusters ...
-Clustered     50000 sequences with     49249 clusters ...
-Clustered     60000 sequences with     59196 clusters ...
-Clustered     70000 sequences with     69115 clusters ...
-Clustered     80000 sequences with     79060 clusters ...
-Number of reads: 86351
-Number of clusters found: 85404
-Number of clusters with abundance above the cutoff (=1): 85404
-Number of clusters with abundance below the cutoff (=1): 0
-Writing clusters to files ...
 Done!
+Kaiju only needs the files kaiju_db.fmi, nodes.dmp, and names.dmp.
+The remaining files and the folder genomes/ can be deleted.
 
 
 
