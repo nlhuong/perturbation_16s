@@ -6,8 +6,9 @@
 ## author: nlhuong90@gmail.com
 ## date: 2/18/2018
 
-export STUDY_DIR=~/Projects/PerturbationStudy/perturbation_16s
-export APP_DIR=~/.local/bin/
+export STUDY_DIR=~/Projects/perturbation_16s
+export DB_DIR=$STUDY_DIR/data/databases
+export APP_DIR=~/.local/bin
 cd $APP_DIR
 
 # fastqc
@@ -70,9 +71,8 @@ git clone https://github.com/bioinformatics-centre/kaiju.git
 cd kaiju/src
 make
 
-export DB_DIR=$STUDY_DIR/data/kaijudb
-mkdir -p $DB_DIR
-cd $DB_DIR
+mkdir -p $DB_DIR/kaijudb
+cd $DB_DIR/kaijudb
 $APP_DIR/kaiju/bin/makeDB.sh -r # make NCBI reference DB
 $APP_DIR/kaiju/bin/makeDB.sh -r --noDL
 ## Make custom library?
@@ -87,9 +87,19 @@ tar -zxvf SPAdes-3.11.1-Linux.tar.gz
 rm SPAdes-3.11.1-Linux.tar.gz
 
 ## Diamond
-wget http://github.com/bbuchfink/diamond/releases/download/v0.9.17/diamond-linux64.tar.gz
+wget http://github.com/bbuchfink/diamond/releases/download/v0.9.18/diamond-linux64.tar.gz
 tar -xzf diamond-linux64.tar.gz
 rm diamond-linux64.tar.gz
 
+## SortMeRNA
+module load cmake/cmake-3.7.2
+git clone https://github.com/biocore/sortmerna.git
+cd sortmerna
+mkdir -p build/Release
+pushd build/Release
+cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../..
+echo "export PATH=$APP_DIR/sortmerna/build/Release/src/indexdb:$APP_DIR/sortmerna/build/Release/src/sortmerna:\$PATH" >> ~/.bashrc
 
+
+echo "export PATH=$APP_DIR:\$PATH" >> ~/.bashrc
 source ~/.bashrc

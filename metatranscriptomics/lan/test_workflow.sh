@@ -3,7 +3,7 @@
 ## Pipline for processing metatranscriptomics data based on workflow:
 ## https://github.com/ParkinsonLab/2017-Microbiome-Workshop
 ##
-## author: lanhuong90@gmail.com
+## author: nlhuong90@gmail.com
 ## date: 2/18/2018
 
 export n_threads=20
@@ -23,18 +23,18 @@ export RM_rRNA=false
 export REREPLICATION=false
 export TAX_CLASS=false
 export ASSEMBLE=false
-export GENOME_ANN=true
+export GENOME_ANN=false
 export PROT_ANN=true
 
 
 ## Setup ------------
 
 # Main directory
-export STUDY_DIR=~/Projects/PerturbationStudy/perturbation_16s
+export STUDY_DIR=~/Projects/perturbation_16s
 export MT_DIR=$STUDY_DIR/data/metatranscriptomics
 # Reference directories
-export KAIJUBD_DIR=$STUDY_DIR/data/kaijudb
-export REF_DIR=$MT_DIR/references
+export REF_DIR=$STUDY_DIR/data/databases/
+export KAIJUBD_DIR=$REF_DIR/kaijudb
 # Input directories
 export DATA_DIR=$MT_DIR/mouse
 export INPUT_DIR=$DATA_DIR/input/
@@ -320,7 +320,7 @@ if $GENOME_ANN; then
         ## DO THE SAME FOR UNASSEMBLED???
     fi
 
-    $SCRIPT_DIR/6_BWA_Gene_Map.py \
+    $PYSCRIPT_DIR/6_BWA_Gene_Map.py \
         $REF_DIR/microbial_all_cds.fasta \
         mouse1_contigs_map.tsv \
         mouse1_genes_map.tsv \
@@ -351,7 +351,7 @@ if $PROT_ANN; then
         -f 6 -t dmnd_tmp -k 10 \
         --id 85 --query-cover 65 --min-score 60
     
-    $SCRIPT_DIR/7_Diamond_Protein_Map.py \
+    $PYSCRIPT_DIR/7_Diamond_Protein_Map.py \
         $REF_DIR/nr \
         mouse1_contigs_map.tsv \
         mouse1_genes_map.tsv \

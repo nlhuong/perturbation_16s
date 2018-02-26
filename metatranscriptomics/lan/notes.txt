@@ -18,6 +18,17 @@ the number of threads used to extract the gz files in ./genomes
 Making a database is verryyyy long the BWT part (mkbwt) seem to not work in 
 parallel eventhough -n option is submitted.
 
+5. Step 6_(...).py division range(len(sys.arg) - 5 /3) float type not compatible
+with python3. Results of BWA annotation:
+538 reads were mapped from mouse1_contigs.fasta
+0 reads were mapped from mouse1_unassembled.fastq
+Sequences mapped to 36 genes.
+
+6.
+
+
+
+
 Extracting file taxdump.tar.gz
 Creating directory genomes/
 Extracting protein sequences from downloaded files...
