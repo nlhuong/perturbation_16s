@@ -25,17 +25,17 @@ export rev=${input_rev%.fq.gz}
 ## Parameters
 export paired=true
 export n_threads=${4:-4}
-export use_sortmerna=true
+export use_sortmerna=false
 export add_blat=false
 
 ## What Step to complete
 export INDEX_DB=false
-export TRIM=true
-export MERGE_PAIRS=true
-export QUAL_FLTR=true
-export RM_DUPL=true
-export RM_VECTOR=true
-export RM_HOST=true
+export TRIM=false
+export MERGE_PAIRS=false
+export QUAL_FLTR=false
+export RM_DUPL=false
+export RM_VECTOR=false
+export RM_HOST=false
 export RM_rRNA=true
 export REREPLICATION=true
 export TAX_CLASS=true
@@ -71,6 +71,8 @@ cd $OUTPUT_DIR
 start0=`date +%s`
 ## Generate an index
 if $INDEX_DB; then
+    echo "====================================================================================="
+    echo "Indexing databases ..."
     start=`date +%s`
     # Vector (UniVec_Core)  sequences
     bwa index -a bwtsw $REF_DIR/UniVec_Core
@@ -90,12 +92,14 @@ if $INDEX_DB; then
     diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Indexing runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Indexing runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove adapter seqs and trim low-quality seqs  ------------
 if $TRIM && ! $paired; then
+   echo "====================================================================================="
+   echo "Trimming and removing adapters ..."
    start=`date +%s`
    ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
    java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
@@ -108,12 +112,14 @@ if $TRIM && ! $paired; then
    mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
    end=`date +%s`
    runtime=$(((end-start)/60))
-   echo "Trimming and QC runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+   echo "Trimming and QC runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Do the same for paired ends ------------
 if $TRIM && $paired; then
+    echo "====================================================================================="
+    echo "Trimming and removing adapters ..."
     start=`date +%s`
     ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
     java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
@@ -130,12 +136,14 @@ if $TRIM && $paired; then
     mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Trimming and QC runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Trimming and QC runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Merge pairs ------------
 if $MERGE_PAIRS; then
+    echo "====================================================================================="
+    echo "Merging paired reads ..."
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
         --fastq_mergepairs $OUTPUT_DIR/${fwd}_paired_trim.fq \
@@ -149,12 +157,14 @@ if $MERGE_PAIRS; then
     mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Merging reads runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Merging reads runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Global quality filtering ------------
 if $QUAL_FLTR; then
+    echo "====================================================================================="
+    echo "Quality filtering ..."
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
        --fastq_filter $OUTPUT_DIR/${base}_trim.fq \
@@ -162,24 +172,28 @@ if $QUAL_FLTR; then
        --fastqout $OUTPUT_DIR/${base}_qual.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Quality filtering runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Quality filtering runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove duplicate reads ------------
 if $RM_DUPL; then
+    echo "====================================================================================="
+    echo "Remove duplicates ..."
     start=`date +%s`
     $APP_DIR/cdhit/cd-hit-auxtools/cd-hit-dup \
         -i $OUTPUT_DIR/${base}_qual.fq \
         -o $OUTPUT_DIR/${base}_unique.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Remove duplicates runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Remove duplicates runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove unwanted vector contamination ------------
 if $RM_VECTOR; then
+    echo "====================================================================================="
+    echo "Remove vector sequences ..."
     start=`date +%s`
     # align reads with vector db  and filter any reads that align to it
     bwa mem -t $n_threads $REF_DIR/UniVec_Core \
@@ -209,12 +223,14 @@ if $RM_VECTOR; then
 
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Removing vectors runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Removing vectors runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Remove host reads ----------
 # the same logic as the previous step
 if $RM_HOST; then
+    echo "====================================================================================="
+    echo "Remove host sequences ..."
     start=`date +%s`
     bwa mem -t $n_threads $REF_DIR/human_cds.fa \
         ${base}_univec_blat.fq > ${base}_human_bwa.sam
@@ -240,11 +256,12 @@ if $RM_HOST; then
 
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Removing host runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Removing host runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Remove rRNA seqs -----------
 if $RM_rRNA %% $use_sortmerna; then
+    echo "Ribodepletion with SortMeRNA ..."
     start=`date +%s`
     $SORTMERNA_DIR/sortmerna \
     --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta:$SORTMERNA_DIR/index/silva-bac-16s-db \
@@ -254,10 +271,12 @@ if $RM_rRNA %% $use_sortmerna; then
         --fastx --num_alignments 0 --log -v
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Ribodepletion runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 if $RM_rRNA && ! $use_sortmerna; then
+    echo "====================================================================================="
+    echo "Ribodepletion with infernalout ..."
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
         --fastq_filter ${base}_human_blat.fq \
@@ -277,12 +296,14 @@ if $RM_rRNA && ! $use_sortmerna; then
         ${base}_unique_rRNA.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Ribodepletion runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Rereplication (add back the repeated reads) ----------
 if $REREPLICATION; then
+    echo "====================================================================================="
+    echo "Rereplication ..."
     start=`date +%s`
     $PYSCRIPT_DIR/3_Reduplicate.py \
         ${base}_qual.fq \
@@ -295,11 +316,13 @@ if $REREPLICATION; then
     mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Rereplication runtime: $(runtime) min \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Rereplication runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Taxonomic Classification ------------
 if $TAX_CLASS; then
+    echo "====================================================================================="
+    echo "Taxonomy classification ..."
     start=`date +%s`
     $APP_DIR/kaiju/bin/kaiju \
         -t $KAIJUBD_DIR/nodes.dmp \
@@ -323,11 +346,13 @@ if $TAX_CLASS; then
         -r genus
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Assign taxonomy runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Assign taxonomy runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Assemble reads into contigs -----------
 if $ASSEMBLE; then
+    echo "====================================================================================="
+    echo "Contigs assembly ..."
     start=`date +%s`
     # Build contigs
     $APP_DIR/SPAdes-3.11.1-Linux/bin/spades.py --rna \
@@ -347,12 +372,14 @@ if $ASSEMBLE; then
         ${base}_contigs_map.tsv
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Assemble runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Assemble runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Genome annotation -----------
 if $GENOME_ANN; then
+    echo "====================================================================================="
+    echo "Genom annotation with BWA ..."
     start=`date +%s`
     # BWA utilizes nucleotide searches, we rely on a microbial genome database
     # Search DB
@@ -411,12 +438,14 @@ if $GENOME_ANN; then
 
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Genome annotation runtime: $(runtime) \n" >> $OUTPUT_DIR/${base}_time.log
+    echo "Genome annotation runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Protein annotation -----------
 if $PROT_ANN; then
+    echo "====================================================================================="
+    echo "Protein annotation with DIAMOND on unmapped sequences ..."
     start=`date +%s`
     mkdir -p dmnd_tmp
     diamond blastx --id 85 --query-cover 65 --min-score 60 \
@@ -446,12 +475,14 @@ if $PROT_ANN; then
 
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Protein annotation (diamond) runtime: $(runtime) \n" >> \
+    echo "Protein annotation (diamond) runtime: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Additional annotation -----------
 if $DIAMOND_REFSEQ; then
+    echo "====================================================================================="
+    echo "Refseq annotation with DIAMOND ..."
     start=`date +%s`
     # Align with RefSeq database
     mkdir -p dmnd_tmp
@@ -463,12 +494,14 @@ if $DIAMOND_REFSEQ; then
 
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Refseq annotation (diamond) runtime: $(runtime) \n" >> \
+    echo "Refseq annotation (diamond) runtime: $runtime min" >> \
             $OUTPUT_DIR/${base}_time.log
 fi
 
 
 if $DIAMOND_SEED; then
+    echo "====================================================================================="
+    echo "SEED annotation with DIAMOND ..."
     start=`date +%s`
     # Align with SEED subsystem database
     mkdir -p dmnd_tmp
@@ -479,11 +512,12 @@ if $DIAMOND_SEED; then
         -o ${base}_seed.dmdout
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "SEED annotation (diamond) runtime: $(runtime) \n" >> \
+    echo "SEED annotation (diamond) runtime: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
 fi
 
 end0=`date +%s`
 runtime0=$(((end0-start0)/60))
-echo "\n ============== \n ENTIRE WORKFLOW RUNTIME: $(runtime0) \n" >> \
+echo "======================================"
+echo "ENTIRE WORKFLOW RUNTIME: $(runtime0) min" >> \
     $OUTPUT_DIR/${base}_time.log
