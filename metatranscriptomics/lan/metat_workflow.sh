@@ -19,31 +19,30 @@ export input_rev=${3:-M3303_DBUsw_2r_TrM31_2P.fq.gz}
 export base=${input_fwd%_1P.fq.gz}
 export fwd=${input_fwd%.fq.gz}
 export rev=${input_rev%.fq.gz}
-#fwd=$(basename $input_fwd)
-#rev=$(basename $input_rev)
 
 ## Parameters
 export paired=true
-export n_threads=${4:-4}
+export n_threads=${4:-10}
 export use_sortmerna=false
 export add_blat=false
 
 ## What Step to complete
 export INDEX_DB=false
-export TRIM=false
-export MERGE_PAIRS=false
-export QUAL_FLTR=false
-export RM_DUPL=false
-export RM_VECTOR=false
-export RM_HOST=false
+
+export TRIM=true
+export MERGE_PAIRS=true
+export QUAL_FLTR=true
+export RM_DUPL=true
+export RM_VECTOR=true
+export RM_HOST=true
 export RM_rRNA=true
 export REREPLICATION=true
 export TAX_CLASS=true
+export DIAMOND_REFSEQ=true
+export DIAMOND_SEED=true
 export ASSEMBLE=true
 export GENOME_ANN=true
 export PROT_ANN=true
-export DIAMOND_REFSEQ=true
-export DIAMOND_SEED=true
 
 ## Setup ------------
 
@@ -260,18 +259,18 @@ if $RM_HOST; then
 fi
 
 ## Remove rRNA seqs -----------
-if $RM_rRNA %% $use_sortmerna; then
+if $RM_rRNA && $use_sortmerna; then
     echo "Ribodepletion with SortMeRNA ..."
     start=`date +%s`
     $SORTMERNA_DIR/sortmerna \
-    --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta:$SORTMERNA_DIR/index/silva-bac-16s-db \
+        --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta,$SORTMERNA_DIR/index/silva-bac-16s-db \
         --reads ${base}_human_blat.fq \
         --aligned ${base}_unique_rRNA.fq \
         --other ${base}_unique_mRNA.fq \
         --fastx --num_alignments 0 --log -v
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "SortMeRNA ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 if $RM_rRNA && ! $use_sortmerna; then
@@ -296,7 +295,7 @@ if $RM_rRNA && ! $use_sortmerna; then
         ${base}_unique_rRNA.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Infernal ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
@@ -308,7 +307,7 @@ if $REREPLICATION; then
     $PYSCRIPT_DIR/3_Reduplicate.py \
         ${base}_qual.fq \
         ${base}_unique_mRNA.fq \
-        ${base}_unique.fastq.clstr \
+        ${base}_unique.fq.clstr \
         ${base}_mRNA.fq
 
     $APP_DIR/FastQC/fastqc ${base}_mRNA.fq
@@ -349,13 +348,53 @@ if $TAX_CLASS; then
     echo "Assign taxonomy runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
+
+## DIAMOND annotation -----------
+if $DIAMOND_REFSEQ; then
+    echo "====================================================================================="
+    echo "Refseq annotation with DIAMOND ..."
+    start=`date +%s`
+    # Align with RefSeq database
+    mkdir -p dmnd_tmp
+    diamond blastx -p $n_threads -db $REF_DIR/RefSeq_bac \
+        -q ${base}_mRNA.fq -a ${base}.RefSeq \
+        -t ./dmnd_tmp -k 1 --sensitive
+    diamond view --daa ${base}.RefSeq.daa -f 6 \
+        -o ${base}_refseq.dmdout
+
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "Refseq annotation (diamond) runtime: $runtime min" >> \
+            $OUTPUT_DIR/${base}_time.log
+fi
+
+
+if $DIAMOND_SEED; then
+    echo "====================================================================================="
+    echo "SEED annotation with DIAMOND ..."
+    start=`date +%s`
+    # Align with SEED subsystem database
+    mkdir -p dmnd_tmp
+    diamond blastx -p $n_threads -db $REF_DIR/subsys_d \
+        -q ${base}_mRNA.fq -a ${base}.Subsys \
+        -t ./dmnd_tmp -k 1 --sensitive
+    diamond view --daa ${base}.Subsys.daa -f 6 \
+        -o ${base}_seed.dmdout
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "SEED annotation (diamond) runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
+fi
+
+
 ## Assemble reads into contigs -----------
 if $ASSEMBLE; then
     echo "====================================================================================="
     echo "Contigs assembly ..."
     start=`date +%s`
     # Build contigs
-    $APP_DIR/SPAdes-3.11.1-Linux/bin/spades.py --rna \
+    $APP_DIR/SPAdes-3.11.1-Linux/bin/spades.py \
+        --rna -t $n_threads \
         -s ${base}_mRNA.fq \
         -o ${base}_spades
     mv ${base}_spades/transcripts.fasta ${base}_contigs.fasta
@@ -379,7 +418,7 @@ fi
 ## Genome annotation -----------
 if $GENOME_ANN; then
     echo "====================================================================================="
-    echo "Genom annotation with BWA ..."
+    echo "Genome annotation with BWA ..."
     start=`date +%s`
     # BWA utilizes nucleotide searches, we rely on a microbial genome database
     # Search DB
@@ -476,43 +515,6 @@ if $PROT_ANN; then
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Protein annotation (diamond) runtime: $runtime min" >> \
-        $OUTPUT_DIR/${base}_time.log
-fi
-
-## Additional annotation -----------
-if $DIAMOND_REFSEQ; then
-    echo "====================================================================================="
-    echo "Refseq annotation with DIAMOND ..."
-    start=`date +%s`
-    # Align with RefSeq database
-    mkdir -p dmnd_tmp
-    diamond blastx -p $n_threads -db $REF_DIR/RefSeq_bac \
-        -q ${base}_mRNA.fq -a ${base}.RefSeq \
-        -t ./dmnd_tmp -k 1 --sensitive
-    diamond view --daa ${base}.RefSeq.daa -f 6 \
-        -o ${base}_refseq.dmdout
-
-    end=`date +%s`
-    runtime=$(((end-start)/60))
-    echo "Refseq annotation (diamond) runtime: $runtime min" >> \
-            $OUTPUT_DIR/${base}_time.log
-fi
-
-
-if $DIAMOND_SEED; then
-    echo "====================================================================================="
-    echo "SEED annotation with DIAMOND ..."
-    start=`date +%s`
-    # Align with SEED subsystem database
-    mkdir -p dmnd_tmp
-    diamond blastx -p $n_threads -db $REF_DIR/subsys_d \
-        -q ${base}_mRNA.fq -a ${base}.Subsys \
-        -t ./dmnd_tmp -k 1 --sensitive
-    diamond view --daa ${base}.Subsys.daa -f 6 \
-        -o ${base}_seed.dmdout
-    end=`date +%s`
-    runtime=$(((end-start)/60))
-    echo "SEED annotation (diamond) runtime: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
 fi
 
