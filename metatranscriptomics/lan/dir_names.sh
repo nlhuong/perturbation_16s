@@ -1,9 +1,9 @@
-export STUDY_DIR=~/Projects/PerturbationStudy/perturbation_16s
+export STUDY_DIR=~/Projects/perturbation_16s
 
 # Input directories
 export MT_DIR=$STUDY_DIR/data/metatranscriptomics
-export REF_DIR=$MT_DIR/references
-export DATA_DIR=$MT_DIR/mouse
+export REF_DIR=$STUDY_DIR/data/databases
+export DATA_DIR=$MT_DIR/resilience
 export INPUT_DIR=$DATA_DIR/input/
 
 # Output directories

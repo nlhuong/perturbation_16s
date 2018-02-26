@@ -36,7 +36,7 @@ with open(gene2read_file, "r") as mapping:
 def sortbyscore(line):
     return line[11]
 
-for x in range((len(sys.argv) - 5) / 3):
+for x in range(int(len(sys.argv) - 5) / 3):
     read_file = sys.argv[3 * x + 5]
     read_seqs = SeqIO.index(read_file, os.path.splitext(read_file)[1][1:])
     DMND_tab_file = sys.argv[3 * x + 6]
