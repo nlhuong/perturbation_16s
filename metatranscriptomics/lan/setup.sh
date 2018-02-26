@@ -105,6 +105,12 @@ bwa index -a bwtsw $REF_DIR/mouse_cds.fa
 samtools faidx $REF_DIR/mouse_cds.fa
 makeblastdb -in $REF_DIR/mouse_cds.fa -dbtype nucl
 
+# Index Host DB
+bwa index -a bwtsw $REF_DIR/human_cds.fa
+samtools faidx $REF_DIR/human_cds.fa
+makeblastdb -in $REF_DIR/human_cds.fa -dbtype nucl
+
+
 # Index Microbes DB
 bwa index -a bwtsw $REF_DIR/microbial_all_cds.fasta
 samtools faidx $REF_DIR/microbial_all_cds.fasta
