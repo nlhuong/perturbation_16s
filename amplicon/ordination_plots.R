@@ -8,11 +8,28 @@
 ## date: 01/15/2018
 
 #setwd("perturbation_16s/amplicon/")
+rm(list = ls())
+
+RUNPCA <- TRUE
+RUNAGPCA <- TRUE
+RUNTSNE <- TRUE
+
+PLOTPCA <- TRUE
+PLOTAGPCA <- TRUE
+PLOTTSNE <- TRUE
+
+path2data <- "../data/processed/"
+path2figs <- "../figs"
+path2out <- "../output"
+
+datafile <- "perturb_physeq_filtered_22Jan18.rds"
+group_file <- "study_arm"
+subject_file <- "subject"
+
 
 ###############################################################################
 ## Setup and data
 ###############################################################################
-rm(list = ls())
 
 library(dplyr)
 library(tibble)
@@ -29,12 +46,8 @@ options(stringsAsFactors = FALSE)
 theme_set(theme_bw())
 theme_update(text = element_text(size = 15))
 
-path2data <- "../data/processed/"
-path2figs <- "../figs"
-path2out <- "../output"
-
 ## Load data
-ps0 <- readRDS(file.path(path2data, "perturb_physeq_filtered_27Dec.rds"))
+ps0 <- readRDS(file.path(path2data, datafile))
 remove_subjects <- c("AAA", "AAB", "AAN", "DAC")
 ps <- subset_samples(ps0, !Subject %in% remove_subjects)
 ps@sam_data <- ps@sam_data[, 1:30]
@@ -43,7 +56,12 @@ ps@sam_data <- ps@sam_data[, 1:30]
 ## Function to filter out taxa which occur in fewer than minPrev distinct sample 
 ## groups (e.g. Subjects).
 filter_taxa <- function(physeq, minPrev = 1, group = "Subject") {
-  if(length(unique(physeq@sam_data[[group]])) == 1) return(physeq)
+  if(length(unique(physeq@sam_data[[group]])) == 1) {
+    physeq <- prune_taxa(
+      taxa_names(physeq)[rowSums(physeq@otu_table > 0) > minPrev],
+      physeq)
+    return(physeq)
+  }
   smp <- data.frame(physeq@sam_data)
   seqtab <- as(physeq@otu_table, "matrix")
   group_prevalence <- sapply(1:ntaxa(physeq), function(i) {
@@ -60,7 +78,8 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
     physeq@sam_data[[group]] <- "group1"
   groups <- unique(physeq@sam_data[[group]])
   
-  registerDoParallel(min(ncores, length(groups))) 
+  registerDoParallel(min(ncores, length(groups), 0.5*detectCores())) 
+
   res <- foreach(i = seq_along(groups)) %dopar% {
     g <- unique(physeq@sam_data[[group]])[i] 
     g_samples <- rownames(physeq@sam_data)[physeq@sam_data[[group]] == g] 
@@ -82,16 +101,28 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
     } else if (tolower(method) == "agpca") {
       pp <- processPhyloseq(g_physeq)
       g_ord <- adaptivegpca(pp$X, pp$Q, k = 3)
-      scores <- as.data.frame(g_ord$U)
+      scores <- as.data.frame(g_ord$U) 
+      rownames(scores) <- sample_names(g_physeq)
       loadings <- as.data.frame(g_ord$QV)
+      rownames(loadings) <- taxa_names(g_physeq)
       eigs <- data.frame(
         eig_idx = 1:length(g_ord$vars),
-        eig = g_ord$vars, vars_exp = g_ord$vars)
-    } else if (tolower(method) == "tsne") {
-      brayD <- phyloseq::distance(g_physeq, method = "bray")
-      g_ord <- Rtsne::Rtsne(brayD, is_distance = TRUE, dims = 2, pca = TRUE,
-                   eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
+        eig = g_ord$vars, var_exp = g_ord$vars)
+
+    } else if (grepl("tsne", tolower(method))) {
+      if(tolower(method) == "tsnebray") { 
+        X <- phyloseq::distance(g_physeq, method = "bray")
+      } else {
+        X <- t(as(g_physeq@otu_table, "matrix"))
+      }
+      g_ord <- Rtsne::Rtsne(
+        X, dims = 2, 
+        is_distance = (class(X) =="dist"), 
+        pca = !(class(X) =="dist"),
+        perplexity = min(30, floor((nsamples(g_physeq) - 1)/3)),
+        eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
       scores <- as.data.frame(g_ord$Y)
+      rownames(scores) <- sample_names(g_physeq)
     } else {
       stop("method not supported")
     }
@@ -125,13 +156,42 @@ plot_projection <- function(data, xname, yname, labname = NULL, size = 3,
     if(size %in% colnames(data)) {
       plt <- plt + geom_text(aes_string(label = labname, size = size), ...)
     } else {
-      plt <- plt + geom_text(aes_string(label = labname), size = size, ...)
+      stop("method not supported")
     }
+    if(!is.null(loadings)){
+      colnames(loadings) <- paste0("Axis", 1:ncol(loadings))
+      loadings <- loadings %>%
+        rownames_to_column("Seq_ID") %>%
+        left_join(g_taxtab)
+    }
+    colnames(scores) <- paste0("Axis", 1:ncol(scores))
+    scores <- scores %>%
+      rownames_to_column("Meas_ID") %>%
+      left_join(g_physeq@sam_data %>% as.data.frame())%>%
+      arrange(Group, Subject, Samp_Date, DayFromStart, Timeline)
+
+    return(list(eigs = eigs, scores = scores, loadings = loadings))
+  }
+  names(res) <- groups
+  return(res)
+}
+
+
+plot_projection <- function(data, xname, yname, eigs = NULL, labname = NULL,
+                            color = NULL,  fill = NULL,
+                            size = 3,...){
+  data <- as.data.frame(data)
+  plt <- ggplot(data, aes_string(x = xname, y = yname)) 
+  if(all(!is.null(labname), labname %in% colnames(data))) {
+    plt <- plt + geom_text(
+      aes_string(label = labname, color = color), size = size, ...)
   } else {
-    if(size %in% colnames(data)) {
-      plt <- plt + geom_point(aes_string(size = size), ...)
+    if(!is.null(fill)) {
+      plt <- plt + geom_point(
+        aes_string(fill = fill), shape = 21, size = size, ...)
     } else {
-      plt <- plt + geom_point(size = size, ...)
+      plt <- plt + geom_point(
+        aes_string(color = color), size = size, ...)
     }
   }
   if(!is.null(eigs)){
@@ -146,6 +206,28 @@ plot_projection <- function(data, xname, yname, labname = NULL, size = 3,
   return(plt + theme(text = element_text(size = 20))) 
 }
 
+plot_loadings <- function(loadings, size = 3, eigs = NULL, 
+                          color = "Class", label = "Genus"){
+  
+  loadings_fltr <- loadings %>%
+    mutate(r2 = (Axis1^2 + Axis2^2)) %>%
+    filter(
+      r2 > quantile(r2, 0.97))
+    plot_projection(
+      loadings, 
+      xname = "Axis1", 
+      yname = "Axis2", 
+      size = size,
+      color = color, 
+      eigs = eigs, 
+      alpha = 0.3
+    ) +
+    geom_text_repel(
+        data = loadings_fltr,
+        aes_string(label = label, color = color) 
+  )
+}
+
 plot_scores <- function(scores, size = 3, eigs = NULL) {
   plot_projection(
     scores, 
@@ -157,65 +239,68 @@ plot_scores <- function(scores, size = 3, eigs = NULL) {
     eigs = eigs)
 } 
 
-plot_scores_time <- function(scores, size = 3, eigs = NULL){
-  suppressWarnings(
-    plot_projection(
-      scores, 
-      xname = "Axis1", 
-      yname = "Axis2", 
-      color = "DayFromStart", 
-      size = size,
-      eigs = eigs) + 
-      geom_point(
-        data = scores %>% filter(Timeline != "typical"), 
-        aes(fill = Timeline, label = Subject),
-        color = "black",
-        size = 1.5*size,
-        shape = 23,
-        lwd=2) +
-      scale_color_viridis() +
-      scale_fill_brewer(palette = "Oranges")
-  )
-} 
-
-plot_loadings <- function(loadings, size = 3, eigs = NULL, 
-                          color = "Class", label = "Genus"){
-  
-  loadings_fltr <- loadings %>%
-    mutate(r2 = (Axis1^2 + Axis2^2)) %>%
-    filter(
-      r2 > quantile(r2, 0.97),
-      Axis1 > quantile(Axis1, 0.99) | Axis1 < quantile(Axis1, 0.01),
-      Axis2 > quantile(Axis2, 0.99) | Axis2 < quantile(Axis2, 0.01))
-    plot_projection(
-      loadings, 
-      xname = "Axis1", 
-      yname = "Axis2", 
-      size = size,
-      color = "Class", 
-      eigs = eigs, 
-      alpha = 0.3
+plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
+  scores <- scores %>% arrange(Subject, Samp_Date)
+  plt <- ggplot(
+    scores %>% filter(Subject != "NA_QC"), 
+    aes_string(x = "Axis1", y = "Axis2")
+  ) 
+  if(path) {
+    plt <- plt + 
+      geom_path(
+        aes(group = Subject, color = DayFromStart), 
+        alpha = 0.8, lwd = 1) +
+      geom_text(
+        aes(color = DayFromStart, label = Subject)
+    ) 
+  } else {
+    plt <- plt +
+      geom_point(aes(color = DayFromStart), size = size)  
+  }
+  plt <- plt +
+    geom_point(
+      data = scores %>% filter(Timeline != "typical"), 
+      aes(fill = Timeline, shape = Timeline),
+      size = 2*size, lwd=10
     ) +
-    geom_text_repel(
-        data = loadings_fltr,
-        aes_string(label = label) 
-  )
-}
+    scale_color_viridis() + 
+    scale_shape_manual(values = c(23:25, 21, 22)) 
+
+  if(!is.null(eigs)){
+    var.explained <- round(100 * eigs/sum(eigs), 2)
+    plt <- plt + 
+      labs(
+        x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+        y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+      ) +
+      coord_fixed(sqrt(var.explained[2] / var.explained[1])) 
+  }
+  return(plt + theme(text = element_text(size = 20))) 
+} 
 
 generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
   ord_plts <- lapply(ord_lst, function(g_ord) {
-    eigs <- p_scree <- p_scores<- NULL
+    eigs <- p_scree <- p_loadings <- 
+      p_scores <- p_scores_time <- p_scores_time_path <- NULL
+    scores <- g_ord$scores 
+    loadings <- g_ord$loadings
     if(!is.null(g_ord$eigs)){
       eigs <- g_ord$eigs$eig
       p_scree <- ggplot(g_ord$eigs[1:10, ]) +
         geom_bar(aes(x = eig_idx, y = var_exp), stat = "identity")
     }
-    if(length(unique(g_ord$scores[["Subject"]])) > 1) 
-      p_scores <- plot_scores(g_ord$scores, eigs = eigs)
-    p_scores_time <- plot_scores_time(g_ord$scores, eigs = eigs)
-    p_loadings <- plot_loadings(g_ord$loadings, eigs = eigs)
+    if(length(unique(scores[["Subject"]])) > 1) {
+      p_scores <- plot_scores(scores, eigs = eigs)
+    } else {
+      p_scores_time_path <- plot_scores_time(scores, eigs = eigs, path = TRUE)
+    }
+    p_scores_time <- plot_scores_time(scores, eigs = eigs, path = FALSE)
+    if(!is.null(loadings)){
+      p_loadings <- plot_loadings(loadings, eigs = eigs)
+    }
     return(list(scree = p_scree, loadings = p_loadings, 
-                scores = p_scores, scores_time = p_scores_time))
+                scores = p_scores, scores_time = p_scores_time,
+                scores_time_path = p_scores_time_path))
   })
   names(ord_plts) <- names(ord_lst)
   
@@ -232,63 +317,130 @@ generate_pdf <- function(ord_lst, filename, width = 15, height = 30) {
 ## Standard PCA
 ###############################################################################
 
-## Process data for each study arm separately 
-## arms: ("Abx", "Diet_Abx", "CC_Diet", "CC_Diet_Abx", "NoIntv")
-pca_res <- get_ordinations(ps, group = "Group", method = "pca")
-names(pca_res) <- unique(ps@sam_data[["Group"]])
-saveRDS(pca_res, file = file.path(path2out, "study_arm_pca.rds"))
+res_group_file <- paste0("pca_", group_file, ".rds")
+res_subject_file <- paste0("pca_", subject_file, ".rds")
+plot_group_file <- paste0("pca_", group_file, ".pdf")
+plot_subject_file <- paste0("pca_", subject_file, ".pdf")
 
-generate_pdf(ord_lst = pca_res, 
-             filename = file.path(path2figs, "study_arm_pca.pdf"), 
-             width = 15, height = 30)
+if(RUNPCA){
+  cat("Running PCA \n")
+  ## Process data for each study arm separately 
+  ## arms: ("Abx", "Diet_Abx", "CC_Diet", "CC_Diet_Abx", "NoIntv")
+  pca_res <- get_ordinations(ps, group = "Group", method = "pca", ncores = 20)
+  saveRDS(pca_res, file = file.path(path2out, res_group_file))
+  
+  ## Process each subject separately
+  pca_subject_res <- get_ordinations(ps, group = "Subject", method = "PCA", ncores = 20)
+  saveRDS(pca_subject_res, file = file.path(path2out, res_subject_file))
+} else {
+  pca_res <- readRDS(file = file.path(path2out, res_group_file))
+  pca_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
+}
 
-## Process each subject separately
-pca_subject_res <- get_ordinations(ps, group = "Subject", method = "PCA")
-saveRDS(pca_subject_res, file = file.path(path2out, "subject_pca.rds"))
-
-generate_pdf(ord_lst = pca_subject_res, 
-             filename = file.path(path2figs, "subject_pca.pdf"), 
-             width = 15, height = 25)
+if(PLOTPCA){
+  generate_pdf(ord_lst = pca_res, 
+               filename = file.path(path2figs, plot_group_file), 
+               width = 10, height = 22)
+  
+  generate_pdf(ord_lst = pca_subject_res, 
+               filename = file.path(path2figs, plot_subject_file), 
+               width = 10, height = 22)
+}
 
 ###############################################################################
 ## Adaptive GPCA
 ###############################################################################
 
-## Process data for each study arm separately 
-agpca_res <- get_ordinations(ps, group = "Group", method = "agpca")
-saveRDS(agpca_res, file = file.path(path2out, "study_arm_agpca.rds"))
+res_group_file <- paste0("agppca_", group_file, ".rds")
+res_subject_file <- paste0("agpca_", subject_file, ".rds")
+plot_group_file <- paste0("agpca_", group_file, ".pdf")
+plot_subject_file <- paste0("agpca_", subject_file, ".pdf")
 
-generate_pdf(ord_lst = agpca_res, 
-             filename = file.path(path2figs, "study_arm_agpca.pdf"), 
-             width = 15, height = 30)
+if(RUNAGPCA){
+  cat("Running adaptive GPCA \n")
+  ## Process data for each study arm separately 
+  agpca_res <- get_ordinations(ps, group = "Group", method = "agpca", ncores = 20)
+  saveRDS(agpca_res, file = file.path(path2out, res_group_file))
+  ## Process each subject separately
+  agpca_subject_res <- get_ordinations(ps, group = "Subject", method = "agpca", 
+                                       ncores = 20)
+  saveRDS(agpca_subject_res, file = file.path(path2out, res_subject_file))
+} else {
+  agpca_res <- readRDS(file = file.path(path2out, res_group_file))
+  agpca_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
+  
+}
+if(PLOTAGPCA){
+  generate_pdf(ord_lst = agpca_res, 
+               filename = file.path(path2figs, plot_group_file), 
+               width = 10, height = 22)
+  generate_pdf(ord_lst = agpca_subject_res, 
+               filename = file.path(path2figs, plot_subject_file), 
+               width = 10, height = 22)
+}
 
-## Process each subject separately
-agpca_subject_res <- get_ordinations(ps, group = "Subject", method = "agpca")
-saveRDS(agpca_subject_res, file = file.path(path2out, "subject_pca.rds"))
-
-generate_pdf(ord_lst = pca_subject_res, 
-             filename = file.path(path2figs, "subject_pca.pdf"), 
-             width = 15, height = 25)
 
 ###############################################################################
 ## tSNE
 ###############################################################################
+res_group_file <- paste0("tsnebray_", group_file, ".rds")
+res_subject_file <- paste0("tsnebray_", subject_file, ".rds")
+plot_group_file <- paste0("tsnebray_", group_file, ".pdf")
+plot_subject_file <- paste0("tsnebray_", subject_file, ".pdf")
 
-## Process data for each study arm separately 
-tsne_res <- get_ordinations(ps, group = "Group", method = "tsne")
-saveRDS(tsne_res, file = file.path(path2out, "study_arm_tsne.rds"))
+if(RUNTSNE) {
+  cat("Running tSNE on Bray\n")
+  ## Process data for each study arm separately 
+  tsne_res <- get_ordinations(ps, group = "Group", method = "tsne", ncores = 20)
+  saveRDS(tsne_res, file = file.path(path2out, res_group_file))
+  
+  ## Process each subject separately
+  tsne_subject_res <- get_ordinations(ps, group = "Subject", 
+                                      method = "tsnebray", 
+                                      ncores = 20)
+  saveRDS(tsne_subject_res, file = file.path(path2out, res_subject_file))
+} else {
+  tsne_res <- readRDS(file = file.path(path2out, res_group_file))
+  tsne_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
+}
 
-generate_pdf(ord_lst = tsne_res, 
-             filename = file.path(path2figs, "study_arm_tsne.pdf"), 
-             width = 15, height = 30)
-
-## Process each subject separately
-tsne_subject_res <- get_ordinations(ps, group = "Subject", method = "tsne")
-saveRDS(tsne_subject_res, file = file.path(path2out, "subject_pca.rds"))
-
-generate_pdf(ord_lst = pca_subject_res, 
-             filename = file.path(path2figs, "subject_pca.pdf"), 
-             width = 15, height = 25)
+if(PLOTTSNE){
+  generate_pdf(ord_lst = tsne_res, 
+             filename = file.path(path2figs, plot_group_file), 
+             width = 8, height = 12)
+  
+  generate_pdf(ord_lst = tsne_subject_res, 
+               filename = file.path(path2figs, plot_subject_file), 
+               width = 8, height = 12)
+}
 
 
+res_group_file <- paste0("tsne_", group_file, ".rds")
+res_subject_file <- paste0("tsne_", subject_file, ".rds")
+plot_group_file <- paste0("tsne_", group_file, ".pdf")
+plot_subject_file <- paste0("tsne_", subject_file, ".pdf")
 
+if(RUNTSNE) {
+  cat("Running tSNE \n")
+  ## Process data for each study arm separately 
+  tsne_res <- get_ordinations(ps, group = "Group", method = "tsne", ncores = 20)
+  saveRDS(tsne_res, file = file.path(path2out, res_group_file))
+  
+  ## Process each subject separately
+  tsne_subject_res <- get_ordinations(ps, group = "Subject", method = "tsne", 
+                                      ncores = 20)
+  saveRDS(tsne_subject_res, file = file.path(path2out, res_subject_file))
+} else {
+  tsne_res <- readRDS(file = file.path(path2out, res_group_file))
+  tsne_subject_res <- readRDS(file = file.path(path2out, res_subject_file))
+}
+
+if(PLOTTSNE){
+  generate_pdf(ord_lst = tsne_res, 
+             filename = file.path(path2figs, plot_group_file), 
+             width = 8, height = 12)
+  
+  generate_pdf(ord_lst = tsne_subject_res, 
+               filename = file.path(path2figs, plot_subject_file), 
+               width = 8, height = 12)
+}
