@@ -7,18 +7,31 @@
 
 ## Specify username
 USR=lanhuong
-## Sepcify data directory to download to
-PROJDIR=/home/lanhuong/Projects/perturbation_16s
-DATADIR=$PROJDIR/data/metatranscriptomics/resilience
-mkdir -p $DATADIR
-## Would be nice if the data are gzipped...
-rsync --copy-links --ignore-existing -r $USR@curie.stanford.edu:/relman04/projects/hmd/MetaT/Second_Pilot/*Sub $DATADIR
-rsync --copy-links --ignore-existing -r $USR@curie.stanford.edu:/relman04/projects/hmd/MetaT/GORIG/Second_Pilot/RNA_Plate* $DATADIR
-rsync --copy-links --ignore-existing -r $USR@curie.stanford.edu:/relman04/projects/hmd/MetaT/NoIntervention_5/RNA_Plate* $DATADIR
 
-#rsync -avzm --stats --safe-links --ignore-existing --dry-run --human-readable $USR@curie.stanford.edu:/relman04/projects/hmd/MetaT/Second_Pilot/*Sub $DATADIR > $DATADIR/transfer.log
-## From curie server:
-#rsync --copy-links --ignore-existing -r lanhuong@icme-share.stanford.edu:/home/lanhuong/Projects/perturbation_16s/data/metatranscriptomics/resilience
+## Run the following form the curie server where the data resides.
+# data directory 
+DATADIR=/relman04/projects/hmd/MetaT/
+DESTINATION=/scratch/users/$USR/Projects/perturbation_16s/data/metatranscriptomics/resilience/input/
+
+cd $DATADIR/Second_Pilot/
+for dir in *; do 
+    if [[ -d $dir ]] && [[ $dir = *"_Sub"* ]]; then 
+        echo Copying directory $dir to $DESTINATION/$dir
+        rsync --copy-links --ignore-existing -r \
+            ./$dir/*.fq.gz \
+            $USR@dtn.sherlock.stanford.edu:$DESTINATION/$dir/
+    fi
+done
+
+cd $DATADIR/NoIntervention_5/
+for dir in *; do 
+    if [[ -d $dir ]] && [[ $dir = *"RNA_Plate"* ]]; then 
+        echo Copying directory $dir to $DESTINATION/$dir 
+        rsync --copy-links --ignore-existing -r \
+            ./$dir/*.fq.gz \
+            $USR@dtn.sherlock.stanford.edu:$DESTINATION/$dir/
+    fi
+done
 
 #[lanhuong@curie Second_Pilot]$ ls DBUr_Sub/ | wc -l
 #173
@@ -30,3 +43,9 @@ rsync --copy-links --ignore-existing -r $USR@curie.stanford.edu:/relman04/projec
 #105
 #[lanhuong@curie Second_Pilot]$ ls EBFr_Sub/ | wc -l
 #180
+#[lanhuong@curie NoIntervention_5]$ ls RNA_Plate_11_TrM31/ | wc -l
+#192
+#[lanhuong@curie NoIntervention_5]$ ls RNA_Plate_9_TrM31/ | wc -l
+#192
+
+

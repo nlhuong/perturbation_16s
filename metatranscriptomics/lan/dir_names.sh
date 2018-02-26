@@ -10,6 +10,6 @@ export INPUT_DIR=$DATA_DIR/input/
 export OUTPUT_DIR=$DATA_DIR/output/
 
 # Script and app directories
-export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts
+export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts_edited
 export APP_DIR=~/.local/bin/
 export CODE=$STUDY_DIR/metatranscriptomics/lan
