@@ -38,8 +38,8 @@ export RM_DUPL=false
 export RM_VECTOR=false
 export RM_HOST=false
 export RM_rRNA=false
-export REREPLICATION=true
-export TAX_CLASS=true
+export REREPLICATION=false
+export TAX_CLASS=false
 export DIAMOND_REFSEQ=true
 export DIAMOND_SEED=true
 export ASSEMBLE=true
@@ -375,7 +375,7 @@ if $DIAMOND_REFSEQ; then
     start=`date +%s`
     # Align with RefSeq database
     mkdir -p dmnd_tmp
-    diamond blastx -p $n_threads -db $REF_DIR/RefSeq_bac \
+    diamond blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
         -q ${base}_mRNA.fq -a ${base}.RefSeq \
         -t ./dmnd_tmp -k 1 --sensitive
     diamond view --daa ${base}.RefSeq.daa -f 6 \
@@ -394,7 +394,7 @@ if $DIAMOND_SEED; then
     start=`date +%s`
     # Align with SEED subsystem database
     mkdir -p dmnd_tmp
-    diamond blastx -p $n_threads -db $REF_DIR/subsys_d \
+    diamond blastx -p $n_threads -d $REF_DIR/subsys_d \
         -q ${base}_mRNA.fq -a ${base}.Subsys \
         -t ./dmnd_tmp -k 1 --sensitive
     diamond view --daa ${base}.Subsys.daa -f 6 \
