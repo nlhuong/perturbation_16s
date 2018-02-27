@@ -49,7 +49,7 @@ export PROT_ANN=true
 ## Setup ------------
 
 # Input directories
-export BASE_DIR=~/Projects/perturbation_16s
+export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export DATA_DIR=$BASE_DIR/data/metatranscriptomics/resilience
 export INPUT_DIR=$DATA_DIR/input/$input_base
 # Output directories
