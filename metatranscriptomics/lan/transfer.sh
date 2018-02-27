@@ -11,7 +11,8 @@ DATADIR=/relman04/projects/hmd/MetaT/
 DESTINATION=/scratch/users/$USER/Projects/perturbation_16s/data/metatranscriptomics/resilience/input/
 
 cd $DATADIR/Second_Pilot/
-for dir in *; do
+for dir in *
+do
     if [[ -d $dir ]] && [[ $dir = *"_Sub"* ]]; then
         echo Copying directory $dir to $DESTINATION/$dir
         for file in ./$dir/*.fq.gz; do
@@ -23,7 +24,8 @@ for dir in *; do
 done
 
 cd $DATADIR/NoIntervention_5/
-for dir in *; do
+for dir in *
+do
     if [[ -d $dir ]] && [[ $dir = *"RNA_Plate"* ]]; then
         echo Copying directory $dir to $DESTINATION/$dir
         for file in ./$dir/*.fq.gz; do

@@ -6,10 +6,14 @@
 ## author: nlhuong90@gmail.com
 ## date: 2/18/2018
 
+## On ICME clusters
+# export STUDY_DIR=$SCRATCH/Projects/perturbation_16s
+# export APP_DIR=~/.local/bin
+
+export n_threads=10
 export STUDY_DIR=$SCRATCH/Projects/perturbation_16s
 export DB_DIR=$STUDY_DIR/data/databases
 export APP_DIR=$SCRATCH/applications/bin
-#~/.local/bin
 cd $APP_DIR
 
 # fastqc
@@ -56,13 +60,13 @@ make
 
 mkdir -p $DB_DIR/kaijudb
 cd $DB_DIR/kaijudb
-$APP_DIR/kaiju/bin/makeDB.sh -r # make NCBI reference DB
-## $APP_DIR/kaiju/bin/makeDB.sh -r --noDL # if already downloaded
+## The following steps seem to take INSANE amount of TIME there seem to be
+## and issue how makeDB.sh, mkbwt and mkfmi handle parallelization.
+$APP_DIR/kaiju/bin/makeDB.sh -r -t $n_threads # make NCBI reference DB
+## $APP_DIR/kaiju/bin/makeDB.sh -r -t $n_threads --noDL # if already downloaded
 ## Make custom library?
-#$APP_DIR/kaiju/bin/mkbwt -o kaiju_db -nThreads 1 kaiju_db.faa
+#$APP_DIR/kaiju/bin/mkbwt -o kaiju_db -nThreads $n_threads kaiju_db.faa
 #$APP_DIR/kaiju/bin/mkfmi kaiju_db
-cd $APP_DIR
-
 
 ## spades assembler
 cd $APP_DIR
@@ -83,11 +87,12 @@ cd sortmerna
 mkdir -p build/Release
 pushd build/Release
 cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../..
+make
 cd $APP_DIR
 
 
 # bwa
-#conda install -c bioconda bwa 
+#conda install -c bioconda bwa
 
 # samtools
 #conda install -c bioconda samtools
