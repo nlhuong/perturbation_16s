@@ -10,15 +10,17 @@
 
 export n_threads=10
 # Location of directories
-export STUDY_DIR=~/Projects/perturbation_16s
+export STUDY_DIR=$SCRATCH/Projects/perturbation_16s
 export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts
 export MT_DIR=$STUDY_DIR/data/metatranscriptomics
 export REF_DIR=$STUDY_DIR/data/databases
+export APP_DIR=$SCRATCH/applications/bin
 
 mkdir -p $PYSCRIPT_DIR
 mkdir -p $MT_DIR
 mkdir -p $REF_DIR
 
+cd $REF_DIR
 ## Download Scripts ------------
 
 wget https://github.com/ParkinsonLab/2017-Microbiome-Workshop/releases/download/Extra/precomputed_files.tar.gz
@@ -26,7 +28,7 @@ tar --wildcards -xvf precomputed_files.tar.gz *.py
 mv *.py $PYSCRIPT_DIR
 rm precomputed_files.tar.gz
 
-# Pyscripts needs editing
+# Pyscripts needs editing if used with python 3
 # file 1_(...) has inconsitent spaces/tabs 
 # multiple files changing print to python3 convention
 # rRNA removal step (file 2_Infernal_filter.py) is incompatible
@@ -42,9 +44,9 @@ cd $REF_DIR
 wget ftp://ftp.ncbi.nih.gov/pub/UniVec/UniVec_Core
 
 # Mouse reference genome
-wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_musculus.GRCm38.cds.all.fa.gz
-gzip -d Mus_musculus.GRCm38.cds.all.fa.gz
-mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
+#wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_musculus.GRCm38.cds.all.fa.gz
+#gzip -d Mus_musculus.GRCm38.cds.all.fa.gz
+#mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
 
 # Homo sapiense reference genome
 wget ftp://ftp.ensembl.org/pub/current_fasta/homo_sapiens/cds/Homo_sapiens.GRCh38.cds.all.fa.gz
@@ -73,13 +75,11 @@ cd $REF_DIR
 # Download NCBI RefSeq database:
 echo -e "NOTE: The databases are up to 28GB and may require hours to download. Users may want to consider running this download overnight.\n"
 echo "NOW DOWNLOADING NCBI REFSEQ DATABASE AT: "; date
-wget "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/RefSeq_bac.fa" --no-check-certificate
+wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/RefSeq_bac.fa" 
 
 # Download SEED Subsystems database:
 echo "NOW DOWNLOADING SEED SUBSYSTEMS DATABASE AT: "; date
-wget "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" --no-check-certificate
-
-# Download non-redundant (NR) protein DB 
+wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" # Download non-redundant (NR) protein DB 
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
 
@@ -101,11 +101,6 @@ samtools faidx $REF_DIR/UniVec_Core
 makeblastdb -in $REF_DIR/UniVec_Core -dbtype nucl
 
 # Index Host DB
-bwa index -a bwtsw $REF_DIR/mouse_cds.fa
-samtools faidx $REF_DIR/mouse_cds.fa
-makeblastdb -in $REF_DIR/mouse_cds.fa -dbtype nucl
-
-# Index Host DB
 bwa index -a bwtsw $REF_DIR/human_cds.fa
 samtools faidx $REF_DIR/human_cds.fa
 makeblastdb -in $REF_DIR/human_cds.fa -dbtype nucl
@@ -113,6 +108,7 @@ makeblastdb -in $REF_DIR/human_cds.fa -dbtype nucl
 # Index Microbes DB
 bwa index -a bwtsw $REF_DIR/microbial_all_cds.fasta
 samtools faidx $REF_DIR/microbial_all_cds.fasta
+makeblastdb -in $REF_DIR/microbial_all_cds.fasta -dbtype nucl
 
 # Index SortMeRNA
 $APP_DIR/sortmerna/build/Release/src/indexdb/indexdb \
