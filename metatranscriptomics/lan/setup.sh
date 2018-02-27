@@ -80,6 +80,8 @@ wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshar
 # Download SEED Subsystems database:
 echo "NOW DOWNLOADING SEED SUBSYSTEMS DATABASE AT: "; date
 wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" # Download non-redundant (NR) protein DB 
+
+# Download Nonredundant (NR) protein database
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
 
