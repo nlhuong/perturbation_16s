@@ -17,9 +17,11 @@ cd $DATADIR/Second_Pilot/
 for dir in *; do 
     if [[ -d $dir ]] && [[ $dir = *"_Sub"* ]]; then 
         echo Copying directory $dir to $DESTINATION/$dir
-        rsync --copy-links --ignore-existing -r \
-            ./$dir/*.fq.gz \
-            $USR@dtn.sherlock.stanford.edu:$DESTINATION/$dir/
+        for file in ./$dir/*.fq.gz; do
+            rsync --copy-links --ignore-existing -r \
+                  $file $USR@dtn.sherlock.stanford.edu:$DESTINATION/$dir/ &
+            sleep 1
+        done
     fi
 done
 
