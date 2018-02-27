@@ -6,73 +6,196 @@
 ## author: nlhuong90@gmail.com
 ## date: 2/18/2018
 
-#module load python/2.7.13
-#module load py-biopython/1.70
+## The following modules must be preloaded:
+# module load python/2.7.13
+# module load py-biopython/1.70
 # module load biology
 # module load bwa/0.7.17
 # module load samtools/1.6
 # module load ncbi-blast+/2.6.0
-module load gcc/gcc6
 
-## Input
-export input_base=${1:-DBUr_Sub}
-export input_fwd=${2:-M3303_DBUsw_2r_TrM31_1P.fq.gz}
-export input_rev=${3:-M3303_DBUsw_2r_TrM31_2P.fq.gz}
-export base=${input_fwd%_1P.fq.gz}
-export fwd=${input_fwd%.fq.gz}
-export rev=${input_rev%.fq.gz}
+## module load gcc/gcc6 # on ICME clusters
 
-## Parameters
-export paired=true
-export n_threads=${4:-10}
-export use_sortmerna=true
-export add_blat=false
+###############################################################################
+## DEFAULTS (to be removed) ----------
+# Input/Output directories
+BASE_DIR=~/Projects/perturbation_16s/
+#BASE_DIR=$SCRATCH/Projects/perturbation_16s/
+INPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub
+OUTPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub
+# Fwd/Rev files
+input_fwd=M3303_DBUsw_2r_TrM31_1P.fq.gz
+input_rev=M3303_DBUsw_2r_TrM31_2P.fq.gz
+###############################################################################
 
-## What Step to complete
-export INDEX_DB=false
-
-export TRIM=false
-export MERGE_PAIRS=false
-export QUAL_FLTR=false
-export RM_DUPL=false
-export RM_VECTOR=false
-export RM_HOST=false
-export RM_rRNA=false
-export REREPLICATION=false
-export TAX_CLASS=false
-export DIAMOND_REFSEQ=true
-export DIAMOND_SEED=true
-export ASSEMBLE=true
-export GENOME_ANN=true
-export PROT_ANN=true
-
-## Setup ------------
-
-# Input directories
-export BASE_DIR=$SCRATCH/Projects/perturbation_16s
-export DATA_DIR=$BASE_DIR/data/metatranscriptomics/resilience
-export INPUT_DIR=$DATA_DIR/input/$input_base
-# Output directories
-export OUTPUT_DIR=$DATA_DIR/output/$input_base
+## DIRECTORIES ----------
 # Reference directories
-export REF_DIR=$BASE_DIR/data/databases
-export KAIJUBD_DIR=$REF_DIR/kaijudb
-# Scripts and apps directories
-export APP_DIR=~/.local/bin/
-export SORTMERNA_DIR=$APP_DIR/sortmerna
-export PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
+BASE_DIR=~/Projects/perturbation_16s/
+#BASE_DIR=$SCRATCH/Projects/perturbation_16s/
+REF_DIR=$BASE_DIR/data/databases
+KAIJUBD_DIR=$REF_DIR/kaijudb
 
-mkdir -p $DATA_DIR
-mkdir -p $INPUT_DIR
+# Scripts and apps directories
+APP_DIR=~/.local/bin/
+#APP_DIR=$SCRATCH/applications/bin/
+SORTMERNA_DIR=$APP_DIR/sortmerna
+#PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
+
+## PARAMETERS ----------
+n_threads=5
+use_sortmerna=true
+extra_blat=false
+index_db=false
+
+## STEPS TO RUN ----------
+TRIM=false
+MERGE_PAIRS=false
+QUAL_FLTR=false
+RM_DUPL=false
+RM_VECTOR=false
+RM_HOST=true
+RM_rRNA=true
+REREPLICATION=true
+TAX_CLASS=true
+DIAMOND_REFSEQ=true
+DIAMOND_SEED=true
+ASSEMBLE=true
+GENOME_ANN=true
+PROT_ANN=true
+
+## HELP DOCS ----------
+usage() {
+s=" "
+tab="    "
+echo
+echo This program is a pipeline for processing raw metatranscriptomic reads.
+echo
+echo  "$s" -h --help  prints documentation
+echo
+echo  "$s" -i, --in_dir "$tab" location of input raw read files \(.fastq, .fq, .fasta, .fa\)
+echo  "$s" -o, --out_dir "$tab" directory of output files
+echo  "$s" -f, --fwd "$tab" forward reads file
+echo  "$s" -r, --rev "$tab" \(optional\) reverse reads file
+echo
+echo Additional options:
+echo
+echo  "$s" -t X "$tab" set number of parallel threads for the pipeline X \(default:5\)
+echo  "$s" --index-db "$tab" whether to index databases \(default:false should be done ahead\).
+echo  "$s" --sortmerna "$tab" use SortMeRNA instead of Infernal for ribodepletion step \(default:true\).
+echo  "$s" --extra-blat "$tab" use extra BLAT step during genome annotation \(default:false\).
+echo
+}
+
+## ARGUMENTS ----------
+#POSITIONAL=()
+while [[ "$#" -gt 0 ]]
+do
+key="$1"
+case $key in
+    -h|-\?|--help)
+    usage
+    exit 1
+    ;;
+    -i|--in_dir)
+    INPUT_DIR="$2"
+    if [ ! -d "$INPUT_DIR" ]; then
+       echo "Input directory $INPUT_DIR does not exist."
+       exit 1
+    fi
+    shift # past argument
+    shift # past value
+    ;;
+    -o|--out_dir)
+    OUTPUT_DIR="$2"
+    shift # past argument
+    shift # past value
+    ;;
+    -f|--fwd)
+    input_fwd="$2"
+    if [ ! -f "$INPUT_DIR/$input_fwd" ]; then
+       echo "Forward file $INPUT_DIR/$input_fwd does not exist."
+       exit 1
+    fi
+    shift # past argument
+    shift # past value
+    ;;
+    -r|--rev)
+    input_rev="$2"
+    if [ ! -f $INPUT_DIR/$input_rev ]; then
+       echo "Reverse file $INPUT_DIR/$input_rev does not exist."
+       exit 1
+    fi
+    shift # past argument
+    shift # past value
+    ;;
+    -t|--nThreads)
+    n_threads="$2"
+    if [ ! -n "$n_threads" ]; then
+        printf 'ERROR: "-t" requires a non-empty integer argument.\n' >&2
+        usage
+        exit 1
+    fi
+    shift # past argument
+    shift # past value
+    ;;
+    --sortmerna)
+    use_sortmerna=true
+    shift # past argument
+    ;;
+    --index-db)
+    index_db=true
+    shift # past argument
+    ;;
+    --extra-blat)
+    extra_blat=true
+    shift # past argument
+    ;;
+    -*) echo "unknown option: $1" >&2; exit 1;;
+    *) handle_argument "$1"; shift 1;;
+    #POSITIONAL+=("$1") # save it in an array for later
+    #shift # past argument
+    #;;
+esac
+done
+#set -- "${POSITIONAL[@]}" # restore positional parameters
+
+###############################################################################
+
+base=${input_fwd%_1P.fq.gz}
+fwd=${input_fwd%.fq.gz}
+rev=${input_rev%.fq.gz}
+
+if [ $input_rev = "" ]; then
+    paired=false
+    base=fwd
+else
+    paired=true
+fi
+
+echo PAIRED READS    = "${paired}"
+echo INPUT DIRECTORY = "${INPUT_DIR}"
+echo FWD FILE        = "${input_fwd}"
+echo REV FILE        = "${input_rev}"
+echo NO. THREADS     = "${n_threads}"
+
+# Make output direcories
 mkdir -p $OUTPUT_DIR
 mkdir -p $OUTPUT_DIR/QC
+mkdir -p $OUTPUT_DIR/trimmed/
+mkdir -p $OUTPUT_DIR/aligned/
+mkdir -p $OUTPUT_DIR/dmnd_tmp/
+mkdir -p $OUTPUT_DIR/diamond/
+mkdir -p $OUTPUT_DIR/assembled/
 
 cd $OUTPUT_DIR
 
+###############################################################################
+
 start0=`date +%s`
 ## Generate an index
-if $INDEX_DB; then
-    echo "====================================================================================="
+if $index_db; then
+    echo "====================================================================="
     echo "Indexing databases ..."
     start=`date +%s`
     # Vector (UniVec_Core)  sequences
@@ -86,11 +209,19 @@ if $INDEX_DB; then
     # All RefSeq microbiome genomes
     bwa index -a bwtsw $REF_DIR/microbial_all_cds.fasta
     samtools faidx $REF_DIR/microbial_all_cds.fasta
+    makeblastdb -in $REF_DIR/microbial_all_cds.fasta -dbtype nucl
     # Build diamond compatible rRNA_databases
-    diamond makedb -p $n_threads --in $REF_DIR/RefSeq_bac.fa --db $REF_DIR/RefSeq_bac
-    diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/subsys_db
-    diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
-    diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
+    diamond makedb -p $n_threads \
+        --in $REF_DIR/RefSeq_bac.fa \
+        --db $REF_DIR/RefSeq_bac
+    diamond makedb -p $n_threads \
+        --in $REF_DIR/subsys_db.fa \
+        --db $REF_DIR/subsys_db
+    diamond makedb -p $n_threads \
+        --in $REF_DIR/nr --db $REF_DIR/nr
+    # diamond makedb -p $n_threads \
+    #     --in $REF_DIR/uniref100.fasta \
+    #     --db $REF_DIR/uniref100
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Indexing runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
@@ -99,18 +230,21 @@ fi
 
 ## Remove adapter seqs and trim low-quality seqs  ------------
 if $TRIM && ! $paired; then
-   echo "====================================================================================="
+   echo "======================================================================"
    echo "Trimming and removing adapters ..."
    start=`date +%s`
    ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
    java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
-       SE $INPUT_DIR/$input_fwd $OUTPUT_DIR/${fwd}_trim.fastq \
-       ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
+       SE $INPUT_DIR/$input_fwd $OUTPUT_DIR/trimmed/${fwd}_trim.fastq \
+       ILLUMINACLIP:Adapters:2:30:10 LEADING:3 \
+       TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
    # Check reads quality
    $APP_DIR/FastQC/fastqc $INPUT_DIR/$input_fwd
-   $APP_DIR/FastQC/fastqc $OUTPUT_DIR/${fwd}_trim.fastq
-   mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
-   mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
+   $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${fwd}_trim.fastq
+   mv $INPUT_DIR/*.html $OUTPUT_DIR/QC/
+   mv $INPUT_DIR/*.zip $OUTPUT_DIR/QC/
+   mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
+   mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
    end=`date +%s`
    runtime=$(((end-start)/60))
    echo "Trimming and QC runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
@@ -119,22 +253,27 @@ fi
 
 ## Do the same for paired ends ------------
 if $TRIM && $paired; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Trimming and removing adapters ..."
     start=`date +%s`
     ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
     java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
         PE $INPUT_DIR/$input_fwd $INPUT_DIR/$input_rev \
-        $OUTPUT_DIR/${fwd}_paired_trim.fq $OUTPUT_DIR/${fwd}_unpaired_trim.fq \
-        $OUTPUT_DIR/${rev}_paired_trim.fq $OUTPUT_DIR/${rev}_unpaired_trim.fq \
-        ILLUMINACLIP:Adapters:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
+        $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq \
+        $OUTPUT_DIR/trimmed/${fwd}_unpaired_trim.fq \
+        $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq \
+        $OUTPUT_DIR/trimmed/${rev}_unpaired_trim.fq \
+        ILLUMINACLIP:Adapters:2:30:10 LEADING:3 \
+        TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
     # check reads quality
     $APP_DIR/FastQC/fastqc $INPUT_DIR/$input_fwd
     $APP_DIR/FastQC/fastqc $INPUT_DIR/$input_rev
-    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/${fwd}_paired_trim.fq
-    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/${rev}_paired_trim.fq
-    mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
-    mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
+    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq
+    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq
+    mv $INPUT_DIR/*.html $OUTPUT_DIR/QC/
+    mv $INPUT_DIR/*.zip $OUTPUT_DIR/QC/
+    mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
+    mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Trimming and QC runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
@@ -143,19 +282,19 @@ fi
 
 ## Merge pairs ------------
 if $MERGE_PAIRS; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Merging paired reads ..."
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_mergepairs $OUTPUT_DIR/${fwd}_paired_trim.fq \
-        --reverse $OUTPUT_DIR/${rev}_paired_trim.fq \
-        --fastqout $OUTPUT_DIR/${base}_trim.fq \
-        --fastqout_notmerged_fwd $OUTPUT_DIR/${base}_unmerged_trim_fwd.fq \
-        --fastqout_notmerged_rev $OUTPUT_DIR/${base}_unmerged_trim_rev.fq \
+        --fastq_mergepairs $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq \
+        --reverse $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq \
+        --fastqout $OUTPUT_DIR/trimmed/${base}_trim.fq \
+        --fastqout_notmerged_fwd $OUTPUT_DIR/trimmed/${base}_unmerged_trim_fwd.fq \
+        --fastqout_notmerged_rev $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq \
 
-    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/${base}_trim.fq
-    mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
-    mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
+    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${base}_trim.fq
+    mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
+    mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Merging reads runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
@@ -164,22 +303,23 @@ fi
 
 ## Global quality filtering ------------
 if $QUAL_FLTR; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Quality filtering ..."
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-       --fastq_filter $OUTPUT_DIR/${base}_trim.fq \
+       --fastq_filter $OUTPUT_DIR/trimmed/${base}_trim.fq \
        --fastq_maxee 2.0 \
        --fastqout $OUTPUT_DIR/${base}_qual.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Quality filtering runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Quality filtering runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove duplicate reads ------------
 if $RM_DUPL; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Remove duplicates ..."
     start=`date +%s`
     $APP_DIR/cdhit/cd-hit-auxtools/cd-hit-dup \
@@ -187,73 +327,89 @@ if $RM_DUPL; then
         -o $OUTPUT_DIR/${base}_unique.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Remove duplicates runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Remove duplicates runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove unwanted vector contamination ------------
 if $RM_VECTOR; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Remove vector sequences ..."
     start=`date +%s`
     # align reads with vector db  and filter any reads that align to it
     bwa mem -t $n_threads $REF_DIR/UniVec_Core \
-        ${base}_unique.fq > ${base}_univec_bwa.sam
-    samtools view -bS ${base}_univec_bwa.sam > ${base}_univec_bwa.bam
-    samtools fastq -n -F 4 -0 ${base}_univec_bwa_contam.fq ${base}_univec_bwa.bam
-    samtools fastq -n -f 4 -0 ${base}_univec_bwa.fq ${base}_univec_bwa.bam
+        $OUTPUT_DIR/${base}_unique.fq > \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.sam
+    samtools view -bS \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.sam > \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.bam
+    samtools fastq -n -F 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa_contam.fq \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.bam
+    samtools fastq -n -f 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.fq \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.bam
 
     # additional alignments for the reads with BLAT to filter out any remaining
-    # reads that align to our vector contamination database but BLAT only accepts
-    # fasta files so we have to convert our reads from fastq to fasta w/ vsearch
+    # reads that align to our vector contamination database but BLAT only
+    # accepts .fasta so we convert reads from fastq to fasta w/ vsearch
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_filter ${base}_univec_bwa.fq \
-        --fastaout ${base}_univec_bwa.fasta
+        --fastq_filter $OUTPUT_DIR/aligned/${base}_univec_bwa.fq \
+        --fastaout $OUTPUT_DIR/aligned/${base}_univec_bwa.fasta
 
     blat $REF_DIR/UniVec_Core \
-        ${base}_univec_bwa.fasta \
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.fasta \
         -noHead -minIdentity=90 -minScore=65 \
         -fine -q=rna -t=dna -out=blast8 \
-        ${base}_univec.blatout
+        $OUTPUT_DIR/aligned/${base}_univec.blatout
 
     $PYSCRIPT_DIR/1_BLAT_Filter.py \
-        ${base}_univec_bwa.fq \
-        ${base}_univec.blatout \
-        ${base}_univec_blat.fq \
-        ${base}_univec_blat_contam.fq
+        $OUTPUT_DIR/aligned/${base}_univec_bwa.fq \
+        $OUTPUT_DIR/aligned/${base}_univec.blatout \
+        $OUTPUT_DIR/aligned/${base}_univec_blat.fq \
+        $OUTPUT_DIR/aligned/${base}_univec_blat_contam.fq
 
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Removing vectors runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Removing vectors runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Remove host reads ----------
 # the same logic as the previous step
 if $RM_HOST; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Remove host sequences ..."
     start=`date +%s`
     bwa mem -t $n_threads $REF_DIR/human_cds.fa \
-        ${base}_univec_blat.fq > ${base}_human_bwa.sam
-    samtools view -bS ${base}_human_bwa.sam > ${base}_human_bwa.bam
-    samtools fastq -n -F 4 -0 ${base}_human_bwa_contam.fq ${base}_human_bwa.bam
-    samtools fastq -n -f 4 -0 ${base}_human_bwa.fq ${base}_human_bwa.bam
+        $OUTPUT_DIR/aligned/${base}_univec_blat.fq > \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.sam
+    samtools view -bS \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.sam > \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.bam
+    samtools fastq -n -F 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_human_bwa_contam.fq \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.bam
+    samtools fastq -n -f 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.fq \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.bam
 
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_filter ${base}_human_bwa.fq \
-        --fastaout ${base}_human_bwa.fasta
+        --fastq_filter $OUTPUT_DIR/aligned/${base}_human_bwa.fq \
+        --fastaout $OUTPUT_DIR/aligned/${base}_human_bwa.fasta
 
     blat $REF_DIR/human_cds.fa \
-        ${base}_human_bwa.fasta \
+        $OUTPUT_DIR/aligned/${base}_human_bwa.fasta \
         -noHead -minIdentity=90 -minScore=65 \
         -fine -q=rna -t=dna -out=blast8 \
-        ${base}_human.blatout
+        $OUTPUT_DIR/aligned/${base}_human.blatout
 
     $PYSCRIPT_DIR/1_BLAT_Filter.py \
-        ${base}_human_bwa.fq \
-        ${base}_human.blatout \
-        ${base}_human_blat.fq \
-        ${base}_human_blat_contam.fq
+        $OUTPUT_DIR/aligned/${base}_human_bwa.fq \
+        $OUTPUT_DIR/aligned/${base}_human.blatout \
+        $OUTPUT_DIR/aligned/${base}_human_blat.fq \
+        $OUTPUT_DIR/aligned/${base}_human_blat_contam.fq
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -262,66 +418,69 @@ fi
 
 ## Remove rRNA seqs -----------
 if $RM_rRNA && $use_sortmerna; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Ribodepletion with SortMeRNA ..."
     start=`date +%s`
     $SORTMERNA_DIR/build/Release/src/sortmerna/sortmerna \
         --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta,$SORTMERNA_DIR/index/silva-bac-16s \
-        --reads ${base}_human_blat.fq \
-        --aligned ${base}_unique_rRNA \
-        --other ${base}_unique_mRNA \
+        --reads $OUTPUT_DIR/aligned/${base}_human_blat.fq \
+        --aligned $OUTPUT_DIR/${base}_unique_rRNA \
+        --other $OUTPUT_DIR/${base}_unique_mRNA \
         --fastx --num_alignments 0 --log \
-        -a $n_threads -v 
+        -a $n_threads -v
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "SortMeRNA ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "SortMeRNA ribodepletion runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 if $RM_rRNA && ! $use_sortmerna; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Ribodepletion with infernalout ..."
     start=`date +%s`
-    
+    mkdir -p $OUTPUT_DIR/infernal
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_filter ${base}_human_blat.fq \
-        --fastaout ${base}_human_blat.fasta
+        --fastq_filter $OUTPUT_DIR/aligned/${base}_human_blat.fq \
+        --fastaout $OUTPUT_DIR/aligned/${base}_human_blat.fasta
 
     $APP_DIR/infernal-1.1.2-linux-intel-gcc/binaries/cmsearch \
-        -o ${base}_rRNA.log \
-        --tblout ${base}_rRNA.infernalout \
+        -o $OUTPUT_DIR/infernal/${base}_rRNA.log \
+        --tblout $OUTPUT_DIR/infernal/${base}_rRNA.infernalout \
         --anytrunc --rfam -E 0.001 --cpu $n_threads \
         $REF_DIR/Rfam.cm \
-        ${base}_human_blat.fasta
-    
+        $OUTPUT_DIR/aligned/${base}_human_blat.fasta
+
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Infernal ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Infernal ribodepletion runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 
     start=`date +%s`
     $PYSCRIPT_DIR/2_Infernal_Filter.py \
-        ${base}_human_blat.fq \
-        ${base}_rRNA.infernalout \
-        ${base}_unique_mRNA.fq \
-        ${base}_unique_rRNA.fq
-    
+        $OUTPUT_DIR/aligned/${base}_human_blat.fq \
+        $OUTPUT_DIR/infernal/${base}_rRNA.infernalout \
+        $OUTPUT_DIR/${base}_unique_mRNA.fq \
+        $OUTPUT_DIR/${base}_unique_rRNA.fq
+
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Python infernal filter runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Python infernal filter runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Rereplication (add back the repeated reads) ----------
 if $REREPLICATION; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Rereplication ..."
     start=`date +%s`
     $PYSCRIPT_DIR/3_Reduplicate.py \
-        ${base}_qual.fq \
-        ${base}_unique_mRNA.fq \
-        ${base}_unique.fq.clstr \
-        ${base}_mRNA.fq
+        $OUTPUT_DIR/${base}_qual.fq \
+        $OUTPUT_DIR/${base}_unique_mRNA.fq \
+        $OUTPUT_DIR/${base}_unique.fq.clstr \
+        $OUTPUT_DIR/${base}_mRNA.fq
 
-    $APP_DIR/FastQC/fastqc ${base}_mRNA.fq
+    $APP_DIR/FastQC/fastqc $OUTPUT_DIR/${base}_mRNA.fq
     mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
@@ -331,74 +490,88 @@ fi
 
 ## Taxonomic Classification ------------
 if $TAX_CLASS; then
-    echo "====================================================================================="
+    mkdir -p taxonomy
+    echo "====================================================================="
     echo "Taxonomy classification ..."
     start=`date +%s`
     $APP_DIR/kaiju/bin/kaiju \
         -t $KAIJUBD_DIR/nodes.dmp \
         -f $KAIJUBD_DIR/kaiju_db.fmi \
-        -i ${base}_mRNA.fq \
+        -i $OUTPUT_DIR/${base}_mRNA.fq \
         -z $n_threads \
-        -o ${base}_tax_class.tsv
+        -o $OUTPUT_DIR/taxonomy/${base}_tax_class.tsv
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Kaiju runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
-    
+
     start=`date +%s`
     $PYSCRIPT_DIR/4_Constrain_Classification.py \
         genus \
-        ${base}_tax_class.tsv \
+        $OUTPUT_DIR/taxonomy/${base}_tax_class.tsv \
         $KAIJUBD_DIR/nodes.dmp \
         $KAIJUBD_DIR/names.dmp \
-        ${base}_genus_class.tsv
+        $OUTPUT_DIR/taxonomy/${base}_genus_class.tsv
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Python script process taxonomy result runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Python script process taxonomy result runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 
     start=`date +%s`
     $APP_DIR/kaiju/bin/kaijuReport \
         -t $KAIJUBD_DIR/nodes.dmp \
         -n $KAIJUBD_DIR/names.dmp \
-        -i ${base}_genus_class.tsv \
-        -o ${base}_genus_class_summary.txt \
+        -i $OUTPUT_DIR/taxonomy/${base}_genus_class.tsv \
+        -o $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt \
         -r genus
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Aggregate taxonomy res runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Aggregate taxonomy res runtime: $runtime min" >> \
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## DIAMOND annotation -----------
 if $DIAMOND_REFSEQ; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Refseq annotation with DIAMOND ..."
     start=`date +%s`
     # Align with RefSeq database
-    mkdir -p dmnd_tmp
     diamond blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
-        -q ${base}_mRNA.fq -a ${base}.RefSeq \
-        -t ./dmnd_tmp -k 1 --sensitive
-    diamond view --daa ${base}.RefSeq.daa -f 6 \
-        -o ${base}_refseq.dmdout
+        -q $OUTPUT_DIR/${base}_mRNA.fq
+        -o $OUTPUT_DIR/diamond/${base}_refseq.dmdout
+        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+
+    # diamond blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
+    #     -q $OUTPUT_DIR/${base}_mRNA.fq \
+    #     -a $OUTPUT_DIR/diamond/${base}.RefSeq \
+    #     -t ./dmnd_tmp -k 1 --sensitive
+    # diamond view --daa ${base}.RefSeq.daa -f 6 \
+    #     -o $OUTPUT_DIR/diamond/${base}_refseq.dmdout
 
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Refseq annotation (diamond) runtime: $runtime min" >> \
-            $OUTPUT_DIR/${base}_time.log
+        $OUTPUT_DIR/${base}_time.log
 fi
 
 
 if $DIAMOND_SEED; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "SEED annotation with DIAMOND ..."
     start=`date +%s`
     # Align with SEED subsystem database
-    mkdir -p dmnd_tmp
     diamond blastx -p $n_threads -d $REF_DIR/subsys_d \
-        -q ${base}_mRNA.fq -a ${base}.Subsys \
-        -t ./dmnd_tmp -k 1 --sensitive
-    diamond view --daa ${base}.Subsys.daa -f 6 \
-        -o ${base}_seed.dmdout
+        -q $OUTPUT_DIR/${base}_mRNA.fq \
+        -o $OUTPUT_DIR/diamond/${base}_seed.dmdout \
+        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+
+    # diamond blastx -p $n_threads -d $REF_DIR/subsys_d \
+    #     -q $OUTPUT_DIR/${base}_mRNA.fq \
+    #     -a $OUTPUT_DIR/diamond/${base}.Subsys \
+    #     -t ./dmnd_tmp -k 1 --sensitive
+    # diamond view --daa ${base}.Subsys.daa -f 6 \
+    #     -o $OUTPUT_DIR/diamond/${base}_seed.dmdout
+
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "SEED annotation (diamond) runtime: $runtime min" >> \
@@ -408,26 +581,30 @@ fi
 
 ## Assemble reads into contigs -----------
 if $ASSEMBLE; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Contigs assembly ..."
     start=`date +%s`
     # Build contigs
     $APP_DIR/SPAdes-3.11.1-Linux/bin/spades.py \
         --rna -t $n_threads \
-        -s ${base}_mRNA.fq \
-        -o ${base}_spades
-    mv ${base}_spades/transcripts.fasta ${base}_contigs.fasta
+        -s $OUTPUT_DIR/${base}_mRNA.fq \
+        -o $OUTPUT_DIR/assembled/${base}_spades
+    mv $OUTPUT_DIR/assembled/${base}_spades/transcripts.fasta \
+        $OUTPUT_DIR/assembled/${base}_contigs.fasta
 
     # Use the contigs as the database and align unassembled mRNA reads to it
-    bwa index -a bwtsw ${base}_contigs.fasta
-    bwa mem -t $n_threads ${base}_contigs.fasta ${base}_mRNA.fq > ${base}_contigs.sam
+    bwa index -a bwtsw $OUTPUT_DIR/assembled/${base}_contigs.fasta
+    bwa mem -t $n_threads \
+        $OUTPUT_DIR/assembled/${base}_contigs.fasta \
+        $OUTPUT_DIR/${base}_mRNA.fq > $OUTPUT_DIR/assembled/${base}_contigs.sam
 
     # Make reads to contigs map
     $PYSCRIPT_DIR/5_Contig_Map.py \
-        ${base}_mRNA.fq \
-        ${base}_contigs.sam \
-        ${base}_unassembled.fq \
-        ${base}_contigs_map.tsv
+        $OUTPUT_DIR/${base}_mRNA.fq \
+        $OUTPUT_DIR/assembled/${base}_contigs.sam \
+        $OUTPUT_DIR/assembled/${base}_unassembled.fq \
+        $OUTPUT_DIR/assembled/${base}_contigs_map.tsv
+
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Assemble runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
@@ -436,63 +613,67 @@ fi
 
 ## Genome annotation -----------
 if $GENOME_ANN; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Genome annotation with BWA ..."
+    mkdir -p $OUTPUT_DIR/genome/
     start=`date +%s`
     # BWA utilizes nucleotide searches, we rely on a microbial genome database
     # Search DB
     bwa mem -t $n_threads $REF_DIR/microbial_all_cds.fasta \
-        ${base}_contigs.fasta > ${base}_contigs_annotation_bwa.sam
+        $OUTPUT_DIR/assembled/${base}_contigs.fasta > \
+        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.sam
     bwa mem -t $n_threads $REF_DIR/microbial_all_cds.fasta \
-        ${base}_unassembled.fq > ${base}_unassembled_annotation_bwa.sam
+        $OUTPUT_DIR/assembled/${base}_unassembled.fq > \
+        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam
 
     # IS THE FOLLOWING EVEN USEFUL? HOW TO ADD TO 6_BWA_Gene_Map.py ???
-    if $add_blat; then
+    if $extra_blat; then
         # If we want to refine bwa alignments using blat
         # Extract reads that did not map to microbial genomes
         samtools view -bS \
-           ${base}_contigs_annotation_bwa.sam > ${base}_contigs_annotation_bwa.bam
+           $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.sam > \
+           $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
         samtools fastq -n -F 4 -0 \
-            ${base}_contigs_annotation_aligned_bwa.fq \
-            ${base}_contigs_annotation_bwa.bam
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_aligned_bwa.fq \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
         samtools fastq -n -f 4 -0 \
-            ${base}_contigs_annotation_bwa.fq \
-            ${base}_contigs_annotation_bwa.bam
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.fq \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
 
         $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-            --fastq_filter ${base}_contigs_annotation_bwa.fq \
-            --fastaout ${base}_contigs_annotation_bwa.fasta
+            --fastq_filter $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.fq \
+            --fastaout $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.fasta
 
         # Additional alignments to reads not mapped by bwa
         blat $REF_DIR/microbial_all_cds.fasta \
-            ${base}_contigs_annotation_bwa.fasta \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.fasta \
             -fine -q=rna -t=dna -out=blast8 \
             -noHead -minIdentity=90 -minScore=65  \
-            ${base}_contigs_annotation_bwa.blatout
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.blatout
 
         $PYSCRIPT_DIR/1_BLAT_Filter.py \
-            ${base}_contigs_annotation_bwa.fq \
-            ${base}_contigs_annotation_bwa.blatout \
-            ${base}_contigs_annotation_blat.fq \
-            ${base}_contigs_annotation_aligned_blat.fq
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.fq \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.blatout \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_blat.fq \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_aligned_blat.fq
 
-        cat ${base}_contigs_annotation_aligned_bwa.fq \
-            ${base}_contigs_annotation_aligned_blat.fq > \
-            ${base}_contigs_annotation_aligned_bwa_blat.fq
+        cat $OUTPUT_DIR/assembled/${base}_contigs_annotation_aligned_bwa.fq \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_aligned_blat.fq > \
+            $OUTPUT_DIR/assembled/${base}_contigs_annotation_aligned_bwa_blat.fq
         ## DO THE SAME FOR UNASSEMBLED???
     fi
 
     $PYSCRIPT_DIR/6_BWA_Gene_Map.py \
         $REF_DIR/microbial_all_cds.fasta \
-        ${base}_contigs_map.tsv \
-        ${base}_genes_map.tsv \
-        ${base}_genes.fasta \
-        ${base}_contigs.fasta \
-        ${base}_contigs_annotation_bwa.sam \
-        ${base}_contigs_unmapped.fasta \
-        ${base}_unassembled.fq \
-        ${base}_unassembled_annotation_bwa.sam \
-        ${base}_unassembled_unmapped.fasta
+        $OUTPUT_DIR/genome/${base}_contigs_map.tsv \
+        $OUTPUT_DIR/genome/${base}_genes_map.tsv \
+        $OUTPUT_DIR/genome/${base}_genes.fasta \
+        $OUTPUT_DIR/assembled/${base}_contigs.fasta \
+        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.sam \
+        $OUTPUT_DIR/genome/${base}_contigs_unmapped.fasta \
+        $OUTPUT_DIR/assembled/${base}_unassembled.fq \
+        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam \
+        $OUTPUT_DIR/genome/${base}_unassembled_unmapped.fasta
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -502,34 +683,34 @@ fi
 
 ## Protein annotation -----------
 if $PROT_ANN; then
-    echo "====================================================================================="
+    echo "====================================================================="
     echo "Protein annotation with DIAMOND on unmapped sequences ..."
+    mkdir -p $OUTPUT_DIR/protein/
     start=`date +%s`
-    mkdir -p dmnd_tmp
     diamond blastx --id 85 --query-cover 65 --min-score 60 \
         -p $n_threads -d $REF_DIR/nr \
-        -q ${base}_contigs_unmapped.fasta \
-        -o ${base}_contigs.dmdout \
-        -f 6 -t dmnd_tmp -k 10
+        -q $OUTPUT_DIR/genome/${base}_contigs_unmapped.fasta \
+        -o $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
 
 
     diamond blastx --id 85 --query-cover 65 --min-score 60 \
         -p $n_threads -d $REF_DIR/nr \
-        -q ${base}_unassembled_unmapped.fasta \
-        -o ${base}_unassembled.dmdout \
-        -f 6 -t dmnd_tmp -k 10 \
+        -q $OUTPUT_DIR/genome/${base}_unassembled_unmapped.fasta \
+        -o $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10 \
 
     $PYSCRIPT_DIR/7_Diamond_Protein_Map.py \
         $REF_DIR/nr \
-        ${base}_contigs_map.tsv \
-        ${base}_genes_map.tsv \
-        ${base}_proteins.fasta \
-        ${base}_contigs_unmapped.fasta \
-        ${base}_contigs.dmdout \
-        ${base}_contigs_unannotated.fasta \
-        ${base}_unassembled_unmapped.fasta \
-        ${base}_unassembled.dmdout \
-        ${base}_unassembled_unannotated.fasta
+        $OUTPUT_DIR/genome/${base}_contigs_map.tsv \
+        $OUTPUT_DIR/genome/${base}_genes_map.tsv \
+        $OUTPUT_DIR/proteins/${base}_proteins.fasta \
+        $OUTPUT_DIR/genome/${base}_contigs_unmapped.fasta \
+        $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
+        $OUTPUT_DIR/protein/${base}_contigs_unannotated.fasta \
+        $OUTPUT_DIR/genome/${base}_unassembled_unmapped.fasta \
+        $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
+        $OUTPUT_DIR/protein/${base}_unassembled_unannotated.fasta
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -540,5 +721,5 @@ fi
 end0=`date +%s`
 runtime0=$(((end0-start0)/60))
 echo "======================================"
-echo "ENTIRE WORKFLOW RUNTIME: $(runtime0) min" >> \
+echo "ENTIRE WORKFLOW RUNTIME: $runtime0 min" >> \
     $OUTPUT_DIR/${base}_time.log

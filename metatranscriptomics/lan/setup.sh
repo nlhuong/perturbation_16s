@@ -9,12 +9,25 @@
 ## date: 2/19/2018
 
 export n_threads=10
+
+# module load python/2.7.13
+# module load py-biopython/1.70
+module load biology
+module load bwa/0.7.17
+module load samtools/1.6
+module load ncbi-blast+/2.6.0
+
+## On ICME clusters
+# export STUDY_DIR=~/Projects/perturbation_16s
+# export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts_edited 
+# export APP_DIR=~/.local/bin 
+
 # Location of directories
 export STUDY_DIR=$SCRATCH/Projects/perturbation_16s
+export APP_DIR=$SCRATCH/applications/bin
 export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts
 export MT_DIR=$STUDY_DIR/data/metatranscriptomics
 export REF_DIR=$STUDY_DIR/data/databases
-export APP_DIR=$SCRATCH/applications/bin
 
 mkdir -p $PYSCRIPT_DIR
 mkdir -p $MT_DIR
@@ -35,7 +48,6 @@ rm precomputed_files.tar.gz
 # with python 3 as SeqRecord is not hashable edited file uses 
 # dictionary instead of set(). Edited scripts are saved in
 # a new folder
-export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts_edited
 
 ## Setup reference etc ----------
 
@@ -90,10 +102,10 @@ wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fast
 tar -zxvf uniref100.fasta.gz
 rm uniref100.fasta.gz
 
-diamond makedb -p $n_threads --in $REF_DIR/RefSeq_bac.fa --db $REF_DIR/RefSeq_bac
-diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/subsys_db
-diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
-diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/RefSeq_bac.fa --db $REF_DIR/RefSeq_bac
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/subsys_db
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
 
 ## Build database indexes -----------
 
