@@ -6,6 +6,8 @@
 ## author: nlhuong90@gmail.com
 ## date: 2/18/2018
 
+#module load python/2.7.13
+#module load py-biopython/1.70
 # module load biology
 # module load bwa/0.7.17
 # module load samtools/1.6
@@ -23,21 +25,21 @@ export rev=${input_rev%.fq.gz}
 ## Parameters
 export paired=true
 export n_threads=${4:-10}
-export use_sortmerna=false
+export use_sortmerna=true
 export add_blat=false
 
 ## What Step to complete
 export INDEX_DB=false
 
-export TRIM=true
-export MERGE_PAIRS=true
-export QUAL_FLTR=true
-export RM_DUPL=true
-export RM_VECTOR=true
-export RM_HOST=true
-export RM_rRNA=true
-export REREPLICATION=true
-export TAX_CLASS=true
+export TRIM=false
+export MERGE_PAIRS=false
+export QUAL_FLTR=false
+export RM_DUPL=false
+export RM_VECTOR=false
+export RM_HOST=false
+export RM_rRNA=false
+export REREPLICATION=false
+export TAX_CLASS=false
 export DIAMOND_REFSEQ=true
 export DIAMOND_SEED=true
 export ASSEMBLE=true
@@ -57,7 +59,7 @@ export REF_DIR=$BASE_DIR/data/databases
 export KAIJUBD_DIR=$REF_DIR/kaijudb
 # Scripts and apps directories
 export APP_DIR=~/.local/bin/
-export SORTMERNA_DIR=$APP_DIR/sortmerna/build/Release/src/sortmerna/
+export SORTMERNA_DIR=$APP_DIR/sortmerna
 export PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 
 mkdir -p $DATA_DIR
@@ -260,14 +262,16 @@ fi
 
 ## Remove rRNA seqs -----------
 if $RM_rRNA && $use_sortmerna; then
+    echo "====================================================================================="
     echo "Ribodepletion with SortMeRNA ..."
     start=`date +%s`
-    $SORTMERNA_DIR/sortmerna \
-        --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta,$SORTMERNA_DIR/index/silva-bac-16s-db \
+    $SORTMERNA_DIR/build/Release/src/sortmerna/sortmerna \
+        --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta,$SORTMERNA_DIR/index/silva-bac-16s \
         --reads ${base}_human_blat.fq \
-        --aligned ${base}_unique_rRNA.fq \
-        --other ${base}_unique_mRNA.fq \
-        --fastx --num_alignments 0 --log -v
+        --aligned ${base}_unique_rRNA \
+        --other ${base}_unique_mRNA \
+        --fastx --num_alignments 0 --log \
+        -a $n_threads -v 
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "SortMeRNA ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
@@ -277,6 +281,7 @@ if $RM_rRNA && ! $use_sortmerna; then
     echo "====================================================================================="
     echo "Ribodepletion with infernalout ..."
     start=`date +%s`
+    
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
         --fastq_filter ${base}_human_blat.fq \
         --fastaout ${base}_human_blat.fasta
@@ -284,18 +289,24 @@ if $RM_rRNA && ! $use_sortmerna; then
     $APP_DIR/infernal-1.1.2-linux-intel-gcc/binaries/cmsearch \
         -o ${base}_rRNA.log \
         --tblout ${base}_rRNA.infernalout \
-        --anytrunc --rfam -E 0.001 \
+        --anytrunc --rfam -E 0.001 --cpu $n_threads \
         $REF_DIR/Rfam.cm \
         ${base}_human_blat.fasta
+    
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "Infernal ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 
+    start=`date +%s`
     $PYSCRIPT_DIR/2_Infernal_Filter.py \
         ${base}_human_blat.fq \
         ${base}_rRNA.infernalout \
         ${base}_unique_mRNA.fq \
         ${base}_unique_rRNA.fq
+    
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Infernal ribodepletion runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Python infernal filter runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
@@ -329,14 +340,22 @@ if $TAX_CLASS; then
         -i ${base}_mRNA.fq \
         -z $n_threads \
         -o ${base}_tax_class.tsv
-
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "Kaiju runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    
+    start=`date +%s`
     $PYSCRIPT_DIR/4_Constrain_Classification.py \
         genus \
         ${base}_tax_class.tsv \
         $KAIJUBD_DIR/nodes.dmp \
         $KAIJUBD_DIR/names.dmp \
         ${base}_genus_class.tsv
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "Python script process taxonomy result runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 
+    start=`date +%s`
     $APP_DIR/kaiju/bin/kaijuReport \
         -t $KAIJUBD_DIR/nodes.dmp \
         -n $KAIJUBD_DIR/names.dmp \
@@ -345,7 +364,7 @@ if $TAX_CLASS; then
         -r genus
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "Assign taxonomy runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
+    echo "Aggregate taxonomy res runtime: $runtime min" >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
@@ -356,7 +375,7 @@ if $DIAMOND_REFSEQ; then
     start=`date +%s`
     # Align with RefSeq database
     mkdir -p dmnd_tmp
-    diamond blastx -p $n_threads -db $REF_DIR/RefSeq_bac \
+    diamond blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
         -q ${base}_mRNA.fq -a ${base}.RefSeq \
         -t ./dmnd_tmp -k 1 --sensitive
     diamond view --daa ${base}.RefSeq.daa -f 6 \
@@ -375,7 +394,7 @@ if $DIAMOND_SEED; then
     start=`date +%s`
     # Align with SEED subsystem database
     mkdir -p dmnd_tmp
-    diamond blastx -p $n_threads -db $REF_DIR/subsys_d \
+    diamond blastx -p $n_threads -d $REF_DIR/subsys_d \
         -q ${base}_mRNA.fq -a ${base}.Subsys \
         -t ./dmnd_tmp -k 1 --sensitive
     diamond view --daa ${base}.Subsys.daa -f 6 \
