@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ##
-## Setup for metatranscriptomics data processing pipline. 
+## Setup for metatranscriptomics data processing pipline.
 ## Mainly downloading reference databases.
 ## The pipeline is based on the workflow below:
 ## https://github.com/ParkinsonLab/2017-Microbiome-Workshop
@@ -8,62 +8,77 @@
 ## author: nlhuong90@gmail.com
 ## date: 2/19/2018
 
-export n_threads=10
+n_threads=10
 
-# module load python/2.7.13
-# module load py-biopython/1.70
-module load biology
-module load bwa/0.7.17
-module load samtools/1.6
-module load ncbi-blast+/2.6.0
+## DIRECTORIES ----------
+if [ -z ${SCRATCH+x} ]; then
+    #the variable $SCRATCH is unset
+    echo Working on ICME cluster
+    module load gcc/gcc6
+    BASE_DIR=~/Projects/perturbation_16s
+    APP_DIR=~/.local/bin/
+    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
+else
+    echo Working on SHERLOCK cluster
+    ## The following modules must be preloaded:
+    # module load python/2.7.13
+    # module load py-biopython/1.70
+    module load biology
+    module load bwa/0.7.17
+    module load samtools/1.6
+    module load ncbi-blast+/2.6.0
+    BASE_DIR=$SCRATCH/Projects/perturbation_16s
+    APP_DIR=$SCRATCH/applications/bin/
+    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+fi
 
-## On ICME clusters
-# export STUDY_DIR=~/Projects/perturbation_16s
-# export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts_edited 
-# export APP_DIR=~/.local/bin 
-
-# Location of directories
-export STUDY_DIR=$SCRATCH/Projects/perturbation_16s
-export APP_DIR=$SCRATCH/applications/bin
-export PYSCRIPT_DIR=$STUDY_DIR/metatranscriptomics/pyscripts
-export MT_DIR=$STUDY_DIR/data/metatranscriptomics
-export REF_DIR=$STUDY_DIR/data/databases
+# Matetranscriptomics data folder
+MT_DIR=$BASE_DIR/data/metatranscriptomics
+# Pthon scripts
+PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+# Reference directories
+REF_DIR=$BASE_DIR/data/databases
+KAIJUBD_DIR=$REF_DIR/kaijudb
+# SortMeRNA directories
+SORTMERNA_DIR=$APP_DIR/sortmerna
 
 mkdir -p $PYSCRIPT_DIR
 mkdir -p $MT_DIR
 mkdir -p $REF_DIR
 
 cd $REF_DIR
-## Download Scripts ------------
 
+## Download Scripts ------------
 wget https://github.com/ParkinsonLab/2017-Microbiome-Workshop/releases/download/Extra/precomputed_files.tar.gz
 tar --wildcards -xvf precomputed_files.tar.gz *.py
 mv *.py $PYSCRIPT_DIR
 rm precomputed_files.tar.gz
 
-# Pyscripts needs editing if used with python 3
-# file 1_(...) has inconsitent spaces/tabs 
-# multiple files changing print to python3 convention
-# rRNA removal step (file 2_Infernal_filter.py) is incompatible
-# with python 3 as SeqRecord is not hashable edited file uses 
-# dictionary instead of set(). Edited scripts are saved in
-# a new folder
+# Pyscripts needs editing if used with python3
+# (A) 1_BLAT_Filter.py has inconsitent spaces/tabs
+# (B) 2_Infernal_filter.py needs changing set() to dictionary {} as SeqRecord
+#     type is no longer hashable in python3.
+# (B) multiple files changing print to python3; need to change print statements
+#
+# Edit scripts and save in a new folder in the following location:
+# $BASE_DIR/metatranscriptomics/pyscripts_edited
 
-## Setup reference etc ----------
 
-# vector sequences
+## Download reference databases ----------
+# Vector sequences
 cd $REF_DIR
 wget ftp://ftp.ncbi.nih.gov/pub/UniVec/UniVec_Core
-
-# Mouse reference genome
-#wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_musculus.GRCm38.cds.all.fa.gz
-#gzip -d Mus_musculus.GRCm38.cds.all.fa.gz
-#mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
 
 # Homo sapiense reference genome
 wget ftp://ftp.ensembl.org/pub/current_fasta/homo_sapiens/cds/Homo_sapiens.GRCh38.cds.all.fa.gz
 gzip -d Homo_sapiens.GRCh38.cds.all.fa.gz
 mv Homo_sapiens.GRCh38.cds.all.fa human_cds.fa
+
+# Mouse reference genome
+# wget ftp://ftp.ensembl.org/pub/current_fasta/mus_musculus/cds/Mus_musculus.GRCm38.cds.all.fa.gz
+# gzip -d Mus_musculus.GRCm38.cds.all.fa.gz
+# mv Mus_musculus.GRCm38.cds.all.fa mouse_cds.fa
+
 
 # Protein families
 wget ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz
@@ -76,36 +91,30 @@ mkdir microbial_references
 tar -zxvf all.ffn.tar.gz -C microbial_references/
 cd microbial_references
 # merge genomes into one fasta
-find . -name '*ffn' -exec cat {} \;> ../microbial_all_cds.fasta 
+find . -name '*ffn' -exec cat {} \;> ../microbial_all_cds.fasta
 cd ../
 rm -r microbial_references/
 rm all.ffn.tar.gz
 cd $REF_DIR
 
-## Adapted from SAMSA2
-
-# Download NCBI RefSeq database:
-echo -e "NOTE: The databases are up to 28GB and may require hours to download. Users may want to consider running this download overnight.\n"
-echo "NOW DOWNLOADING NCBI REFSEQ DATABASE AT: "; date
-wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/RefSeq_bac.fa" 
-
-# Download SEED Subsystems database:
-echo "NOW DOWNLOADING SEED SUBSYSTEMS DATABASE AT: "; date
-wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" # Download non-redundant (NR) protein DB 
-
 # Download Nonredundant (NR) protein database
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
 
-# Download UniProt DB
-wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fasta.gz
-tar -zxvf uniref100.fasta.gz
-rm uniref100.fasta.gz
+# Download UniProt DB (takes a long time 32GB)
+# wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fasta.gz
+# gunzip uniref100.fasta.gz
 
-$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/RefSeq_bac.fa --db $REF_DIR/RefSeq_bac
-$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/subsys_db
-$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
-$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
+## The following is Adapted from SAMSA2
+
+# Download NCBI RefSeq database:
+echo -e "NOTE: The databases are up to 28GB and may require hours to download. Users may want to consider running this download overnight.\n"
+echo "NOW DOWNLOADING NCBI REFSEQ DATABASE AT: "; date
+wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/RefSeq_bac.fa"
+
+# Download SEED Subsystems database:
+echo "NOW DOWNLOADING SEED SUBSYSTEMS DATABASE AT: "; date
+wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" # Download non-redundant (NR) protein DB
 
 ## Build database indexes -----------
 
@@ -128,6 +137,11 @@ makeblastdb -in $REF_DIR/microbial_all_cds.fasta -dbtype nucl
 $APP_DIR/sortmerna/build/Release/src/indexdb/indexdb \
     --ref $APP_DIR/sortmerna/rRNA_databases/silva-bac-16s-id90.fasta,$APP_DIR/sortmerna/index/silva-bac-16s -v
 
-echo "Completed!"
-exit
+# Index databases for DIAMOND
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/RefSeq_bac.fa --db $REF_DIR/RefSeq_bac
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/subsys_db
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
+# $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
 
+echo "Setup Completed!"
+exit
