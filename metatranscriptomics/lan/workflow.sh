@@ -16,31 +16,45 @@
 
 ## module load gcc/gcc6 # on ICME clusters
 
+echo STARTING DATA PROCESSING PIPELINE
+echo =====================================================================
+
+## DIRECTORIES ----------
+if [ -z ${SCRATCH+x} ]; then
+    #the variable $SCRATCH is unset
+    echo Working on ICME cluster
+    module load gcc/gcc6 
+    BASE_DIR=~/Projects/perturbation_16s
+    APP_DIR=~/.local/bin/
+    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
+else
+    echo Working on SHERLOCK cluster
+    ## The following modules must be preloaded:
+    module load python/2.7.13
+    module load py-biopython/1.70
+    module load biology
+    module load bwa/0.7.17
+    module load samtools/1.6
+    module load ncbi-blast+/2.6.0
+    BASE_DIR=$SCRATCH/Projects/perturbation_16s
+    APP_DIR=$SCRATCH/applications/bin/
+    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+fi
+
+# Reference directories
+REF_DIR=$BASE_DIR/data/databases
+KAIJUBD_DIR=$REF_DIR/kaijudb
+# SortMeRNA directories
+SORTMERNA_DIR=$APP_DIR/sortmerna
+
 ###############################################################################
 ## DEFAULTS (to be removed) ----------
-# Input/Output directories
-BASE_DIR=~/Projects/perturbation_16s/
-#BASE_DIR=$SCRATCH/Projects/perturbation_16s/
 INPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub
 OUTPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub
 # Fwd/Rev files
 input_fwd=M3303_DBUsw_2r_TrM31_1P.fq.gz
 input_rev=M3303_DBUsw_2r_TrM31_2P.fq.gz
 ###############################################################################
-
-## DIRECTORIES ----------
-# Reference directories
-BASE_DIR=~/Projects/perturbation_16s/
-#BASE_DIR=$SCRATCH/Projects/perturbation_16s/
-REF_DIR=$BASE_DIR/data/databases
-KAIJUBD_DIR=$REF_DIR/kaijudb
-
-# Scripts and apps directories
-APP_DIR=~/.local/bin/
-#APP_DIR=$SCRATCH/applications/bin/
-SORTMERNA_DIR=$APP_DIR/sortmerna
-#PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
-PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 
 ## PARAMETERS ----------
 n_threads=5
@@ -50,16 +64,16 @@ extra_blat=false
 index_db=false
 
 ## STEPS TO RUN ----------
-TRIM=true
-MERGE_PAIRS=true
-QUAL_FLTR=true
-RM_DUPL=true
-RM_VECTOR=true
-RM_HOST=true
+TRIM=false
+MERGE_PAIRS=false
+QUAL_FLTR=false
+RM_DUPL=false
+RM_VECTOR=false
+RM_HOST=false
 RM_rRNA=false
-REREPLICATION=true
-TAX_CLASS=true
-ASSEMBLE=true
+REREPLICATION=false
+TAX_CLASS=false
+ASSEMBLE=false
 GENOME_ANN=true
 PROT_ANN=true
 DIAMOND_REFSEQ=true
@@ -181,8 +195,6 @@ else
     paired=true
 fi
 
-echo STARTING DATA PROCESSING PIPELINE
-echo =====================================================================
 echo "   "
 echo PAIRED READS    = "${paired}"
 echo INPUT DIRECTORY = "${INPUT_DIR}"
@@ -191,34 +203,36 @@ echo REV FILE        = "${input_rev}"
 echo NO. THREADS     = "${n_threads}"
 echo "   "
 echo =====================================================================
-# Make output direcories
+
+## Make output direcories ----------------
 mkdir -p $OUTPUT_DIR
 mkdir -p $OUTPUT_DIR/QC
 mkdir -p $OUTPUT_DIR/trimmed/
 mkdir -p $OUTPUT_DIR/aligned/
 mkdir -p $OUTPUT_DIR/dmnd_tmp/
-mkdir -p $OUTPUT_DIR/diamond/
-mkdir -p $OUTPUT_DIR/assembled/
-mkdir -p $OUTPUT_DIR/genome/
-mkdir -p $OUTPUT_DIR/protein/
+if [ $GENOME_ANN ]; then mkdir -p $OUTPUT_DIR/genome/ ; fi
+if [ $PROT_ANN ] | [ $DIAMOND_REFSEQ ] | [ $DIAMOND_SEED ]; then
+     mkdir -p $OUTPUT_DIR/diamond/
+fi
+if [ $PROT_ANN ]; then mkdir -p $OUTPUT_DIR/protein ; fi
 
 cd $OUTPUT_DIR
 
 ###############################################################################
 if [ $rna_samples ]; then
-    echo "RUNTIME FOR METATRANSCTIPTOMIC DATA PROCESSING PIPELINE:" >> \
+    echo "RUNTIME FOR METATRANSCTIPTOMIC PIPELINE:" >> \
         $OUTPUT_DIR/${base}_time.log
 else
-    echo "RUNTIME FOR METAGENOMIC DATA PROCESSING PIPELINE:" >> \
+    echo "RUNTIME FOR METAGENOMIC PIPELINE:" >> \
         $OUTPUT_DIR/${base}_time.log
 fi
-echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 
 start0=`date +%s`
 ## Generate an index
 if $index_db; then
-    echo "====================================================================="
-    echo "Indexing databases ..."
+    echo =====================================================================
+    echo Indexing databases ...
     start=`date +%s`
     # Vector (UniVec_Core)  sequences
     bwa index -a bwtsw $REF_DIR/UniVec_Core
@@ -252,8 +266,8 @@ fi
 
 ## Remove adapter seqs and trim low-quality seqs  ------------
 if $TRIM && ! $paired; then
-   echo "======================================================================"
-   echo "Trimming and removing adapters ..."
+   echo ======================================================================
+   echo Trimming and removing adapters ...
    start=`date +%s`
    ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
    java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
@@ -270,14 +284,14 @@ if $TRIM && ! $paired; then
    end=`date +%s`
    runtime=$(((end-start)/60))
    echo "Trimming and QC: $runtime min" >> $OUTPUT_DIR/${base}_time.log
-   echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+   echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Do the same for paired ends ------------
 if $TRIM && $paired; then
-    echo "====================================================================="
-    echo "Trimming and removing adapters ..."
+    echo =====================================================================
+    echo Trimming and removing adapters ...
     start=`date +%s`
     ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
     java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
@@ -300,14 +314,14 @@ if $TRIM && $paired; then
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Trimming and QC: $runtime min" >> $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Merge pairs ------------
 if $MERGE_PAIRS; then
-    echo "====================================================================="
-    echo "Merging paired reads ..."
+    echo =====================================================================
+    echo Merging paired reads ...
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
         --fastq_mergepairs $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq \
@@ -322,14 +336,14 @@ if $MERGE_PAIRS; then
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Merging reads: $runtime min" >> $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Global quality filtering ------------
 if $QUAL_FLTR; then
-    echo "====================================================================="
-    echo "Quality filtering ..."
+    echo =====================================================================
+    echo Quality filtering ...
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
        --fastq_filter $OUTPUT_DIR/trimmed/${base}_trim.fq \
@@ -339,14 +353,14 @@ if $QUAL_FLTR; then
     runtime=$(((end-start)/60))
     echo "Quality filtering: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove duplicate reads ------------
 if $RM_DUPL; then
-    echo "====================================================================="
-    echo "Remove duplicates ..."
+    echo =====================================================================
+    echo Remove duplicates ...
     start=`date +%s`
     $APP_DIR/cdhit/cd-hit-auxtools/cd-hit-dup \
         -i $OUTPUT_DIR/${base}_qual.fq \
@@ -355,14 +369,14 @@ if $RM_DUPL; then
     runtime=$(((end-start)/60))
     echo "Remove duplicates: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Remove unwanted vector contamination ------------
 if $RM_VECTOR; then
-    echo "====================================================================="
-    echo "Remove vector sequences ..."
+    echo =====================================================================
+    echo Remove vector sequences ...
     start=`date +%s`
     # align reads with vector db  and filter any reads that align to it
     bwa mem -t $n_threads $REF_DIR/UniVec_Core \
@@ -401,14 +415,14 @@ if $RM_VECTOR; then
     runtime=$(((end-start)/60))
     echo "Removing vectors: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Remove host reads ----------
 # the same logic as the previous step
 if $RM_HOST; then
-    echo "====================================================================="
-    echo "Remove host sequences ..."
+    echo =====================================================================
+    echo Remove host sequences ...
     start=`date +%s`
     bwa mem -t $n_threads $REF_DIR/human_cds.fa \
         $OUTPUT_DIR/aligned/${base}_univec_blat.fq > \
@@ -442,13 +456,13 @@ if $RM_HOST; then
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Removing host: $runtime min" >> $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 ## Remove rRNA seqs -----------
 if $RM_rRNA && $use_sortmerna; then
-    echo "====================================================================="
-    echo "Ribodepletion with SortMeRNA ..."
+    echo =====================================================================
+    echo Ribodepletion with SortMeRNA ...
     start=`date +%s`
     $SORTMERNA_DIR/build/Release/src/sortmerna/sortmerna \
         --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta,$SORTMERNA_DIR/index/silva-bac-16s \
@@ -461,12 +475,12 @@ if $RM_rRNA && $use_sortmerna; then
     runtime=$(((end-start)/60))
     echo "SortMeRNA ribodepletion: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log    
 fi
 
 if $RM_rRNA && ! $use_sortmerna; then
-    echo "====================================================================="
-    echo "Ribodepletion with infernalout ..."
+    echo =====================================================================
+    echo Ribodepletion with infernalout ...
     start=`date +%s`
     mkdir -p $OUTPUT_DIR/infernal
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
@@ -496,14 +510,14 @@ if $RM_rRNA && ! $use_sortmerna; then
     runtime=$(((end-start)/60))
     echo "Python infernal filter: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Rereplication (add back the repeated reads) ----------
 if $REREPLICATION; then
-    echo "====================================================================="
-    echo "Rereplication ..."
+    echo =====================================================================
+    echo Rereplication ...
     start=`date +%s`
     if [ $rna_samples ]; then
         outfile=$OUTPUT_DIR/${base}_mRNA.fq
@@ -523,14 +537,15 @@ if $REREPLICATION; then
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Rereplication: $runtime min" >> $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
+
 
 ## Taxonomic Classification ------------
 if $TAX_CLASS; then
     mkdir -p taxonomy
-    echo "====================================================================="
-    echo "Taxonomy classification ..."
+    echo =====================================================================
+    echo Taxonomy classification ...
 
     if [ $rna_samples ]; then
         infile=$OUTPUT_DIR/${base}_mRNA.fq
@@ -572,14 +587,14 @@ if $TAX_CLASS; then
     runtime=$(((end-start)/60))
     echo "Aggregate taxonomy res: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Assemble reads into contigs -----------
 if $ASSEMBLE; then
-    echo "====================================================================="
-    echo "Contigs assembly ..."
+    echo =====================================================================
+    echo Contigs assembly ...
 
     # Build contigs
     start=`date +%s`
@@ -625,14 +640,14 @@ if $ASSEMBLE; then
     runtime=$(((end-start)/60))
     echo "Python aggregate assembly result: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Genome annotation -----------
 if $GENOME_ANN; then
-    echo "====================================================================="
-    echo "Genome annotation with BWA ..."
+    echo =====================================================================
+    echo Genome annotation with BWA ...
     mkdir -p $OUTPUT_DIR/genome/
     start=`date +%s`
     # BWA utilizes nucleotide searches, we rely on a microbial genome database
@@ -651,7 +666,7 @@ if $GENOME_ANN; then
     start=`date +%s`
     $PYSCRIPT_DIR/6_BWA_Gene_Map.py \
         $REF_DIR/microbial_all_cds.fasta \
-        $OUTPUT_DIR/genome/${base}_contigs_map.tsv \
+        $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
         $OUTPUT_DIR/genome/${base}_genes_map.tsv \
         $OUTPUT_DIR/genome/${base}_genes.fasta \
         $OUTPUT_DIR/assembled/${base}_contigs.fasta \
@@ -710,15 +725,14 @@ if $GENOME_ANN; then
         echo "Extra BLAT genome alignment: $runtime min" >> \
             $OUTPUT_DIR/${base}_time.log
     fi
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## Protein annotation -----------
 if $PROT_ANN; then
-    echo "====================================================================="
-    echo "Protein annotation with DIAMOND on unmapped sequences ..."
-    mkdir -p $OUTPUT_DIR/protein/
+    echo =====================================================================
+    echo Protein annotation with DIAMOND on unmapped sequences ...
 
     start=`date +%s`
     $APP_DIR/diamond blastx --id 85 --query-cover 65 --min-score 60 \
@@ -740,28 +754,28 @@ if $PROT_ANN; then
     start=`date +%s`
     $PYSCRIPT_DIR/7_Diamond_Protein_Map.py \
         $REF_DIR/nr \
-        $OUTPUT_DIR/genome/${base}_contigs_map.tsv \
-        $OUTPUT_DIR/genome/${base}_genes_map.tsv \
+        $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
+        $OUTPUT_DIR/genome/${ibase}_genes_map.tsv \
         $OUTPUT_DIR/proteins/${base}_proteins.fasta \
         $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
         $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
-        $OUTPUT_DIR/protein/${base}_contigs_unannotated.fasta \
+        $OUTPUT_DIR/proteins/${base}_contigs_unannotated.fasta \
         $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta \
         $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
-        $OUTPUT_DIR/protein/${base}_unassembled_unannotated.fasta
+        $OUTPUT_DIR/proteins/${base}_unassembled_unannotated.fasta
 
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Python aggregating protein annotation results: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 ## DIAMOND annotation -----------
 if $DIAMOND_REFSEQ; then
-    echo "====================================================================="
-    echo "Refseq annotation with DIAMOND ..."
+    echo =====================================================================
+    echo Refseq annotation with DIAMOND ...
 
     if [ $rna_samples ]; then
         infile=$OUTPUT_DIR/${base}_mRNA.fq
@@ -788,13 +802,13 @@ if $DIAMOND_REFSEQ; then
     runtime=$(((end-start)/60))
     echo "DIAMOND Refseq genome short-reads alignment: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
 
 
 if $DIAMOND_SEED; then
-    echo "====================================================================="
-    echo "SEED annotation with DIAMOND ..."
+    echo =====================================================================
+    echo SEED annotation with DIAMOND ...
 
     if [ $rna_samples ]; then
         infile=$OUTPUT_DIR/${base}_mRNA.fq
@@ -821,13 +835,12 @@ if $DIAMOND_SEED; then
     runtime=$(((end-start)/60))
     echo "DIAMOND SEED gene annotation: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
-    echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+    echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 fi
-
 
 end0=`date +%s`
 runtime0=$(((end0-start0)/60))
-echo "=====================================" >> $OUTPUT_DIR/${base}_time.log
+echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 echo "    " >> $OUTPUT_DIR/${base}_time.log
 echo "ENTIRE WORKFLOW RUNTIME: $runtime0 min" >> \
     $OUTPUT_DIR/${base}_time.log
