@@ -1,8 +1,11 @@
-#!/bin/bash
-export SCRIPT=${1:-metat_workflow}
-export TIME=${2:-6:00:00}
-export MEM=${3:-4G}
-export CORES=${4:-4}
+export SCRIPT=${1:-workflow}
+export IN=${2:-$SCRATCH/Projects/perturbation_16s/data/metatranscriptomics/resilience/input/DBUr_Sub/}
+export OUT=${3:-$SCRATCH/Projects/perturbation_16s/data/metatranscriptomics/resilience/output/DBUr_Sub/}
+export FWD=${4:-M3303_DBUsw_2r_TrM31_1P.fq.gz}
+export REV=${5:-M3303_DBUsw_2r_TrM31_2P.fq.gz}
+export TIME=${6:-24:00:00}
+export NCPUS=${7:-10}
+export MEM=${8:-4G}
 sbatch <<EOT
 #!/bin/bash
 #
@@ -28,12 +31,15 @@ sbatch <<EOT
 #SBATCH --qos=normal
 
 # We are submitting to the dev partition, there are several on sherlock: normal, gpu, owners, hns, bigmem (jobs requiring >64Gigs RAM)
-#
-#SBATCH -p normal,hns
+# I DON"T HAVE ACCESS to hns ???
+#SBATCH -p normal
+#################
+#number of nodes you are requesting, the more you ask for the longer you wait
+#SBATCH --nodes=1
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
 #SBATCH --mem-per-cpu=$MEM
-#SBATCH --cores=$CORES
+#SBATCH --cpus-per-task=$NCPUS
 #################
 
 # Have SLURM send you an email when the job ends or fails, careful, the email could end up in your clutter folder
@@ -45,6 +51,5 @@ sbatch <<EOT
 
 #now run normal batch commands
 cd $SCRATCH/Projects/perturbation_16s/metatranscriptomics/lan/
-bash ${1:-metat_workflow}.sh
-
+bash ${SCRIPT}.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV
 EOT
