@@ -16,9 +16,6 @@
 
 ## module load gcc/gcc6 # on ICME clusters
 
-echo STARTING DATA PROCESSING PIPELINE
-echo =======================================================================
-
 ## DIRECTORIES ----------
 if [ -z ${SCRATCH+x} ]; then
     #the variable $SCRATCH is unset
@@ -191,6 +188,11 @@ esac
 done
 #set -- "${POSITIONAL[@]}" # restore positional parameters
 
+if [ -z "$INPUT_DIR" ] || [ -z "$OUTPUT_DIR" ] || [ -z "$input_fwd" ] ||  [ -z "$input_rev" ];
+then
+    echo "Missing arguments: workflow.sh requires -i, -o, -f, -r arguments specification."
+fi
+
 ###############################################################################
 
 base=${input_fwd%_1P.fq.gz}
@@ -204,14 +206,16 @@ else
     paired=true
 fi
 
-echo "   "
-echo PAIRED READS    = "${paired}"
-echo INPUT DIRECTORY = "${INPUT_DIR}"
-echo FWD FILE        = "${input_fwd}"
-echo REV FILE        = "${input_rev}"
-echo NO. THREADS     = "${n_threads}"
-echo "   "
+
+echo STARTING DATA PROCESSING PIPELINE
+echo " "
 echo =======================================================================
+echo "   "
+echo PAIRED READS     = "${paired}"
+echo FWD FILE         = "${input_fwd}"
+echo REV FILE         = "${input_rev}"
+echo NO. THREADS      = "${n_threads}"
+echo " "
 
 ## Make output direcories ----------------
 mkdir -p $OUTPUT_DIR
@@ -220,7 +224,7 @@ mkdir -p $OUTPUT_DIR/trimmed/
 mkdir -p $OUTPUT_DIR/aligned/
 mkdir -p $OUTPUT_DIR/dmnd_tmp/
 if [ $GENOME_ANN ]; then mkdir -p $OUTPUT_DIR/genome/ ; fi
-if [ $PROT_ANN ] | [ $DIAMOND_REFSEQ ] | [ $DIAMOND_SEED ]; then
+if [ $PROT_ANN ] || [ $DIAMOND_REFSEQ ] || [ $DIAMOND_SEED ]; then
      mkdir -p $OUTPUT_DIR/diamond/
 fi
 if [ $PROT_ANN ]; then mkdir -p $OUTPUT_DIR/protein ; fi
@@ -235,7 +239,9 @@ else
     echo "RUNTIME FOR METAGENOMIC PIPELINE:" >> \
         $OUTPUT_DIR/${base}_time.log
 fi
+echo "FOR sample: $base" >> $OUTPUT_DIR/${base}_time.log
 echo ========================================== >> $OUTPUT_DIR/${base}_time.log
+
 
 start0=`date +%s`
 ## Generate an index
@@ -680,27 +686,47 @@ if $GENOME_ANN; then
     bwa mem -t $n_threads $REF_DIR/microbial_all_cds.fasta \
         $OUTPUT_DIR/assembled/${base}_unassembled.fq > \
         $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam
+    samtools view -bS \
+        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.sam > \
+        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.bam
+    samtools fastq -n -F 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_contigs_bwa_aligned.fq \
+        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.bam
+    samtools fastq -n -f 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_contigs_unmapped.fq \
+        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.bam
+
+    samtools view -bS \
+        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.sam > \
+        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.bam
+    samtools fastq -n -F 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_unassembled_bwa_aligned.fq \
+        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.bam
+    samtools fastq -n -f 4 -0 \
+        $OUTPUT_DIR/aligned/${base}_unassembled_unmapped.fq \
+        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.bam
+
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "BWA genome alignment: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
 
-    start=`date +%s`
-    $PYSCRIPT_DIR/6_BWA_Gene_Map.py \
-        $REF_DIR/microbial_all_cds.fasta \
-        $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
-        $OUTPUT_DIR/genome/${base}_genes_map.tsv \
-        $OUTPUT_DIR/genome/${base}_genes.fasta \
-        $OUTPUT_DIR/assembled/${base}_contigs.fasta \
-        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.sam \
-        $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
-        $OUTPUT_DIR/assembled/${base}_unassembled.fq \
-        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam \
-        $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta
-    end=`date +%s`
-    runtime=$(((end-start)/60))
-    echo "Python aggregate genome alignment results: $runtime min" >> \
-        $OUTPUT_DIR/${base}_time.log
+    # start=`date +%s`
+    # $PYSCRIPT_DIR/6_BWA_Gene_Map.py \
+    #     $REF_DIR/microbial_all_cds.fasta \
+    #     $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
+    #     $OUTPUT_DIR/genome/${base}_genes_map.tsv \
+    #     $OUTPUT_DIR/genome/${base}_genes.fasta \
+    #     $OUTPUT_DIR/assembled/${base}_contigs.fasta \
+    #     $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.sam \
+    #     $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
+    #     $OUTPUT_DIR/assembled/${base}_unassembled.fq \
+    #     $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam \
+    #     $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta
+    # end=`date +%s`
+    # runtime=$(((end-start)/60))
+    # echo "Python aggregate genome alignment results: $runtime min" >> \
+    #     $OUTPUT_DIR/${base}_time.log
 
     # IS THE FOLLOWING EVEN USEFUL? HOW TO ADD TO 6_BWA_Gene_Map.py ???
     if $extra_blat; then
@@ -760,13 +786,13 @@ if $PROT_ANN; then
     start=`date +%s`
     $APP_DIR/diamond blastx --id 85 --query-cover 65 --min-score 60 \
         -p $n_threads -d $REF_DIR/nr \
-        -q $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
+        -q $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
         -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
 
     $APP_DIR/diamond blastx --id 85 --query-cover 65 --min-score 60 \
         -p $n_threads -d $REF_DIR/nr \
-        -q $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta \
+        -q $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
         -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
     end=`date +%s`
@@ -774,23 +800,23 @@ if $PROT_ANN; then
     echo "DIAMOND (NR) protein alignment: $runtime min" >> \
         $OUTPUT_DIR/${base}_time.log
 
-    start=`date +%s`
-    $PYSCRIPT_DIR/7_Diamond_Protein_Map.py \
-        $REF_DIR/nr \
-        $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
-        $OUTPUT_DIR/genome/${ibase}_genes_map.tsv \
-        $OUTPUT_DIR/proteins/${base}_proteins.fasta \
-        $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
-        $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
-        $OUTPUT_DIR/proteins/${base}_contigs_unannotated.fasta \
-        $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta \
-        $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
-        $OUTPUT_DIR/proteins/${base}_unassembled_unannotated.fasta
-
-    end=`date +%s`
-    runtime=$(((end-start)/60))
-    echo "Python aggregating protein annotation results: $runtime min" >> \
-        $OUTPUT_DIR/${base}_time.log
+    # start=`date +%s`
+    # $PYSCRIPT_DIR/7_Diamond_Protein_Map.py \
+    #     $REF_DIR/nr \
+    #     $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
+    #     $OUTPUT_DIR/genome/${ibase}_genes_map.tsv \
+    #     $OUTPUT_DIR/proteins/${base}_proteins.fasta \
+    #     $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
+    #     $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
+    #     $OUTPUT_DIR/proteins/${base}_contigs_unannotated.fasta \
+    #     $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta \
+    #     $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
+    #     $OUTPUT_DIR/proteins/${base}_unassembled_unannotated.fasta
+    # end=`date +%s`
+    # runtime=$(((end-start)/60))
+    # echo "Python aggregating protein annotation results: $runtime min" >> \
+    #     $OUTPUT_DIR/${base}_time.log
+    
     echo ========================================== >> \
         $OUTPUT_DIR/${base}_time.log
 fi
@@ -870,3 +896,8 @@ echo ========================================== >> $OUTPUT_DIR/${base}_time.log
 echo "    " >> $OUTPUT_DIR/${base}_time.log
 echo "ENTIRE WORKFLOW RUNTIME: $runtime0 min" >> \
     $OUTPUT_DIR/${base}_time.log
+
+echo "  "
+echo =======================================================================
+echo "  "
+echo Completed the workflow!
