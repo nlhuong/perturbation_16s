@@ -63,7 +63,8 @@ echo " "
 echo =======================================================================
 echo " "
 
-cd $BASE_DIR/metatranscriptomics/lan/
-bash ${SCRIPT}.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV
+echo SAMPLE: ${FWD%_1P.fq.gz}
+echo FWD FILE         = $FWD
+echo REV FILE         = $REV
 
 EOT
