@@ -61,20 +61,20 @@ extra_blat=false
 index_db=false
 
 ## STEPS TO RUN ----------
-TRIM=true
-MERGE_PAIRS=true
-QUAL_FLTR=true
-RM_DUPL=true
-RM_VECTOR=true
-RM_HOST=true
-RM_rRNA=true
-REREPLICATION=true
-TAX_CLASS=true
-ASSEMBLE=true
-GENOME_ANN=true
-PROT_ANN=true
-DIAMOND_REFSEQ=false
-DIAMOND_SEED=false
+TRIM=false
+MERGE_PAIRS=false
+QUAL_FLTR=false
+RM_DUPL=false
+RM_VECTOR=false
+RM_HOST=false
+RM_rRNA=false
+REREPLICATION=false
+TAX_CLASS=false
+ASSEMBLE=false
+GENOME_ANN=false
+PROT_ANN=false
+DIAMOND_REFSEQ=true
+DIAMOND_SEED=true
 
 ## HELP DOCS ----------
 usage() {
@@ -687,24 +687,24 @@ if $GENOME_ANN; then
         $OUTPUT_DIR/assembled/${base}_unassembled.fq > \
         $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam
     samtools view -bS \
-        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.sam > \
-        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.bam
+        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.sam > \
+        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
     samtools fastq -n -F 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_contigs_bwa_aligned.fq \
-        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.bam
+        $OUTPUT_DIR/assembled/${base}_contigs_bwa_aligned.fq \
+        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
     samtools fastq -n -f 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_contigs_unmapped.fq \
-        $OUTPUT_DIR/aligned/${base}_contigs_annotation_bwa.bam
+        $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fq \
+        $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
 
     samtools view -bS \
-        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.sam > \
-        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.bam
+        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.sam > \
+        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.bam
     samtools fastq -n -F 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_unassembled_bwa_aligned.fq \
-        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.bam
+        $OUTPUT_DIR/assembled/${base}_unassembled_bwa_aligned.fq \
+        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.bam
     samtools fastq -n -f 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_unassembled_unmapped.fq \
-        $OUTPUT_DIR/aligned/${base}_unassembled_annotation_bwa.bam
+        $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq \
+        $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.bam
 
     end=`date +%s`
     runtime=$(((end-start)/60))
