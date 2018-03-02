@@ -23,6 +23,7 @@ fnames = [
 ]
 
 sys.argv = ["/Users/krissankaran/Desktop/" + f for f in fnames]
+sys.argv = ["dummy"] + sys.argv
 
 DNA_DB = sys.argv[1]
 contig2read_file = sys.argv[2]
