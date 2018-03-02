@@ -9,6 +9,21 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 import re
 
+fnames = [
+    "microbial_all_cds.fasta",
+    "mouse1_contigs_map.tsv",
+    "mouse1_genes_map.tsv",
+    "mouse1_genes.fasta",
+    "mouse1_contigs.fasta",
+    "mouse1_contigs_annotation_bwa.sam",
+    "mouse1_contigs_unmapped.fasta",
+    "mouse1_unassembled.fastq",
+    "mouse1_unassembled_annotation_bwa.sam",
+    "mouse1_unassembled_unmapped.fasta"
+]
+
+sys.argv = ["/Users/krissankaran/Desktop/" + f for f in fnames]
+
 DNA_DB = sys.argv[1]
 contig2read_file = sys.argv[2]
 gene2read_file = sys.argv[3]
@@ -22,7 +37,7 @@ with open(contig2read_file, "r") as mapping:
     for line in mapping:
         if len(line) > 5:
             entry = line.split("\t")
-            contig2read_map_full[entry[0]] = entry[2:]
+            contig2read_map_full[entry[0]] = entry[3:]
             for read in contig2read_map_full[entry[0]]:
                 contig_reads.append(read.strip("\n"))
 for contig in contig2read_map_full:
