@@ -19,6 +19,7 @@ def parse_sam_line(line):
 
 
 def cigar_match_prop(cigar):
+    len_chars = ["M","I","S","=","X"]
     CIGAR = re.split("([MIDNSHPX=])", cigar)
     length = 0
     matched = 0
@@ -32,6 +33,41 @@ def cigar_match_prop(cigar):
     return matched / length
 
 
+def process_line(line, unmapped):
+    if line.startswith("@") or len(line) < 2:
+        return
+
+    contig = False
+    query_seq, db_match, cigar, flag = parse_sam_line(line)
+    if query_seq in contig2read_map_full:
+        if query_seq in contig2read_map:
+            contig = True
+        else:
+            unmapped_reads.add(query_seq)
+            return
+
+    if flag[8] == "0":
+        if cigar_match_prop(cigar) > 0.9:
+            if contig:
+                gene2read_map.setdefault(query_seq, []).append(contig2read_map[query_seq])
+                for read in contig2read_map[query_seq]:
+                    mapped_reads.add(read)
+            elif not contig:
+                if query_seq in mapped_reads:
+                    unmapped_reads.add(query_seq)
+                    for gene in gene2read_map:
+                        if query_seq in gene2read_map[gene]:
+                            if len(gene2read_map[gene]) == 1:
+                                del gene2read_map[gene]
+                            else:
+                                gene2read_map[gene].remove(query_seq)
+                            break
+                else:
+                    gene2read_map[db_match] = [query_seq]
+                    mapped_reads.add(query_seq)
+    elif flag[8] == "1":
+        unmapped.add(query_seq)
+
 """
 Function used later
 
@@ -40,41 +76,7 @@ Modifies unmapped and unmapped_reads in place.
 """
 def gene_map(sam, unmapped):
     with open(sam, "r") as samfile:
-        len_chars = ["M","I","S","=","X"]
-        for line in samfile:
-            if line.startswith("@") or len(line) < 2:
-                continue
-
-            contig = False
-            query_seq, db_match, cigar, flag = parse_sam_line(line)
-            if query_seq in contig2read_map_full:
-                if query_seq in contig2read_map:
-                    contig = True
-                else:
-                    unmapped_reads.add(query_seq)
-                    continue
-
-            if flag[8] == "0":
-                if cigar_match_prop(cigar) > 0.9:
-                    if contig:
-                        gene2read_map.setdefault(query_seq, []).append(contig2read_map[query_seq])
-                        for read in contig2read_map[query_seq]:
-                            mapped_reads.add(read)
-                    elif not contig:
-                        if query_seq in mapped_reads:
-                            unmapped_reads.add(query_seq)
-                            for gene in gene2read_map:
-                                if query_seq in gene2read_map[gene]:
-                                    if len(gene2read_map[gene]) == 1:
-                                        del gene2read_map[gene]
-                                    else:
-                                        gene2read_map[gene].remove(query_seq)
-                                    break
-                        else:
-                            gene2read_map[db_match] = [query_seq]
-                            mapped_reads.add(query_seq)
-            elif flag[8] == "1":
-                unmapped.add(query_seq)
+        [process_line(l, unmapped) for l in samfile]
 
 
 fnames = [
