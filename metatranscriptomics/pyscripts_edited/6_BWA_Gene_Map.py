@@ -5,11 +5,12 @@ import os
 import os.path
 import time
 import re
-import shutil
-import subprocess
 from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
 from joblib import Parallel, delayed
+
+###############################################################################
+## Functions used in script
+###############################################################################
 
 def parse_sam_line(line):
     line_parts = line.split("\t")
@@ -35,7 +36,7 @@ def cigar_match_prop(cigar):
     return matched / length
 
 
-def process_line(line, unmapped):
+def process_line(line):
     if line.startswith("@") or len(line) < 2:
         return
 
@@ -68,35 +69,20 @@ def process_line(line, unmapped):
                     gene2read_map[db_match] = [query_seq]
                     mapped_reads.add(query_seq)
     elif flag[8] == "1":
-        unmapped.add(query_seq)
+        unmapped_reads.add(query_seq)
 
 """
-Function used later
-
-Modifies unmapped and unmapped_reads in place.
+Modifies unmapped_reads in place
 
 """
-def gene_map(sam, unmapped):
+def gene_map(sam):
     with open(sam, "r") as samfile:
-        Parallel(n_jobs=1)(delayed(process_line)(l, unmapped) for l in samfile)
+        Parallel(n_jobs=16)(delayed(process_line)(l) for l in samfile)
 
 
-fnames = [
-    "microbial_all_cds.fasta",
-    "mouse1_contigs_map.tsv",
-    "mouse1_genes_map.tsv",
-    "mouse1_genes.fasta",
-    "mouse1_contigs.fasta",
-    "mouse1_contigs_annotation_bwa.sam",
-    "mouse1_contigs_unmapped.fasta",
-    "mouse1_unassembled.fastq",
-    "mouse1_unassembled_annotation_bwa.sam",
-    "mouse1_unassembled_unmapped.fasta"
-]
-
-sys.argv = ["/Users/krissankaran/Desktop/" + f for f in fnames]
-sys.argv = ["dummy"] + sys.argv
-
+###############################################################################
+## Process reads
+###############################################################################
 DNA_DB = sys.argv[1]
 contig2read_file = sys.argv[2]
 gene2read_file = sys.argv[3]
@@ -133,9 +119,9 @@ for x in range(int((len(sys.argv) - 5) / 3)):
     unmapped_seqs = []
 
     start = time.time()
-    gene_map(BWA_sam_file, unmapped_reads)
+    print("starting mapping...")
+    gene_map(BWA_sam_file)
     end = time.time()
-    print(len(unmapped_reads))
     print(end - start)
 
     for read in unmapped_reads:
