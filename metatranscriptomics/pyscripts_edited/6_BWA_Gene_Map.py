@@ -3,11 +3,13 @@
 import sys
 import os
 import os.path
+import time
+import re
 import shutil
 import subprocess
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
-import re
+from joblib import Parallel, delayed
 
 def parse_sam_line(line):
     line_parts = line.split("\t")
@@ -76,7 +78,7 @@ Modifies unmapped and unmapped_reads in place.
 """
 def gene_map(sam, unmapped):
     with open(sam, "r") as samfile:
-        [process_line(l, unmapped) for l in samfile]
+        Parallel(n_jobs=1)(delayed(process_line)(l, unmapped) for l in samfile)
 
 
 fnames = [
@@ -130,7 +132,12 @@ for x in range(int((len(sys.argv) - 5) / 3)):
     unmapped_reads = set()
     unmapped_seqs = []
 
+    start = time.time()
     gene_map(BWA_sam_file, unmapped_reads)
+    end = time.time()
+    print(len(unmapped_reads))
+    print(end - start)
+
     for read in unmapped_reads:
         unmapped_seqs.append(read_seqs[read])
 
@@ -142,14 +149,14 @@ for x in range(int((len(sys.argv) - 5) / 3)):
 
 genes = []
 with open(gene2read_file, "w") as out_map:
-        for record in SeqIO.parse(DNA_DB, "fasta"):
-            if record.id in gene2read_map:
-                genes.append(record)
-                out_map.write(record.id + "\t" + str(len(record.seq)) + "\t" + str(len(gene2read_map[record.id])))
-                for read in gene2read_map[record.id]:
-                    out_map.write("\t" + read.strip("\n"))
-                else:
-                    out_map.write("\n")
+    for record in SeqIO.parse(DNA_DB, "fasta"):
+        if record.id in gene2read_map:
+            genes.append(record)
+            out_map.write(record.id + "\t" + str(len(record.seq)) + "\t" + str(len(gene2read_map[record.id])))
+            for read in gene2read_map[record.id]:
+                out_map.write("\t" + read.strip("\n"))
+            else:
+                out_map.write("\n")
 
 with open(gene_file, "w") as out_gene:
     SeqIO.write(genes, out_gene, "fasta")
