@@ -96,7 +96,7 @@ with open(contig2read_file, "r") as mapping:
     for line in mapping:
         if len(line) > 5:
             entry = line.split("\t")
-            contig2read_map_full[entry[0]] = entry[3:]
+            contig2read_map_full[entry[0]] = entry[2:]
             for read in contig2read_map_full[entry[0]]:
                 contig_reads.append(read.strip("\n"))
 for contig in contig2read_map_full:
