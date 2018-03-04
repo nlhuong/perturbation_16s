@@ -115,7 +115,7 @@ if [ -z ${SCRATCH+x} ]; then
     conda install -c bioconda samtools
 
     ## blast
-    #conda install -c bioconda blast
+    conda install -c bioconda blast
 
     ## biopython
     conda install -c conda-forge biopython #1.70

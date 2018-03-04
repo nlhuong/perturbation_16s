@@ -5,21 +5,24 @@ export OUT=${3:-$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub/}
 export FWD=${4:-M3303_DBUsw_2r_TrM31_1P.fq.gz}
 export REV=${5:-M3303_DBUsw_2r_TrM31_2P.fq.gz}
 export TIME=${6:-24:00:00}
-export NCPUS=${7:-10}
+export NCPUS=${7:-2}
 export MEM=${8:-4G}
+export LOG_DIR=$BASE_DIR/logs/$(basename $IN)
+export JOB_NAME=$SCRIPT-${FWD%_1P.fq.gz}
+mkdir -p $LOG_DIR
 sbatch <<EOT
 #!/bin/bash
 #
 #all commands that start with SBATCH contain commands that are just used by SLURM for scheduling
 #################
 #set a job name
-#SBATCH --job-name=$SCRIPT
+#SBATCH --job-name=$JOB_NAME
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=../../logs/${SCRIPT}.out
+#SBATCH --output=${LOG_DIR}/${JOB_NAME}.%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=../../logs/${SCRIPT}.err
+#SBATCH --error=${LOG_DIR}/${JOB_NAME}.%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
@@ -52,6 +55,17 @@ sbatch <<EOT
 #################
 
 # now run normal batch commands
+
+## The following modules must be preloaded:
+if [ $SHERLOCK == "2" ]; then
+    module load biology
+    module load python/2.7.13
+    module load py-biopython/1.70
+    module load bwa/0.7.17
+    module load samtools/1.6
+    module load ncbi-blast+/2.6.0
+fi
+
 echo JOB PARAMETERS
 echo =======================================================================
 echo TIME REQUESTED: $TIME
@@ -63,8 +77,9 @@ echo " "
 echo =======================================================================
 echo " "
 
-echo SAMPLE: ${FWD%_1P.fq.gz}
-echo FWD FILE         = $FWD
-echo REV FILE         = $REV
+#echo SAMPLE: ${FWD%_1P.fq.gz}
+#echo FWD FILE         = $FWD
+#echo REV FILE         = $REV
 
+exit 1
 EOT
