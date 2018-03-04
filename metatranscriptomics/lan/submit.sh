@@ -7,7 +7,7 @@ export REV=${5:-M3369_DBUsw_69r_TrM31_2P.fq.gz}
 export TIME=${6:-24:00:00}
 export NCPUS=${7:-10}
 export MEM=${8:-4G}
-export LOG_DIR=$BASE_DIR/logs/$(basename $IN)
+export LOG_DIR=${9:-$BASE_DIR/logs/DBUr_Sub/}
 export JOB_NAME=$SCRIPT-${FWD%_1P.fq.gz}
 mkdir -p $LOG_DIR
 sbatch <<EOT

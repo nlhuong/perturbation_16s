@@ -4,12 +4,11 @@ export IN=${2:-$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub/}
 export OUT=${3:-$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub/}
 export FWD=${4:-M3303_DBUsw_2r_TrM31_1P.fq.gz}
 export REV=${5:-M3303_DBUsw_2r_TrM31_2P.fq.gz}
-export TIME=${6:-24:00:00}
+export TIME=${6:-00:01:00}
 export NCPUS=${7:-2}
 export MEM=${8:-4G}
-export LOG_DIR=$BASE_DIR/logs/$(basename $IN)
+export LOG_DIR=${9:-$BASE_DIR/logs/DBUr_Sub/}
 export JOB_NAME=$SCRIPT-${FWD%_1P.fq.gz}
-mkdir -p $LOG_DIR
 sbatch <<EOT
 #!/bin/bash
 #
