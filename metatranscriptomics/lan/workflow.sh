@@ -19,14 +19,24 @@ else
     BASE_DIR=$SCRATCH/Projects/perturbation_16s
     APP_DIR=$SCRATCH/applications/bin/
     PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+    if [ $SHERLOCK == "1" ]; then
+        CDHIT_DIR=$APP_DIR/for_shelock1/cdhit
+        SORTMERNA_DIR=$APP_DIR/for_sherlock1/sortmerna
+        KAIJU_DIR=$APP_DIR/for_sherlock1/kaiju/bin
+        DIAMOND=$APP_DIR/for_sherlock1/diamond
+    else 
+        CDHIT_DIR=$APP_DIR/cdhit
+        SORTMERNA_DIR=$APP_DIR/sortmerna
+        KAIJU_DIR=$APP_DIR/kaiju/bin
+        DIAMOND=$APP_DIR/diamond
+    fi
 fi
 
 # Reference directories
 REF_DIR=$BASE_DIR/data/databases
-KAIJUBD_DIR=$REF_DIR/kaijudb
-# SortMeRNA directories
-SORTMERNA_DIR=$APP_DIR/sortmerna
-
+KAIJUBD_DB=$REF_DIR/kaijudb
+# SAMSA2 directory
+SAMSA2=$APP_DIR/samsa2/python_scripts/
 ###############################################################################
 ## DEFAULTS (to be removed) ----------
 INPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub
@@ -58,6 +68,7 @@ GENOME_ANN=true
 PROT_ANN=true
 DIAMOND_REFSEQ=true
 DIAMOND_SEED=true
+DIAMOND_COUNT=true
 
 ## HELP DOCS ----------
 usage() {
@@ -208,6 +219,8 @@ mkdir -p $OUTPUT_DIR/QC
 mkdir -p $OUTPUT_DIR/trimmed/
 mkdir -p $OUTPUT_DIR/aligned/
 mkdir -p $OUTPUT_DIR/dmnd_tmp/
+mkdir -p $OUTPUT_DIR/counts/
+
 if [ $GENOME_ANN ]; then mkdir -p $OUTPUT_DIR/genome/ ; fi
 if [ $PROT_ANN ] || [ $DIAMOND_REFSEQ ] || [ $DIAMOND_SEED ]; then
      mkdir -p $OUTPUT_DIR/diamond/
@@ -266,7 +279,7 @@ fi
 
 
 ## Remove adapter seqs and trim low-quality seqs  ------------
-if $TRIM && ! $paired; then
+if $TRIM && ! $paired && [ ! -f $OUTPUT_DIR/trimmed/${fwd}_trim.fastq ]; then
    echo =======================================================================
    echo Trimming and removing adapters ...
    start=`date +%s`
@@ -291,7 +304,7 @@ fi
 
 
 ## Do the same for paired ends ------------
-if $TRIM && $paired; then
+if $TRIM && $paired && [ ! -f $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
     echo =======================================================================
     echo Trimming and removing adapters ...
     start=`date +%s`
@@ -322,7 +335,7 @@ fi
 
 
 ## Merge pairs ------------
-if $MERGE_PAIRS; then
+if $MERGE_PAIRS && [ ! -f $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq ]; then
     echo =======================================================================
     echo Merging paired reads ...
     start=`date +%s`
@@ -345,7 +358,7 @@ fi
 
 
 ## Global quality filtering ------------
-if $QUAL_FLTR; then
+if $QUAL_FLTR && [ ! -f $OUTPUT_DIR/main/${base}_qual.fq ]; then
     echo =======================================================================
     echo Quality filtering ...
     start=`date +%s`
@@ -363,11 +376,11 @@ fi
 
 
 ## Remove duplicate reads ------------
-if $RM_DUPL; then
+if $RM_DUPL && [ ! -f $OUTPUT_DIR/main/${base}_unique.fq ]; then
     echo =======================================================================
     echo Remove duplicates ...
     start=`date +%s`
-    $APP_DIR/cdhit/cd-hit-auxtools/cd-hit-dup \
+    $CDHIT_DIR/cd-hit-auxtools/cd-hit-dup \
         -i $OUTPUT_DIR/main/${base}_qual.fq \
         -o $OUTPUT_DIR/main/${base}_unique.fq
     end=`date +%s`
@@ -380,7 +393,7 @@ fi
 
 
 ## Remove unwanted vector contamination ------------
-if $RM_VECTOR; then
+if $RM_VECTOR && [ ! -f $OUTPUT_DIR/aligned/${base}_univec_blat.fq ]; then
     echo =======================================================================
     echo Remove vector sequences ...
     start=`date +%s`
@@ -427,7 +440,7 @@ fi
 
 ## Remove host reads ----------
 # the same logic as the previous step
-if $RM_HOST; then
+if $RM_HOST && [ ! -f $OUTPUT_DIR/aligned/${base}_human_blat.fq ]; then
     echo =======================================================================
     echo Remove host sequences ...
     start=`date +%s`
@@ -468,7 +481,7 @@ if $RM_HOST; then
 fi
 
 ## Remove rRNA seqs -----------
-if $RM_rRNA && $use_sortmerna; then
+if $RM_rRNA && $use_sortmerna && [ ! -f $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
     echo =======================================================================
     echo Ribodepletion with SortMeRNA ...
     start=`date +%s`
@@ -487,7 +500,7 @@ if $RM_rRNA && $use_sortmerna; then
         $OUTPUT_DIR/time/${base}_time.log
 fi
 
-if $RM_rRNA && ! $use_sortmerna; then
+if $RM_rRNA && ! $use_sortmerna && [ ! -f $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
     echo =======================================================================
     echo Ribodepletion with infernalout ...
     start=`date +%s`
@@ -526,34 +539,36 @@ fi
 
 ## Rereplication (add back the repeated reads) ----------
 if $REREPLICATION; then
-    echo =======================================================================
-    echo Rereplication ...
-    start=`date +%s`
     if [ $rna_samples ]; then
         outfile=$OUTPUT_DIR/main/${base}_mRNA.fq
     else
         outfile=$OUTPUT_DIR/main/${base}_fltr.fq
     fi
+    
+    if [ ! -f $outfile ]; then
+        echo =======================================================================
+        echo Rereplication ...
+        start=`date +%s`
+        $PYSCRIPT_DIR/3_Reduplicate.py \
+            $OUTPUT_DIR/main/${base}_qual.fq \
+            $OUTPUT_DIR/aligned/${base}_human_blat.fq \
+            $OUTPUT_DIR/main/${base}_unique.fq.clstr \
+            $outfile
 
-    $PYSCRIPT_DIR/3_Reduplicate.py \
-        $OUTPUT_DIR/main/${base}_qual.fq \
-        $OUTPUT_DIR/aligned/${base}_human_blat.fq \
-        $OUTPUT_DIR/main/${base}_unique.fq.clstr \
-        $outfile
-
-    $APP_DIR/FastQC/fastqc $outfile
-    mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
-    mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
-    end=`date +%s`
-    runtime=$(((end-start)/60))
-    echo "Rereplication: $runtime min" >> $OUTPUT_DIR/time/${base}_time.log
-    echo ========================================== >> \
-        $OUTPUT_DIR/time/${base}_time.log
+        $APP_DIR/FastQC/fastqc $outfile
+        mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
+        mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
+        end=`date +%s`
+        runtime=$(((end-start)/60))
+        echo "Rereplication: $runtime min" >> $OUTPUT_DIR/time/${base}_time.log
+        echo ========================================== >> \
+            $OUTPUT_DIR/time/${base}_time.log
+    fi
 fi
 
 
 ## Taxonomic Classification ------------
-if $TAX_CLASS; then
+if $TAX_CLASS && [ ! -f $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt ]; then
     mkdir -p taxonomy
     echo =======================================================================
     echo Taxonomy classification ...
@@ -565,9 +580,9 @@ if $TAX_CLASS; then
     fi
 
     start=`date +%s`
-    $APP_DIR/kaiju/bin/kaiju \
-        -t $KAIJUBD_DIR/nodes.dmp \
-        -f $KAIJUBD_DIR/kaiju_db.fmi \
+    $KAIJU_DIR/kaiju \
+        -t $KAIJUBD_DB/nodes.dmp \
+        -f $KAIJUBD_DB/kaiju_db.fmi \
         -i $infile \
         -z $n_threads \
         -o $OUTPUT_DIR/taxonomy/${base}_tax_class.tsv
@@ -579,8 +594,8 @@ if $TAX_CLASS; then
     $PYSCRIPT_DIR/4_Constrain_Classification.py \
         genus \
         $OUTPUT_DIR/taxonomy/${base}_tax_class.tsv \
-        $KAIJUBD_DIR/nodes.dmp \
-        $KAIJUBD_DIR/names.dmp \
+        $KAIJUBD_DB/nodes.dmp \
+        $KAIJUBD_DB/names.dmp \
         $OUTPUT_DIR/taxonomy/${base}_genus_class.tsv
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -588,9 +603,9 @@ if $TAX_CLASS; then
         $OUTPUT_DIR/time/${base}_time.log
 
     start=`date +%s`
-    $APP_DIR/kaiju/bin/kaijuReport \
-        -t $KAIJUBD_DIR/nodes.dmp \
-        -n $KAIJUBD_DIR/names.dmp \
+    $KAIJU_DIR/kaijuReport \
+        -t $KAIJUBD_DB/nodes.dmp \
+        -n $KAIJUBD_DB/names.dmp \
         -i $OUTPUT_DIR/taxonomy/${base}_genus_class.tsv \
         -o $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt \
         -r genus
@@ -604,7 +619,7 @@ fi
 
 
 ## Assemble reads into contigs -----------
-if $ASSEMBLE; then
+if $ASSEMBLE && [ ! -f $OUTPUT_DIR/assembled/${base}_contigs_map.tsv ]; then
     echo =======================================================================
     echo Contigs assembly ...
 
@@ -640,7 +655,22 @@ if $ASSEMBLE; then
     runtime=$(((end-start)/60))
     echo "Indexing contig and alingning reads: $runtime min" >> \
         $OUTPUT_DIR/time/${base}_time.log
+    
+    #start=`date +%s`
+    #samtools view -bS \
+    #    $OUTPUT_DIR/assembled/${base}_contigs.sam > \
+    #    $OUTPUT_DIR/assembled/${base}_contigs.bam
 
+    #samtools fastq -n -f 4 -0 \
+    #    $OUTPUT_DIR/assembled/${base}_unassembled.fq \
+    #    $OUTPUT_DIR/assembled/${base}_contigs.bam
+    #end=`date +%s`
+    #runtime=$(((end-start)/60))
+    #echo "Samtools extract unassembled reads: $runtime min" >> \
+    #    $OUTPUT_DIR/time/${base}_time.log
+    #echo ========================================== >> \
+    #    $OUTPUT_DIR/time/${base}_time.log
+    
     # Make reads to contigs map
     start=`date +%s`
     $PYSCRIPT_DIR/5_Contig_Map.py \
@@ -658,7 +688,7 @@ fi
 
 
 ## Genome annotation -----------
-if $GENOME_ANN; then
+if $GENOME_ANN && [ ! -f $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq ]; then
     echo =======================================================================
     echo Genome annotation with BWA ...
     mkdir -p $OUTPUT_DIR/genome/
@@ -764,22 +794,25 @@ fi
 
 
 ## Protein annotation -----------
-if $PROT_ANN; then
+if $PROT_ANN && [ ! -f $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
     echo =======================================================================
     echo Protein annotation with DIAMOND on unmapped sequences ...
 
     start=`date +%s`
-    $APP_DIR/diamond blastx --id 85 --query-cover 65 --min-score 60 \
-        -p $n_threads -d $REF_DIR/nr \
+    $DIAMOND blastx --id 85 --query-cover 65 --min-score 60 \
+        --threads $n_threads \
+        -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fq \
-        -o $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
+        -o $OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout \
         -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
 
-    $APP_DIR/diamond blastx --id 85 --query-cover 65 --min-score 60 \
-        -p $n_threads -d $REF_DIR/nr \
+    $DIAMOND blastx --id 85 --query-cover 65 --min-score 60 \
+        --threads $n_threads \
+        -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq \
-        -o $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
+        -o $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout \
         -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
+    
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "DIAMOND (NR) protein alignment: $runtime min" >> \
@@ -808,7 +841,7 @@ fi
 
 
 ## DIAMOND annotation -----------
-if $DIAMOND_REFSEQ; then
+if $DIAMOND_REFSEQ && [ ! -f $OUTPUT_DIR/diamond/${base}_refseq.dmdout ]; then
     echo =======================================================================
     echo Refseq annotation with DIAMOND ...
 
@@ -820,17 +853,17 @@ if $DIAMOND_REFSEQ; then
 
     start=`date +%s`
     # Align with RefSeq database
-    $APP_DIR/diamond blastx \
-        -p $n_threads -d $REF_DIR/RefSeq_bac \
+    $DIAMOND blastx --threads $n_threads \
+        -d $REF_DIR/RefSeq_bac \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
         -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
 
-    # $APP_DIR/diamond blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
+    # $DIAMOND blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
     #     -q $infile \
     #     -a $OUTPUT_DIR/diamond/${base}.RefSeq \
     #     -t ./dmnd_tmp -k 1 --sensitive
-    # $APP_DIR/diamond view --daa ${base}.RefSeq.daa -f 6 \
+    # $DIAMOND view --daa ${base}.RefSeq.daa -f 6 \
     #     -o $OUTPUT_DIR/diamond/${base}_refseq.dmdout
 
     end=`date +%s`
@@ -842,7 +875,7 @@ if $DIAMOND_REFSEQ; then
 fi
 
 
-if $DIAMOND_SEED; then
+if $DIAMOND_SEED && [ ! -f $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
     echo =======================================================================
     echo SEED annotation with DIAMOND ...
 
@@ -854,17 +887,17 @@ if $DIAMOND_SEED; then
 
     start=`date +%s`
     # Align with SEED subsystem database
-    $APP_DIR/diamond blastx \
-        -p $n_threads -d $REF_DIR/subsys_db \
+    $DIAMOND blastx --threads $n_threads \
+        -d $REF_DIR/subsys_db \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_seed.dmdout \
         -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
 
-    # $APP_DIR/diamond blastx -p $n_threads -d $REF_DIR/subsys_d \
+    # $DIAMOND blastx -p $n_threads -d $REF_DIR/subsys_d \
     #     -q $infile \
     #     -a $OUTPUT_DIR/diamond/${base}.Subsys \
     #     -t ./dmnd_tmp -k 1 --sensitive
-    # $APP_DIR/diamond view --daa ${base}.Subsys.daa -f 6 \
+    # $DIAMOND view --daa ${base}.Subsys.daa -f 6 \
     #     -o $OUTPUT_DIR/diamond/${base}_seed.dmdout
 
     end=`date +%s`
@@ -874,6 +907,70 @@ if $DIAMOND_SEED; then
     echo ========================================== >> \
         $OUTPUT_DIR/time/${base}_time.log
 fi
+
+if $DIAMOND_COUNT; then
+    echo =======================================================================
+    echo Aggregate DIAMOND results and count reads...
+
+    start=`date +%s`
+    if [ ! -f $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ];
+    then 
+        echo Diamond RefSeq Results aggreggation ...
+        python $SAMSA2/DIAMOND_analysis_counter.py -O \
+            -I $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
+            -D $REF_DIR/RefSeq_bac.fa
+        python $SAMSA2/DIAMOND_analysis_counter.py -F \
+            -I $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
+            -D $REF_DIR/RefSeq_bac.fa
+        mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
+        mv $OUTPUT_DIR/diamond/${base}_refseq.dm_organism.tsv $OUTPUT_DIR/counts/dmnd_RefSeq/
+        mv $OUTPUT_DIR/diamond/${base}_refseq.dm_function.tsv $OUTPUT_DIR/counts/dmnd_RefSeq/
+        echo Completed counting of the RefSeq anotated reads!
+    fi
+    
+    if [ ! -f $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs.dm_organism.tsv ];
+    then 
+        echo Diamond NR protein results aggreggation ...
+        mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
+        for file in $OUTPUT_DIR/diamond/${base}_nr_*
+        do 
+            echo $file
+            if [[ ! -s $file ]]; then
+                 echo $file is empty.
+                 continue
+            fi
+            python $SAMSA2/DIAMOND_analysis_counter.py -F \
+                -I $file -D $REF_DIR/nr
+            mv ${file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR/
+        done
+        echo Completed counting of the RefSeq anotated reads!
+    fi
+
+    if [ ! -f $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.dm_receipt ];
+    then
+        echo Diamond SEED results aggregation ...
+        mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
+        python $SAMSA2/DIAMOND_subsystems_analysis_counter.py \
+            -I $OUTPUT_DIR/diamond/${base}_seed.dmdout \
+            -D $REF_DIR/subsys_db.fa \
+            -O $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.hierarchy \
+            -P ${base}_seed.receipt
+        # This quick program reduces down identical hierarchy annotations
+        python $SAMSA2/subsys_reducer.py \
+            -I $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.hierarchy
+        echo Completed counting of the SEED  anotated reads!
+    fi
+    
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "SAMSA2 python scripts summarise DIAMOND results: $runtime min" >> \
+        $OUTPUT_DIR/time/${base}_time.log
+    echo ========================================== >> \
+        $OUTPUT_DIR/time/${base}_time.log
+
+fi
+
+
 
 end0=`date +%s`
 runtime0=$(((end0-start0)/60))
