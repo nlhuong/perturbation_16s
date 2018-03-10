@@ -1,10 +1,10 @@
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export SCRIPT=${1:-workflow}
-export IN=${2:-$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub}
-export OUT=${3:-$PI_SCRATCH/resilience/metatranscriptomics/processed/DBUr_Sub}
-export FWD=${4:-M3349_DBUsw_49r_TrM31_1P.fq.gz}
-export REV=${5:-M3349_DBUsw_49r_TrM31_2P.fq.gz}
-export TIME=${6:-12:00:00}
+export IN=${2:-$BASE_DIR/data/metatranscriptomics/resilience/input/EAYr_Sub}
+export OUT=${3:-$PI_SCRATCH/resilience/metatranscriptomics/processed/EAYr_Sub}
+export FWD=${4:-M3865_PL18_B2r_TrM31_1P.fq.gz} #M3866_EAYsw_25r_TrM31_1P.fq.gz}
+export REV=${5:-M3865_PL18_B2r_TrM31_2P.fq.gz} #M3866_EAYsw_25r_TrM31_2P.fq.gz}
+export TIME=${6:-02:00:00}
 export NCPUS=${7:-10}
 export MEM=${8:-4G}
 export LOG_DIR=$BASE_DIR/logs/$(basename $IN)

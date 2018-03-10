@@ -19,17 +19,19 @@ if [ -z ${SCRATCH+x} ]; then
     PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 else
     echo Working on SHERLOCK cluster
-    ## The following modules must be preloaded:
-    # module load python/2.7.13
-    # module load py-biopython/1.70
-    module load biology
-    module load bwa/0.7.17
-    module load samtools/1.6
-    module load ncbi-blast+/2.6.0
-    module load cmake/3.8.1
     BASE_DIR=$SCRATCH/Projects/perturbation_16s
     APP_DIR=$SCRATCH/applications/bin/
     PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+    if [ $SHERLOCK == "2" ]; then
+        ## The following modules must be preloaded:
+        # module load python/2.7.13
+        # module load py-biopython/1.70
+        module load biology
+        module load bwa/0.7.17
+        module load samtools/1.6
+        module load ncbi-blast+/2.6.0
+        module load cmake/3.8.1
+    fi
 fi
 
 cd $APP_DIR
@@ -106,8 +108,15 @@ cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../..
 make
 cd $APP_DIR
 
+## samsa2
+git clone https://github.com/transcript/samsa2.git
+# NOTE THAT the python_scripts/DIAMOND_analysis_counter.py have indexing errors
+# Need to change lines 148, 151, 156, 163  to have [0] and [1] indices
+# as opposed to [1] and [2]
 
-if [ -z ${SCRATCH+x} ]; then
+
+## biology --------------------------------------------------------------------------------
+if [ -z ${SCRATCH+x} ] || [ $SHERLOCK == "1" ]; then
     ## bwa
     conda install -c bioconda bwa
 
