@@ -131,20 +131,23 @@ for line in db:
 
 	# id, organism and function names [https://stackoverflow.com/questions/6109882/regex-match-all-characters-between-two-strings]
         db_id = re.search("(?<=>)[^ ]+", line)
-        db_entry = re.search("(?<= )(.*)(?=\[)", line)
+        db_entry = re.search("(?<= )(.*)(?= \[)", line)
         db_org = re.search("(?<=\[)(.*)(?=\])", line)
+
+	if db_entry is None:
+		db_entry = re.search("(?<= )(.*)(?=\[)", line) # some lines missing a space
 
 	# add to dictionaries
 	db_id = db_id.group()
 	db_entry = db_entry.group()
 	db_org = db_org.group()
         if "-F" in sys.argv:
-		db_func_dictionary[db_id] = db_entry.strip()
+		db_func_dictionary[db_id] = db_entry
         if "-O" in sys.argv:
 		db_org_dictionary[db_id] = db_org
         if "-SO" in sys.argv:
 		if target_org in db_org:
-			db_SO_dictionary[db_id] = db_entry.strip()
+			db_SO_dictionary[db_id] = db_entry
 
 	# line counter to show progress
         if db_line_counter % 1000000 == 0:							# each million
