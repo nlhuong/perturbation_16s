@@ -946,7 +946,7 @@ if $DIAMOND_COUNT; then
         echo Completed counting of the RefSeq anotated reads!
     fi
 
-    if [ ! -f $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.dm_receipt ];
+    if [ ! -f $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt ];
     then
         echo Diamond SEED results aggregation ...
         mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
@@ -954,7 +954,7 @@ if $DIAMOND_COUNT; then
             -I $OUTPUT_DIR/diamond/${base}_seed.dmdout \
             -D $REF_DIR/subsys_db.fa \
             -O $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.hierarchy \
-            -P ${base}_seed.receipt
+            -P $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt
         # This quick program reduces down identical hierarchy annotations
         python $SAMSA2/subsys_reducer.py \
             -I $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.hierarchy
