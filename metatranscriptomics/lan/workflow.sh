@@ -13,12 +13,12 @@ if [ -z ${SCRATCH+x} ]; then
     module load gcc/gcc6
     BASE_DIR=~/Projects/perturbation_16s
     APP_DIR=~/.local/bin/
-    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
+    # PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 else
     echo Working on SHERLOCK cluster
     BASE_DIR=$SCRATCH/Projects/perturbation_16s
     APP_DIR=$SCRATCH/applications/bin/
-    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+    # PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
     if [ $SHERLOCK == "1" ]; then
         CDHIT_DIR=$APP_DIR/for_shelock1/cdhit
         SORTMERNA_DIR=$APP_DIR/for_sherlock1/sortmerna
@@ -35,6 +35,8 @@ fi
 # Reference directories
 REF_DIR=$BASE_DIR/data/databases
 KAIJUBD_DB=$REF_DIR/kaijudb
+# Python scripts directory
+PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 # SAMSA2 directory
 SAMSA2=$APP_DIR/samsa2/python_scripts/
 ###############################################################################
