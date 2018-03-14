@@ -3,7 +3,7 @@ BASE_DIR=$SCRATCH/Projects/perturbation_16s/
 SCRIPT=$BASE_DIR/metatranscriptomics/lan/submit.sh
 IN=${1:-$BASE_DIR/data/metatranscriptomics/resilience/input/$SUBJECT/}
 OUT=${2:-$PI_SCRATCH/resilience/metatranscriptomics/processed/$SUBJECT/}
-TIME=${3:-20:00:00}
+TIME=${3:-24:00:00}
 NCPUS=${4:-8}
 MEM=${5:-4G}
 mkdir -p $OUT
