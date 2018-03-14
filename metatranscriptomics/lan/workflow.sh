@@ -916,10 +916,10 @@ if $DIAMOND_COUNT; then
     if [ ! -f $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ];
     then 
         echo Diamond RefSeq Results aggreggation ...
-        python $SAMSA2/DIAMOND_analysis_counter.py -O \
+        python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -O \
             -I $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
             -D $REF_DIR/RefSeq_bac.fa
-        python $SAMSA2/DIAMOND_analysis_counter.py -F \
+        python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
             -I $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
             -D $REF_DIR/RefSeq_bac.fa
         mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
@@ -939,7 +939,7 @@ if $DIAMOND_COUNT; then
                  echo $file is empty.
                  continue
             fi
-            python $SAMSA2/DIAMOND_analysis_counter.py -F \
+            python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
                 -I $file -D $REF_DIR/nr
             mv ${file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR/
         done
