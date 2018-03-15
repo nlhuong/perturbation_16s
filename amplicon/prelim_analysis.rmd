@@ -36,7 +36,7 @@ require(knitr)
 require(rmarkdown)
 options(width = 80, stringsAsFactors = FALSE)
 opts_chunk$set(
-  cache = TRUE, warning = FALSE, message = FALSE, 
+  cache = FALSE, warning = FALSE, message = FALSE, 
   fig.align = 'center', fig.wide = TRUE, fig.path = "../figs/", # dev='pdf',
   fig.width = 10, fig.height = 8
 )
@@ -58,7 +58,7 @@ theme_set(theme_bw())
 
 ```{r}
 path_to_data <- file.path("../data", "processed/")
-physeq_file <- file.path(path_to_data, "perturb_physeq_filtered_27Dec.rds")
+physeq_file <- file.path(path_to_data, "perturb_physeq_filtered_22Jan18.rds")
 ps <- readRDS(physeq_file)
 ps
 ```
@@ -86,17 +86,32 @@ p3 <- p0 + geom_point(aes(color = Abx_Interval), size = 2.5)
 grid.arrange(p1, p2, p3, ncol = 1)
 ```
 
+
 ```{r}
 remove_subjects <- c("AAA", "AAB", "AAN", "DAC")
 ps <- subset_samples(ps, !Subject %in% remove_subjects)
 ps
-SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) 
+
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(
+    Interval = paste0(Diet_Interval, "_", CC_Interval, "_", Abx_Interval),
+    Interval = gsub("_NA", "", Interval),
+    Interval = gsub("NA_", "", Interval)
+  )
 ```
 
 
 ```{r timeline, fig.height=10, fig.width=12}
-ggplot(SMP, aes(y = Subject, x = DayFromStart)) + 
-  geom_point(aes(color = Timeline), size = 2.5) 
+set.seed(123)
+ggplot(SMP %>% filter(Subject != "NA_QC", DayFromStart > 0), 
+       aes(y = Subject, x = DayFromStart)) + 
+  geom_point(aes(color = Interval), size = 2.5) +
+  facet_grid(Group ~ ., scales = "free", space = "free") +
+  scale_color_manual(values = sample(colorRampPalette(brewer.pal(9, "Set1"))(21)))
+#xlim(as.Date("2014-08-01"), as.Date("2016-06-01"))
 ```
 
 ## Filter taxa {#filter .unnumbered}
@@ -140,19 +155,41 @@ psIHS <- transform_sample_counts(ps, function(x) {log(x + sqrt(x^2+1))})
 ## Phylogenetic tree
 
 ```{r}
-set.seed(1)
 # Assign colors to taxa
-taxa_rank <- "Class"
-n_taxa_rank <- length(unique(ps@tax_table[, taxa_rank]))
-taxa_col_map <- colorRampPalette(brewer.pal(9, "Set3"))(n_taxa_rank)
-taxa_col_map <- taxa_col_map[sample(n_taxa_rank)]
-names(taxa_col_map) <- unique(ps@tax_table[, taxa_rank])
-names(taxa_col_map) <- 
-  c(names(taxa_col_map)[!is.na(names(taxa_col_map))], "Unknown")
+taxa_rank <- "Family"
+n_taxa <- 15
 
-taxa_col_map[length(taxa_col_map)] <- "white"
-taxa_col <- taxa_col_map[ps@tax_table[, taxa_rank]]
-taxa_col[is.na(taxa_col)] <- "white"
+taxFreq <- data.frame(Taxa = c(ps@tax_table[, taxa_rank])) %>%
+  group_by(Taxa) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  mutate(
+    Taxa = ifelse(is.na(Taxa), "Unknown", Taxa),
+    Taxa = ifelse(Taxa %in% Taxa[1:n_taxa], Taxa, "Other")
+  )  %>%
+  group_by(Taxa) %>%
+  summarise(count = sum(count)) %>%
+  arrange(desc(count))
+taxFreq
+
+set.seed(1)
+taxa_col_map <- colorRampPalette(brewer.pal(9, "Set3"))(n_taxa + 1)
+taxa_col_map <- taxa_col_map[sample(length(taxa_col_map))]
+names(taxa_col_map) <- c(
+  taxFreq %>% 
+    filter(!.[[1]] %in% c("Other", "Unknown")) %>%
+    .[["Taxa"]],
+  "Other", 
+  "Unknown"
+)
+taxa_col_map["Unknown"] <- c("white")
+
+
+taxa_col <- data.frame(Taxa = c(ps@tax_table[, taxa_rank])) %>%
+  mutate(
+    Taxa = ifelse(is.na(Taxa), "Unknown", Taxa),
+    Taxa = ifelse(Taxa %in% taxFreq$Taxa, Taxa, "Other"),
+    Color = taxa_col_map[Taxa])
 ```
 
 ```{r phylotree, fig.height=20, fig.width=16}
@@ -160,7 +197,7 @@ default_par <- par()
 par(mar=c(6,1,1,1), xpd = TRUE)
 plot(ps@phy_tree, label.offset=0.75, show.tip.label = FALSE) 
 par(mar=c(1,1,1,1), xpd = TRUE)
-ape::tiplabels(pch=21, col="black", adj=1, bg=taxa_col, cex=2) 
+ape::tiplabels(pch=21, col="black", adj=1, bg=taxa_col$Color, cex=2) 
 legend(x= 0, y = -100, legend = names(taxa_col_map), 
        fill = taxa_col_map, ncol = 6, cex = 1.2)
 par(default_par)
@@ -255,8 +292,8 @@ plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
 ```{r pca, eval = FALSE}
 # Compute PCA 
 pca.ihs <- prcomp(scale(as(t(psIHS@otu_table), "matrix"), scale = FALSE))
-save(list = "pca.ihs", 
-     file = file.path(path_to_process_data, "perturb_ordinate.rda"))
+save(list = "pca.ihs",
+     file = "../data/processed/perturb_ordinate.rda")
 ```
 
 
@@ -322,10 +359,12 @@ plot_projection(scores, xname = "PC1", yname = "PC2", labname = NULL,
 ```{r pcoa-bray, eval = FALSE}
 # Compute PCoA with Bray-Curtis distance
 brayD.ihs <- phyloseq::distance(psIHS, method = "bray")
+brayD <- phyloseq::distance(ps, method = "bray")
+
 bray.pcoa.raw <- ordinate(ps,  method = "MDS", distance = "bray")
 bray.pcoa.ihs <- ordinate(psIHS,  method = "MDS", distance = "bray")
-save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD"), 
-     file = file.path(path_to_process_data, "perturb_ordinate.rda"))
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs"), 
+     file = "../data/processed/perturb_ordinate.rda")
 ```
 
 
@@ -396,11 +435,22 @@ plot_projection(sample.scores,
 ## TSNE {#tsne .unnumbered}
 
 ```{r, eval = FALSE}
-bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, pca = TRUE,
+set.seed(123)
+bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, 
+                               pca = TRUE,
                                eta = 1, exaggeration_factor = nsamples(ps)/10)
-save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD.ihs", "bray.rtsne.ihs"), 
-     file = file.path(path_to_process_data, "perturb_ordinate.rda"))
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs", "bray.rtsne.ihs"), 
+     file = "../data/processed/perturb_ordinate.rda")
 ```
+
+```{r}
+bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, 
+                               pca = TRUE)
+sample.scores2 <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
+                        tsne.2.ihs = bray.rtsne.ihs$Y[, 2],
+                        sample.scores) 
+```
+
 
 ```{r}
 sample.scores <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
@@ -409,8 +459,12 @@ sample.scores <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
 ```
 
 
+
 ```{r tsne-bray-subj, fig.height=10, fig.width=14}
 plot_projection(sample.scores, xname = "tsne.1.ihs", yname = "tsne.2.ihs", 
+            size = 3, color = "Subject")
+
+plot_projection(sample.score2s, xname = "tsne.1.ihs", yname = "tsne.2.ihs", 
             size = 3, color = "Subject")
 ```
 
@@ -419,13 +473,23 @@ plot_projection(sample.scores,
                 xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL,
                 size = 3, color = "DayFromStart") + 
   scale_color_viridis()
+
+plot_projection(sample.scores2, 
+                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL,
+                size = 3, color = "DayFromStart") + 
+  scale_color_viridis()
 ```
 
 
 ```{r tsne-bray-subj-time,  fig.height=30, fig.width=18}
-plot_projection(sample.scores, 
+
+plot_projection(sample.scores %>%
+                  arrange(Subject, Samp_Date), 
                 xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL, 
             size = 3, color = "DayFromStart") +
+  geom_path(
+        aes(group = Subject, color = DayFromStart), 
+        alpha = 0.8, lwd = 1) +
   geom_point(data = sample.scores %>% 
                filter(Timeline != "typical"), aes(fill = Timeline),
              size = 5, pch = 23, color = "black", lwd=2) +
@@ -453,24 +517,25 @@ out.agpca.ihs <- adaptivegpca(pp.ihs$X, pp.ihs$Q, k = 3)
 #                       var_data = tax_table(ps),
 #                       var_mapping = aes(x = Axis1, y = Axis2, color = Class))
 
-save(list = c("pca.ihs", "bray.pcoa.raw", "bray.pcoa.ihs", "brayD.ihs", 
-              "bray.rtsne.ihs", "out.agpca", "out.agpca.ihs"), 
-     file = file.path(path_to_process_data, "perturb_ordinate.rda"))
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs", "bray.rtsne.ihs",
+            "out.agpca", "out.agpca.ihs"), 
+   file = "../data/processed/perturb_ordinate.rda")
+            
 ```
 
-```{r}
+```{r, eval=FALSE}
 sample.scores <- cbind(agPCA1 = out.agpca.ihs$U[, 1],
                        agPCA2 = out.agpca.ihs$U[, 2],
                        agPCA3 = out.agpca.ihs$U[, 3],
                        sample.scores) 
 ```
 
-```{r agpca-subj, echo = FALSE, fig.height=10, fig.width=14}
+```{r agpca-subj, echo = FALSE, eval= FALSE, fig.height=10, fig.width=14}
 plot_projection(sample.scores, xname = "agPCA1", yname = "agPCA2", 
             size = 3, color = "Subject", eigs = out.agpca.ihs$vars)
 ```
 
-```{r}
+```{r, eval=FAlSE}
 loadings <- data.frame(out.agpca.ihs$QV, tax_table(psIHS)) %>%
   as.data.frame(stringsAsFactors = FALSE) %>%
   rownames_to_column("Seq_ID") %>%
@@ -478,7 +543,7 @@ loadings <- data.frame(out.agpca.ihs$QV, tax_table(psIHS)) %>%
 ```
 
 
-```{r agpca-loadings,  fig.height=15, fig.width=20}
+```{r agpca-loadings,  eval=FAlSE, fig.height=15, fig.width=20}
 plot_projection(loadings, 
                 xname = "Axis1", yname = "Axis2", size = "Axis3",
                 color = "genus", eigs = out.agpca.ihs$vars, alpha = 0.3) +
@@ -501,7 +566,7 @@ plot_projection(loadings,
 ```
 
 
-```{r agpca-time,  fig.height=30, fig.width=18}
+```{r agpca-time,  eval=FAlSE, fig.height=30, fig.width=18}
 theme_set(theme_bw())
 plot_projection(sample.scores, 
                 xname = "agPCA1", yname = "agPCA2", labname = NULL, 
