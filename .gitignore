@@ -2,6 +2,7 @@ data/*
 output/*
 figs/*
 logs/*
+metatranscriptomics/pyscripts/
 amplicon/*cache/
 *.html
 .Rproj.user

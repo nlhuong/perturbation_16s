@@ -10,9 +10,9 @@
 #setwd("perturbation_16s/amplicon/")
 rm(list = ls())
 
-RUNPCA <- FALSE
-RUNAGPCA <- FALSE
-RUNTSNE <- FALSE
+RUNPCA <- TRUE
+RUNAGPCA <- TRUE
+RUNTSNE <- TRUE
 
 PLOTPCA <- TRUE
 PLOTAGPCA <- TRUE
@@ -22,7 +22,7 @@ path2data <- "../data/processed/"
 path2figs <- "../figs"
 path2out <- "../output"
 
-datafile <- "perturb_physeq_filtered_27Dec.rds"
+datafile <- "perturb_physeq_filtered_22Jan18.rds"
 group_file <- "study_arm"
 subject_file <- "subject"
 
@@ -119,8 +119,8 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
         X, dims = 2, 
         is_distance = (class(X) =="dist"), 
         pca = !(class(X) =="dist"),
-        perplexity = min(30, floor((nsamples(g_physeq) - 1)/3)))
-        #eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
+        perplexity = min(30, floor((nsamples(g_physeq) - 1)/3)),
+        eta = 1, exaggeration_factor = nsamples(g_physeq)/10)
       scores <- as.data.frame(g_ord$Y)
       rownames(scores) <- sample_names(g_physeq)
     } else {
@@ -249,7 +249,7 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
     plt <- plt + 
       geom_path(
         aes(group = Subject, color = DayFromStart), 
-        alpha = 0.5) +
+        alpha = 0.8, lwd = 1) +
       geom_text(
         aes(color = DayFromStart, label = Subject)
     ) 
@@ -261,11 +261,11 @@ plot_scores_time <- function(scores, size = 3, eigs = NULL, path = FALSE){
     geom_point(
       data = scores %>% filter(Timeline != "typical"), 
       aes(fill = Timeline, shape = Timeline),
-      size = 1.5*size, lwd=10
+      size = 2*size, lwd=10
     ) +
     scale_color_viridis() + 
     scale_shape_manual(values = c(23:25, 21, 22)) 
-  
+
   if(!is.null(eigs)){
     var.explained <- round(100 * eigs/sum(eigs), 2)
     plt <- plt + 
@@ -340,11 +340,11 @@ if(RUNPCA){
 if(PLOTPCA){
   generate_pdf(ord_lst = pca_res, 
                filename = file.path(path2figs, plot_group_file), 
-               width = 15, height = 30)
+               width = 10, height = 22)
   
   generate_pdf(ord_lst = pca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 30)
+               width = 10, height = 22)
 }
 
 ###############################################################################
@@ -373,10 +373,10 @@ if(RUNAGPCA){
 if(PLOTAGPCA){
   generate_pdf(ord_lst = agpca_res, 
                filename = file.path(path2figs, plot_group_file), 
-               width = 15, height = 30)
+               width = 10, height = 22)
   generate_pdf(ord_lst = agpca_subject_res, 
                filename = file.path(path2figs, plot_subject_file), 
-               width = 15, height = 30)
+               width = 10, height = 22)
 }
 
 

@@ -23,7 +23,7 @@ library("forcats")
 parser <- arg_parser("Plot MIDAS output")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory of data/ containing all the processed data", default = "metagenomic")
 parser <- add_argument(parser, "--k", help = "k in k-over-a filter for depths", default = 0.25)
-parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 0.0)
+parser <- add_argument(parser, "--a", help = "a in k-over-a filter for depths", default = 2)
 argv <- parse_args(parser)
 
 ## custom plot defaults
@@ -85,25 +85,36 @@ plot_loadings <- function(loadings, col_type) {
 
 ## Read in data
 merged_dir <- file.path("..", "data", argv$subdir, "merged")
-depths <- read_feather(file.path(merged_dir, "depths.feather"))
+depths <- read_feather(file.path(merged_dir, "depths.feather")) %>%
+  mutate(genus = str_extract(species, "[^_]+"))
 meas <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Meas", skip = 1) %>%
   rename(Samp_ID = SampID)
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
+                 "PostCC", "PreAbx", "MidAbx", "PostAbx")
 samp <- read_xlsx("../data/Mapping_Files_7bDec2017.xlsx", "Samp", skip = 1) %>%
   mutate(
-    Diet_Interval = factor(Diet_Interval, c("PreDiet", "MidDiet", "PostDiet")),
-    CC_Interval = factor(CC_Interval, c("PreCC", "MidCC", "PostCC")),
-    Abx_Interval = factor(Abx_Interval, c("PreAbx", "MidAbx", "PostAbx"))
-  )
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
+bad_samples <- c("M3728", "M3673", "M3695", "M3204", "M3064", "M3109", "M3188",
+                 "M3654")
 
 ###############################################################################
 ## Prepare data for gene depths plots
 ###############################################################################
-depths <- depths[substr(depths$species, 1, 11) == "Bacteroides", ]
+depths <- depths %>%
+  filter(genus %in% c("Parabacteroides", "Eubacterium", "Bacteroides"))
 depths[is.na(depths)] <- 0
 keep_ix <- rowMeans(depths[, -c(1, 2)] > argv$a) > argv$k
 
 depths_df <- depths[keep_ix, ] %>%
   as.data.frame() %>%
+  select(-genus) %>%
   separate(
     species,
     c("genus", "species_name", "strain_id"), "_",
@@ -129,14 +140,18 @@ meas_levels <- meas %>%
 depths_mat <- depths_df %>%
   select(starts_with("M")) %>%
   as.matrix()
-hm <- pheatmap(depths_mat, silent = TRUE)
+col_sums <- colSums(depths_mat)
+bad_ix <- col_sums < 8e3 | col_sums > 5.5e4
+depths_mat <- depths_mat[, !bad_ix]
+
+hm <- pheatmap(depths_mat, silent = TRUE, cluster_cols = FALSE)
 
 mdepths <- depths_df %>%
   gather(Meas_ID, depth, starts_with("M")) %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
   left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
   mutate(
-    Meas_ID = factor(Meas_ID, levels = meas_levels,
+    Meas_ID = factor(Meas_ID, levels = meas_levels),
     gene_id = factor(gene_id, levels = rownames(depths_mat)[hm$tree_row$order])
   )
 
@@ -152,8 +167,7 @@ loadings <- pc_depths$loadings[, 1:5] %>%
   as.data.frame() %>%
   rownames_to_column("Meas_ID") %>%
   left_join(meas %>% select(ends_with("ID"))) %>%
-  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval"))) %>%
-  mutate(Meas_ID = factor(Meas_ID, levels = colnames(depths_mat)[hm$tree_col$order]))
+  left_join(samp %>% select(Samp_ID, Subject, ends_with("Interval")))
 
 ###############################################################################
 ## Make plots for the analysis
@@ -185,3 +199,62 @@ ggplot(scores) +
 plot_loadings(loadings, "Diet_Interval")
 plot_loadings(loadings, "CC_Interval")
 plot_loadings(loadings, "Abx_Interval")
+
+###############################################################################
+## Diagnostics about read mapping
+###############################################################################
+
+mapping_summaries <- function(process_dir) {
+  sample_dirs <- list.files(process_dir, full.names = TRUE)
+
+  gene_summary <- list()
+  for (i in seq_along(sample_dirs)) {
+    summary_path <- file.path(sample_dirs[i], "genes", "summary.txt")
+    if (file.exists(summary_path)) {
+      gene_summary[[i]] <- read_tsv(summary_path)
+      gene_summary[[i]]$Meas_ID <- basename(sample_dirs[i])
+    }
+  }
+  bind_rows(gene_summary)
+}
+
+## process_dir <- file.path("..", "data", argv$subdir, "processed")
+## gene_summary <- mapping_summaries(process_dir)
+gene_summary <- read_csv("../data/metagenomic/merged/gene_summary.csv") %>%
+  left_join(meas) %>%
+  left_join(samp) %>%
+  separate(species_id, c("genus", "species", "strain")) %>%
+  mutate(
+    genus_grouped = fct_lump(genus, n = 7)
+  ) %>%
+  filter(!(Meas_ID %in% bad_samples))
+
+ggplot(gene_summary) +
+  geom_point(
+    aes(x = fraction_covered, y = log(mean_coverage, 10), col = genus_grouped),
+    alpha = 0.5, size = 0.5
+  ) +
+  guides(col = guide_legend(override.aes = list(alpha = 1, size = 2))) +
+  facet_wrap(~ Subject) +
+  labs(
+    col = "Genus",
+    y = "log[10](average coverage)",
+    x = "Fraction of pangenome covered"
+    ) +
+  theme(legend.position = "bottom")
+ggsave("mapped_reads.png", dpi = 500, width = 4.82, height = 2.82)
+
+ggplot(gene_summary) +
+  geom_histogram(
+    aes(x = log(mapped_reads, 10), fill = genus_grouped)
+  ) +
+  facet_grid(genus_grouped~Subject) +
+  labs(
+    x = "log[10](mapped reads)",
+    fill = "Genus"
+  ) +
+  theme(
+    strip.text.y = element_text(angle = 0, hjust = 0),
+    legend.position = "bottom"
+  )
+ggsave("mapped_reads_hist.png", dpi = 500, width = 5.02, height = 4.53)
