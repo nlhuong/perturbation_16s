@@ -67,7 +67,7 @@ def read_filter_stats(output_dir, subject_id, sample_id):
 
     ## statistics about vector and host read removal
     unique = make_path("main", "_unique.fq")
-    vector_bwa = _make_path("aligned", "_univec_bwa.fq")
+    vector_bwa = make_path("aligned", "_univec_bwa.fq")
     vector_blat = make_path("aligned", "_univec_blat.fq")
     host_bwa = make_path("aligned", "_human_bwa.fq")
     host_blat = make_path("aligned", "_human_blat.fq")
@@ -86,17 +86,24 @@ def read_filter_stats(output_dir, subject_id, sample_id):
     stats["rRNA_removal"] = 1 - stats["mRNA"] / stats["human_blat"]
     return stats
 
+
 def annotation_stats(output_dir, subject_id, sample_id):
     """
      Assess the quality of read annotation
+
+    Example:
+        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        subject_id = "DBUr_Sub"
+        sample_id = "M3303_DBUsw_2r_TrM31"
+        annotation_stats(output_dir, subject_id, sample_id)
     """
     stats = OrderedDict()
     subject_dir = os.path.join(output_dir, subject_id)
 
     def make_path(dir, suffix):
-        return os.path.join(subject_dir, dir, suffix)
+        return os.path.join(subject_dir, dir, sample_id + suffix)
 
-    genus_file = os.path.join(subject_dir, "taxonomy", "_genus_class_summary.txt")
+    genus_file = make_path("taxonomy", "_genus_class_summary.txt")
     genus_summary = split("\n|\t", tail(genus_file, 3))
 
     stats["genus_unassigned_perc"] = float(genus_summary[0])
@@ -105,9 +112,9 @@ def annotation_stats(output_dir, subject_id, sample_id):
     stats["genus_unclassified_reads"] = float(genus_summary[5])
 
     contigs = make_path("assembled", "_contigs.fasta")
-    unassembled = make_path("assembled", "unassembled.fq")
-    contigs_unmapped = make_path("assembled", "contigs_unmapped.fq")
-    unassembled_unmapped = make_path("assembled", "unassembled_unmapped.fq")
+    unassembled = make_path("assembled", "_unassembled.fq")
+    contigs_unmapped = make_path("assembled", "_contigs_unmapped.fq")
+    unassembled_unmapped = make_path("assembled", "_unassembled_unmapped.fq")
 
     stats["contigs"] = file_len(contigs) / 4.0
     stats["unassembled"] = file_len(unassembled) / 4.0
@@ -123,13 +130,21 @@ def assembly_stats(output_dir, subject_id, sample_id):
     """
     Assess the quality of the assembly
 
+    Example:
+        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        subject_id = "DBUr_Sub"
+        sample_id = "M3303_DBUsw_2r_TrM31"
+        assembly_stats(output_dir, subject_id, sample_id)
     """
     stats = OrderedDict()
-
     subject_dir = os.path.join(output_dir, subject_id)
-    original = os.path.join(subject_dir, "assembled", sample_id + "_mRNA.fq")
-    unassembled = os.path.join(subject_dir, "assembled", sample_id + "_unassembled.fq")
-    unassembled = os.path.join(subject_dir, "assembled", sample_id + "_contigs.fq")
+
+    def make_path(dir, suffix):
+        return os.path.join(subject_dir, dir, sample_id + suffix)
+
+    original = make_path("main", "_mRNA.fq")
+    unassembled = make_path("assembled", "_unassembled.fq")
+    contigs = make_path("assembled", "_contigs.fq")
     stats["original"] = file_len(original) / 4.0
     stats["unassembled"] = file_len(unassembled) / 4.0
     stats["unassembled_prop"] = stats["unassembled"] / stats["original"]
