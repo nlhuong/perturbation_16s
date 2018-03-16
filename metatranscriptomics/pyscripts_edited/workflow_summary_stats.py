@@ -165,6 +165,4 @@ def summary_stats(output_dir):
             except:
                 stats[sid] = "NA"
 
-    return stats
-    # Loop over all subjects
-    # Loop over all samples
+    return pd.DataFrame(stats).T
