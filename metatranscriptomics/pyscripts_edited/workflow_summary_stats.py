@@ -12,6 +12,7 @@ author: krissankaran@stanford.edu
 date: 03/15/2018
 """
 
+import pandas as pd
 import subprocess
 import os
 from collections import OrderedDict
@@ -148,3 +149,22 @@ def assembly_stats(output_dir, subject_id, sample_id):
     stats["unassembled"] = file_len(unassembled) / 4.0
 
     return stats
+
+
+def summary_stats(output_dir):
+    """
+    Summaries across all samples
+    """
+    stats = dict()
+    for subject_id in os.listdir(output_dir):
+        sample_ids = glob.glob(os.path.join(output_dir, "DBUr_Sub", "main", "*_unique.fq"))
+        sample_ids = [os.path.basename(x.replace("_unique.fq", "")) for x in sample_ids]
+        for sid in sample_ids:
+            try:
+                stats[sid] = annotation_stats(output_dir, subject_id, sid)
+            except:
+                stats[sid] = "NA"
+
+    return stats
+    # Loop over all subjects
+    # Loop over all samples
