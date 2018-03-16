@@ -1,9 +1,11 @@
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited/
 export RES_DIR=${1:-$PI_SCRATCH/resilience/metatranscriptomics/processed/DBUr_Sub/}
-export OUT=${2:-$RES_DIR/final_results/}
+export OUT=${2:-$RES_DIR/../final_results/}
+export PARTITION=${3:-dev}
 export LOG_DIR=$BASE_DIR/logs/
-export JOB_NAME=agg-counts
+export DIR=$(basename $RES_DIR)
+export JOB_NAME=agg-cnts-${DIR}
 mkdir -p $LOG_DIR
 sbatch <<EOT
 #!/bin/bash
@@ -27,14 +29,14 @@ sbatch <<EOT
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
 # NOTE- in the hns partition the default max run time is 7 days , so you wont need to include qos
 
-#SBATCH --qos=normal
+##SBATCH --qos=normal
 
 # We are submitting to the dev partition, there are several on sherlock: normal, gpu, owners, hns, bigmem (jobs requiring >64Gigs RAM)
 # I DON"T HAVE ACCESS to hns ???
-#SBATCH -p dev
+#SBATCH -p $PARTITION
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
-#SBATCH --nodes=1
+##SBATCH --nodes=1
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
 ##SBATCH --mem-per-cpu=4G
@@ -51,35 +53,34 @@ sbatch <<EOT
 
 # now run normal batch commands
 
-dir=$(basename $RES_DIR)
-echo DIRECTORY: $dir 
+echo DIRECTORY: $DIR
 echo Compute NR functions for contigs ...
 python $PYSCRIPT_DIR/generate_count_matrix.py \
     -D $RES_DIR/counts/dmnd_NR/ \
-    -O $OUT/${dir}_contigs_nr_function.csv \
+    -O $OUT/${DIR}_contigs_nr_function.csv \
     -S _nr_contigs.dm_function.tsv
 
 echo Compute NR functions for unassembled ...
 python $PYSCRIPT_DIR/generate_count_matrix.py \
     -D $RES_DIR/counts/dmnd_NR/ \
-    -O $OUT/${dir}_unassembled_nr_function.csv \
+    -O $OUT/${DIR}_unassembled_nr_function.csv \
     -S _nr_unassembled.dm_function.tsv
 echo Compute RefSeq organism matrix ...
 python $PYSCRIPT_DIR/generate_count_matrix.py \
     -D $RES_DIR/counts/dmnd_RefSeq/ \
-    -O $OUT/${dir}_refseq_organism.csv \
+    -O $OUT/${DIR}_refseq_organism.csv \
     -S _refseq.dm_organism.tsv
 
 echo Compute RefSeq function matrix ...
 python $PYSCRIPT_DIR/generate_count_matrix.py \
     -D $RES_DIR/counts/dmnd_RefSeq/ \
-    -O $OUT/${dir}_refseq_function.csv \
+    -O $OUT/${DIR}_refseq_function.csv \
     -S _refseq.dm_function.tsv
 
 echo Compute SEED hierarchical functions ...
 python $PYSCRIPT_DIR/generate_count_matrix.py \
     -D $RES_DIR/counts/dmnd_SEED/ \
-    -O $OUT/counts/${dir}_SEED.csv \
+    -O $OUT/${DIR}_SEED.csv \
     -S _seed.hierarchy.reduced
 
 EOT

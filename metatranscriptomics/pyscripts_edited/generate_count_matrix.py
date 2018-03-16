@@ -82,7 +82,7 @@ for idx, filename in enumerate(filenames):
     sample_df = pd.read_table(filename, header=None, names=colnames)
     col_intersect = list(set(colnames) - set([sample, 'freq'])) 
     sample_df = sample_df[col_intersect + [sample]]
-    print(str(idx) + " sample: " +  sample)
+    #print(str(idx) + " sample: " +  sample)
     if idx == 0:
         count_matrix = sample_df
         continue
