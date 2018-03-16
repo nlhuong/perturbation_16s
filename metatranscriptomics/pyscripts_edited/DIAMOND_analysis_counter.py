@@ -49,7 +49,6 @@ def string_find(usage_term):
 		if elem == usage_term:
 			 return next_elem
 
-t0 = time.clock()
 
 # checking for an option (organism or function) to be specified
 if "-O" not in sys.argv:
@@ -78,7 +77,7 @@ line_counter = 0
 
 # reading through the infile - the DIAMOND results m8 format
 print "\nNow reading through the m8 results infile."
-
+t0 = time.clock()
 for line in infile:
 	line_counter += 1
 	splitline = line.split("\t")
@@ -94,7 +93,7 @@ for line in infile:
 		RefSeq_hit_count_db[splitline[1]] = 1
 		continue
 
-t1 = time.clock()
+t2 = time.clock()
 
 print "\nAnalysis of " + infile_name + " complete."
 print "Number of total lines: " + str(line_counter)
@@ -108,7 +107,6 @@ db = open (db_name, "r")
 
 print "\nStarting database analysis now."
 
-t2 = time.clock()
 
 # optional outfile of specific organism results
 if "-SO" in sys.argv:
@@ -118,29 +116,37 @@ if "-SO" in sys.argv:
 # building a dictionary of the reference database
 if "-F" in sys.argv:
 	db_func_dictionary = {}
+
 if "-O" in sys.argv:
 	db_org_dictionary = {}
+
 db_line_counter = 0
 db_error_counter = 0
 
+t2 = time.clock()
 for line in db:
 	if line.startswith(">"):
 		db_line_counter += 1
 	else:
 		continue
-
 	# id, organism and function names [https://stackoverflow.com/questions/6109882/regex-match-all-characters-between-two-strings]
         db_id = re.search("(?<=>)[^ ]+", line)
-        db_entry = re.search("(?<= )(.*)(?= \[)", line)
+	db_id = db_id.group()
         db_org = re.search("(?<=\[)(.*)(?=\])", line)
-
+	if db_org is None:
+		# In case no labels inside "[Genus Species]"
+		db_org = ''
+	else:
+		db_org = db_org.group()
+        db_entry = re.search("(?<= )(.*)(?= \[)", line)
 	if db_entry is None:
 		db_entry = re.search("(?<= )(.*)(?=\[)", line) # some lines missing a space
-
 	# add to dictionaries
-	db_id = db_id.group()
-	db_entry = db_entry.group()
-	db_org = db_org.group()
+        if db_entry is None:
+		# The NR database has entries without "[", "]"
+            	db_entry = line.strip('>' + db_id + ' ')
+        else:
+		db_entry = db_entry.group()
         if "-F" in sys.argv:
 		db_func_dictionary[db_id] = db_entry
         if "-O" in sys.argv:
@@ -148,7 +154,6 @@ for line in db:
         if "-SO" in sys.argv:
 		if target_org in db_org:
 			db_SO_dictionary[db_id] = db_entry
-
 	# line counter to show progress
         if db_line_counter % 1000000 == 0:							# each million
 		t95 = time.clock()
