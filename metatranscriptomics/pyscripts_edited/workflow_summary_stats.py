@@ -27,8 +27,11 @@ def file_len(fname):
     """
     https://stackoverflow.com/questions/845058/how-to-get-line-count-cheaply-in-python
     """
-    p = subprocess.Popen(['wc', '-l', fname], stdout=subprocess.PIPE,
-                                              stderr=subprocess.PIPE)
+    p = subprocess.Popen(
+        ['wc', '-l', fname],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
     result, err = p.communicate()
     if p.returncode != 0:
         raise IOError(err)
@@ -45,7 +48,28 @@ def tail(f, n):
         stderr=subprocess.PIPE
     )
     result, err = p.communicate()
+    if p.returncode != 0:
+        raise IOError(err)
     return result
+
+
+def bam_mapped(f):
+    """
+    Number of mapped reads in a BAM file
+
+    https://www.biostars.org/p/138116/
+    """
+    p = subprocess.Popen(
+        ["samtools view -F 0x40" + f + "| cut -f1 | sort | uniq | wc -l"],
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    result, err = p.communicate()
+    if p.returncode != 0:
+        raise IOError(err)
+    return float(result)
+
 
 ###############################################################################
 ## Functions to calculate summary statistics
@@ -114,7 +138,12 @@ def annotation_stats(output_dir, subject_id, sample_id):
     stats["genus_unassigned_reads"] = float(genus_summary[1])
     stats["genus_unclassified_reads"] = float(genus_summary[5])
 
-    contigs = make_path("assembled", "_contigs.fasta")
+    dmnd_refseq = make_path("diamond", "_refseq.dmdout")
+    dmnd_seed = make_path("diamond", "_seed.dmdout")
+    dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
+    dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
+
+    bwa_mcds_contigs = make_path("assembled", "_contigs.fasta")
     unassembled = make_path("assembled", "_unassembled.fq")
     contigs_unmapped = make_path("assembled", "_contigs_unmapped.fq")
     unassembled_unmapped = make_path("assembled", "_unassembled_unmapped.fq")
@@ -173,4 +202,5 @@ def summary_stats(output_dir):
 
     stats = pd.DataFrame(stats).T
     stats.index.name = "Meas_ID"
-    return stats.reset_index(inplace=True)
+    stats.reset_index(inplace=True)
+    return stats
