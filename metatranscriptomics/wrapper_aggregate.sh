@@ -1,6 +1,6 @@
 RES_DIR=${1:-$PI_SCRATCH/resilience/metatranscriptomics/processed/}
 OUT=$RES_DIR/final_results/
-CODE_DIR=$SCRATCH/Projects/perturbation_16s/metatranscriptomics/lan/
+CODE_DIR=$SCRATCH/Projects/perturbation_16s/metatranscriptomics/
 PARTITION=normal
 mkdir -p $OUT
 cd $RES_DIR
