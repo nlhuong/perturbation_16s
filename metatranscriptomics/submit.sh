@@ -82,7 +82,7 @@ echo " "
 echo =======================================================================
 echo " "
 
-cd $BASE_DIR/metatranscriptomics/lan/
+cd $BASE_DIR/metatranscriptomics/
 bash ${SCRIPT}.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV
 
 EOT
