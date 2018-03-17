@@ -57,6 +57,8 @@ def bam_mapped(f):
     """
     Number of mapped reads in a BAM file
 
+    samtools must be loaded!
+
     https://www.biostars.org/p/138116/
     """
     p = subprocess.Popen(
@@ -143,15 +145,15 @@ def annotation_stats(output_dir, subject_id, sample_id):
     dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
     dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
 
-    bwa_mcds_contigs = make_path("assembled", "_contigs.fasta")
-    unassembled = make_path("assembled", "_unassembled.fq")
-    contigs_unmapped = make_path("assembled", "_contigs_unmapped.fq")
-    unassembled_unmapped = make_path("assembled", "_unassembled_unmapped.fq")
+    bwa_mcds_contigs_ann = make_path("assembled", "_contigs_annotation_bwa.bam")
+    bwa_mcds_unassembled_ann = make_path("assembled", "_unassembled_annotation_bwa.bam")
 
-    stats["contigs"] = file_len(contigs) / 4.0
-    stats["unassembled"] = file_len(unassembled) / 4.0
-    stats["contigs_unmapped"] = file_len(contigs_unmapped) / 4.0
-    stats["unassembled_unmapped"] = file_len(unassembled_unmapped) / 4.0
+    stats["dmnd_refseq"] = file_len(dmnd_refseq)
+    stats["dmnd_seed"] = file_len(dmnd_seed)
+    stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
+    stats["dmnd_nr_unassembled"] = file_len(dmnd_nr_unassembled)
+    stats["bwa_mcds_contigs_ann"] = bam_mapped(bwa_mcds_contigs_ann)
+    stats["bwa_mcds_unassembled_ann"] = bam_mapped(bwa_mcds_unassembled_ann)
 
     return stats
 
