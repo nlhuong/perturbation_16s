@@ -13,8 +13,9 @@ date: 03/15/2018
 """
 
 import pandas as pd
-import subprocess
+import glob
 import os
+import subprocess
 from collections import OrderedDict
 from re import split
 
@@ -154,15 +155,22 @@ def assembly_stats(output_dir, subject_id, sample_id):
 def summary_stats(output_dir):
     """
     Summaries across all samples
+
+    Example:
+        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        stats = summary_stats(output_dir)
     """
     stats = dict()
     for subject_id in os.listdir(output_dir):
-        sample_ids = glob.glob(os.path.join(output_dir, "DBUr_Sub", "main", "*_unique.fq"))
+        sample_ids = glob.glob(os.path.join(output_dir, subject_id, "main", "*_unique.fq"))
         sample_ids = [os.path.basename(x.replace("_unique.fq", "")) for x in sample_ids]
         for sid in sample_ids:
+            print("Processing sample " + sid)
             try:
                 stats[sid] = annotation_stats(output_dir, subject_id, sid)
             except:
                 stats[sid] = "NA"
 
-    return pd.DataFrame(stats).T
+    stats = pd.DataFrame(stats).T
+    stats.index.name = "Meas_ID"
+    return stats.reset_index(inplace=True)
