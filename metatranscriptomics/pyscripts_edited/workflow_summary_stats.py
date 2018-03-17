@@ -198,7 +198,12 @@ def summary_stats(output_dir):
         for sid in sample_ids:
             print("Processing sample " + sid)
             try:
-                stats[sid] = annotation_stats(output_dir, subject_id, sid)
+                stats[sid] = [
+                    read_filter_stats(output_dir, subject_id, sid),
+                    assembly_stats(output_dir, subject_id, sid),
+                    annotation_stats(output_dir, subject_id, sid)
+                ]
+
             except:
                 stats[sid] = "NA"
 
