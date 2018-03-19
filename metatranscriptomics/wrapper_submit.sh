@@ -1,6 +1,6 @@
 SUBJECT=DBUr_Sub
 BASE_DIR=$SCRATCH/Projects/perturbation_16s/
-SCRIPT=$BASE_DIR/metatranscriptomics/lan/submit.sh
+SCRIPT=$BASE_DIR/metatranscriptomics/submit.sh
 IN=${1:-$BASE_DIR/data/metatranscriptomics/resilience/input/$SUBJECT/}
 OUT=${2:-$PI_SCRATCH/resilience/metatranscriptomics/processed/$SUBJECT/}
 TIME=${3:-24:00:00}
