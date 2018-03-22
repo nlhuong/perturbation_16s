@@ -20,7 +20,7 @@ else
     APP_DIR=$SCRATCH/applications/bin/
     # PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
     if [ $SHERLOCK == "1" ]; then
-        CDHIT_DIR=$APP_DIR/for_shelock1/cdhit
+        CDHIT_DIR=$APP_DIR/for_sherlock1/cdhit
         SORTMERNA_DIR=$APP_DIR/for_sherlock1/sortmerna
         KAIJU_DIR=$APP_DIR/for_sherlock1/kaiju/bin
         DIAMOND=$APP_DIR/for_sherlock1/diamond
@@ -39,14 +39,6 @@ KAIJUBD_DB=$REF_DIR/kaijudb
 PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 # SAMSA2 directory
 SAMSA2=$APP_DIR/samsa2/python_scripts/
-###############################################################################
-## DEFAULTS (to be removed) ----------
-INPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub
-OUTPUT_DIR=$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub
-# Fwd/Rev files
-input_fwd=M3303_DBUsw_2r_TrM31_1P.fq.gz
-input_rev=M3303_DBUsw_2r_TrM31_2P.fq.gz
-###############################################################################
 
 ## PARAMETERS ----------
 n_threads=5
@@ -191,9 +183,12 @@ fi
 
 ###############################################################################
 
-base=${input_fwd%_1P.fq.gz}
+base="$(echo $input_fwd | cut -d '_' -f1-3)"
+#base=${input_fwd%_1P.fq.gz}
 fwd=${input_fwd%.fq.gz}
 rev=${input_rev%.fq.gz}
+fwd=${fwd%_001.fastq}
+rev=${rev%_001.fastq}
 
 if [ $input_rev = "" ]; then
     paired=false
@@ -558,8 +553,8 @@ if $REREPLICATION; then
             $outfile
 
         $APP_DIR/FastQC/fastqc $outfile
-        mv $OUTPUT_DIR/*.html $OUTPUT_DIR/QC/
-        mv $OUTPUT_DIR/*.zip $OUTPUT_DIR/QC/
+        mv $OUTPUT_DIR/main/*.html $OUTPUT_DIR/QC/
+        mv $OUTPUT_DIR/main/*.zip $OUTPUT_DIR/QC/
         end=`date +%s`
         runtime=$(((end-start)/60))
         echo "Rereplication: $runtime min" >> $OUTPUT_DIR/time/${base}_time.log
@@ -582,7 +577,7 @@ if $TAX_CLASS && [ ! -f $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt ]; 
     fi
 
     start=`date +%s`
-    $KAIJU_DIR/kaiju \
+    $KAIJU_DIR/kaiju -v \
         -t $KAIJUBD_DB/nodes.dmp \
         -f $KAIJUBD_DB/kaiju_db.fmi \
         -i $infile \
