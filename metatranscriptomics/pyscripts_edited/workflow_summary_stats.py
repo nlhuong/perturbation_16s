@@ -172,7 +172,6 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
     vector_blat = make_path("aligned", "_univec_blat.fq")
     host_bwa = make_path("aligned", "_human_bwa.fq")
     host_blat = make_path("aligned", "_human_blat.fq")
-
     stats["unique"] = file_len(unique) / 4
     stats["vector_bwa"] = file_len(vector_bwa) / 4
     stats["vector_blat"] = file_len(vector_blat) / 4
@@ -180,52 +179,11 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
     stats["human_blat"] = file_len(vector_bwa) / 4
 
     ## statistics about rRNA filtering
-    mRNA = make_path("main", "_unique_mRNA.fq")
-    stats["mRNA"] = int(file_len(mRNA) / 4.0)
+    mRNA_unique = make_path("main", "_unique_mRNA.fq")
+    mRNA = make_path("main", "_mRNA.fq")
+    stats["mRNA_unique"] = file_len(mRNA_unique) / 4
+    stats["mRNA"] = file_len(mRNA) / 4
     return stats
-
-
-def annotation_stats(processed_dir, sub_dir, sample_id):
-    """
-     Assess the quality of read annotation
-
-    Example:
-        processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        sub_dir = "Relman_RNAseq_16" 
-        sample_id = "M3303_DBUsw_2r"
-        annotation_stats(processed_dir, sub_dir, sample_id)
-    """
-    stats = OrderedDict()
-    sub_dir = os.path.join(processed_dir, sub_dir)
-
-    def make_path(dir, suffix):
-        return os.path.join(sub_dir, dir, sample_id + suffix)
-
-    kaiju_tax_file = make_path("taxonomy", "_tax_class.tsv")
-    kaiju_genus_file = make_path("taxonomy", "_genus_class_summary.txt")
-    kaiju_genus = split("\n|\t", tail(kaiju_genus_file, 3))
-    
-    bwa_mcds_contigs_ann = make_path("assembled", "_contigs_bwa_aligned.fq")
-    bwa_mcds_unassembled_ann = make_path("assembled", "_unassembled_bwa_aligned.fq")
-    
-    dmnd_refseq = make_path("diamond", "_refseq.dmdout")
-    dmnd_seed = make_path("diamond", "_seed.dmdout")
-    dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
-    dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
-
-    stats["kaiju_genus_unassigned"] = kaiju_count(kaiju_tax_file) 
-    stats["kaiju_genus_unassigned"] = int(float(kaiju_genus[1]))
-    stats["kaiju_genus_unclassified"] = int(float(kaiju_genus[5]))
-
-    stats["bwa_mcds_contigs_ann"] = file_len(bwa_mcds_contigs_ann) / 4
-    stats["bwa_mcds_unassembled_ann"] = file_len(bwa_mcds_unassembled_ann) / 4
-    
-    stats["dmnd_refseq"] = file_len(dmnd_refseq)
-    stats["dmnd_seed"] = file_len(dmnd_seed)
-    stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
-    stats["dmnd_nr_unassembled"] = file_len(dmnd_nr_unassembled)
-    return stats
-
 
 def assembly_stats(processed_dir, sub_dir, sample_id):
     """
@@ -247,6 +205,45 @@ def assembly_stats(processed_dir, sub_dir, sample_id):
     contig_file = make_path("assembled", "_contigs.fasta")
     stats["contigs"] = fasta_count(contig_file) 
     stats["unassembled"] = file_len(unassembled_file) / 4
+    return stats
+
+def annotation_stats(processed_dir, sub_dir, sample_id):
+    """
+     Assess the quality of read annotation
+
+    Example:
+        processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        sub_dir = "Relman_RNAseq_16" 
+        sample_id = "M3303_DBUsw_2r"
+        annotation_stats(processed_dir, sub_dir, sample_id)
+    """
+    stats = OrderedDict()
+    sub_dir = os.path.join(processed_dir, sub_dir)
+
+    def make_path(dir, suffix):
+        return os.path.join(sub_dir, dir, sample_id + suffix)
+
+    kaiju_tax_file = make_path("taxonomy", "_tax_class.tsv")
+    kaiju_genus_file = make_path("taxonomy", "_genus_class.tsv")
+
+    bwa_mcds_contigs_ann = make_path("assembled", "_contigs_bwa_aligned.fq")
+    bwa_mcds_unassembled_ann = make_path("assembled", "_unassembled_bwa_aligned.fq")
+    
+    dmnd_refseq = make_path("diamond", "_refseq.dmdout")
+    dmnd_seed = make_path("diamond", "_seed.dmdout")
+    dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
+    dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
+
+    stats["kaiju_tax"] = kaiju_count(kaiju_tax_file) 
+    stats["kaiju_genus"] = kaiju_count(kaiju_genus_file) 
+
+    stats["bwa_mcds_contigs_ann"] = file_len(bwa_mcds_contigs_ann) / 4
+    stats["bwa_mcds_unassembled_ann"] = file_len(bwa_mcds_unassembled_ann) / 4
+    
+    stats["dmnd_refseq"] = file_len(dmnd_refseq)
+    stats["dmnd_seed"] = file_len(dmnd_seed)
+    stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
+    stats["dmnd_nr_unassembled"] = file_len(dmnd_nr_unassembled)
     return stats
 
 

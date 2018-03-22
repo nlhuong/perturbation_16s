@@ -38,6 +38,10 @@ theme_updates <- theme(
   legend.key = element_blank()
 )
 
+###############################################################################
+## Data Loading
+###############################################################################
+
 # loading sample info
 meas <- read_xlsx("../data/Mapping_Files_22Jan2018.xlsx", "Meas", skip = 1) %>%
   rename(Samp_ID = SampID)
