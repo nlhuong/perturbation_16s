@@ -82,8 +82,8 @@ for line in infile:
 	line_counter += 1
 	splitline = line.split("\t")
 	if line_counter % 1000000 == 0:
-		t99 = time.clock()
-		print str(line_counter)[:-6] + "M lines processed so far in " + str(t99-t0) + " seconds."
+		t1 = time.clock()
+		print str(line_counter)[:-6] + "M lines processed so far in " + str(t1-t0) + " seconds."
 
 	unique_seq_db[splitline[0]] = 1
 
@@ -94,19 +94,15 @@ for line in infile:
 		continue
 
 t2 = time.clock()
-
 print "\nAnalysis of " + infile_name + " complete."
 print "Number of total lines: " + str(line_counter)
 print "Number of unique sequences: " + str(len(unique_seq_db))
-print "Time elapsed: " + str(t1-t0) + " seconds."
+print "Time elapsed: " + str(t2-t0) + " seconds."
 
 infile.close()
 
 # time to search for these in the reference database
-db = open (db_name, "r")
-
 print "\nStarting database analysis now."
-
 
 # optional outfile of specific organism results
 if "-SO" in sys.argv:
@@ -123,7 +119,8 @@ if "-O" in sys.argv:
 db_line_counter = 0
 db_error_counter = 0
 
-t2 = time.clock()
+t0 = time.clock()
+db = open (db_name, "r")
 for line in db:
 	if line.startswith(">"):
 		db_line_counter += 1
@@ -132,22 +129,24 @@ for line in db:
 	# id, organism and function names [https://stackoverflow.com/questions/6109882/regex-match-all-characters-between-two-strings]
         db_id = re.search("(?<=>)[^ ]+", line)
 	db_id = db_id.group()
-        db_org = re.search("(?<=\[)(.*)(?=\])", line)
-	if db_org is None:
-		# In case no labels inside "[Genus Species]"
-		db_org = ''
-	else:
-		db_org = db_org.group()
-        db_entry = re.search("(?<= )(.*)(?= \[)", line)
+        
+	db_entry = re.search("(?<= )(.*)(?= \[)", line)
 	if db_entry is None:
 		db_entry = re.search("(?<= )(.*)(?=\[)", line) # some lines missing a space
-	# add to dictionaries
         if db_entry is None:
 		# The NR database has entries without "[", "]"
             	db_entry = line.strip('>' + db_id + ' ')
         else:
 		db_entry = db_entry.group()
-        if "-F" in sys.argv:
+        
+	db_org = re.search("(?<=\[)(.*)(?=\])", line)
+	if db_org is None:
+		# In case no labels inside "[Genus Species]"
+		db_org = ''
+	else:
+		db_org = db_org.group()
+        
+	if "-F" in sys.argv:
 		db_func_dictionary[db_id] = db_entry
         if "-O" in sys.argv:
 		db_org_dictionary[db_id] = db_org
@@ -156,19 +155,18 @@ for line in db:
 			db_SO_dictionary[db_id] = db_entry
 	# line counter to show progress
         if db_line_counter % 1000000 == 0:							# each million
-		t95 = time.clock()
-		print str(db_line_counter)[:-6] + "M lines processed so far in " + str(t95-t2) + " seconds."
+		t1 = time.clock()
+		print str(db_line_counter)[:-6] + "M lines processed so far in " + str(t1-t0) + " seconds."
 
-t3 = time.clock()
-
+t2 = time.clock()
 print "\nSuccess!"
-print "Time elapsed: " + str(t3-t2) + " seconds."
+print "Time elapsed: " + str(t2-t0) + " seconds."
 print "Number of lines: " + str(db_line_counter)
 print "Number of errors: " + str(db_error_counter)
 
 # condensing down the identical matches
 condensed_RefSeq_hit_db = {}
-
+t0 = time.clock()
 for entry in RefSeq_hit_count_db.keys():
 	try:
 		if "-O" in sys.argv:
@@ -194,10 +192,10 @@ if "SO" in sys.argv:
 			else:
 				condensed_RefSeq_SO_hit_db[org] = RefSeq_hit_count_db[entry]
 
-
+t1 = time.clock()
 # dictionary output and summary
 print "\nDictionary database assembled."
-print "Time elapsed: " + str(t3-t2) + " seconds."
+print "Time elapsed: " + str(t1-t0) + " seconds."
 print "Number of errors: " + str(db_error_counter)
 
 if "-O" in sys.argv:

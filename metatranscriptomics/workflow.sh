@@ -344,8 +344,8 @@ if $MERGE_PAIRS && [ ! -f $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq ]; th
         --fastqout_notmerged_rev $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq \
 
     $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${base}_trim.fq
-    mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
-    mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
+    mv $OUTPUT_DIR/trimmed/${base}_trim_fastqc.html $OUTPUT_DIR/QC/
+    mv $OUTPUT_DIR/trimmed/${base}_trim_fastqc.zip $OUTPUT_DIR/QC/
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Merging reads: $runtime min" >> $OUTPUT_DIR/time/${base}_time.log
