@@ -5,23 +5,27 @@
 # Relman_RNAseq_18/
 # Relman_RNAseq_21/
 
-SUBJECT=DBUr_Sub
-BASE_DIR=$SCRATCH/Projects/perturbation_16s/
-SCRIPT=$BASE_DIR/metatranscriptomics/submit.sh
-IN=${1:-$BASE_DIR/data/metatranscriptomics/resilience/input/$SUBJECT/}
-OUT=${2:-$PI_SCRATCH/resilience/metatranscriptomics/processed/$SUBJECT/}
-TIME=${3:-24:00:00}
+SUBDIR=Relman_RNAseq_17
+CODE_DIR=$SCRATCH/Projects/perturbation_16s/metatranscriptomics
+
+PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
+IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
+OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
+LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR}
+
+TIME=${3:-20:00:00}
 NCPUS=${4:-8}
 MEM=${5:-4G}
-mkdir -p $OUT
+
 cd $IN
-for file in *_1P.fq.gz; do
-    base=${file%_1P.fq.gz}
+mkdir -p $OUT
+for fwd_file in *_R1_001.fastq; do
+    base="$(echo $fwd_file | cut -d '_' -f1-3)"
     if [ ! -f $OUT/counts/dmnd_SEED/${base}* ]; then
         echo $base
-        FWD=$file
-        REV=${FWD%_1P.fq.gz}_2P.fq.gz
-        bash $SCRIPT workflow $IN $OUT $FWD $REV $TIME $NCPUS $MEM
+        FWD=$fwd_file
+        REV=${FWD%_R1_001.fastq}_R2_001.fastq
+        bash $CODE_DIR/submit.sh $IN $OUT $FWD $REV $LOG $TIME $NCPUS $MEM
         sleep 1 
     fi
 done

@@ -110,7 +110,7 @@ def bam_mapped(fname):
     result, err = p.communicate()
     if p.returncode != 0:
         raise IOError(err)
-    return float(result)
+    return int(float(result))
 
 
 ###############################################################################
@@ -139,8 +139,8 @@ def raw_input_stats(raw_dir, sub_dir, sample_id):
     rev_reads = os.path.join(sub_dir, rev_reads[0])
 
     ## statistics about trimming / quality filtering
-    stats["input_fwd"] = file_len(fwd_reads) / 4.0
-    stats["input_rev"] = file_len(fwd_reads) / 4.0
+    stats["input_fwd"] = file_len(fwd_reads) / 4
+    stats["input_rev"] = file_len(fwd_reads) / 4
     return stats
 
 
@@ -163,8 +163,8 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
     ## statistics about trimming / quality filtering
     trim_file = make_path("trimmed", "_trim.fq")
     qual_file = make_path("main", "_qual.fq")
-    stats["trimmed"] = file_len(trim_file) / 4.0
-    stats["qual_fltr"] = file_len(qual_file) / 4.0
+    stats["trimmed"] = file_len(trim_file) / 4
+    stats["qual_fltr"] = file_len(qual_file) / 4
 
     ## statistics about vector and host read removal
     unique = make_path("main", "_unique.fq")
@@ -173,15 +173,15 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
     host_bwa = make_path("aligned", "_human_bwa.fq")
     host_blat = make_path("aligned", "_human_blat.fq")
 
-    stats["unique"] = file_len(unique) / 4.0
-    stats["vector_bwa"] = file_len(vector_bwa) / 4.0
-    stats["vector_blat"] = file_len(vector_blat) / 4.0
-    stats["human_bwa"] = file_len(vector_bwa) / 4.0
-    stats["human_blat"] = file_len(vector_bwa) / 4.0
+    stats["unique"] = file_len(unique) / 4
+    stats["vector_bwa"] = file_len(vector_bwa) / 4
+    stats["vector_blat"] = file_len(vector_blat) / 4
+    stats["human_bwa"] = file_len(vector_bwa) / 4
+    stats["human_blat"] = file_len(vector_bwa) / 4
 
     ## statistics about rRNA filtering
     mRNA = make_path("main", "_unique_mRNA.fq")
-    stats["mRNA"] = file_len(mRNA) / 4.0
+    stats["mRNA"] = int(file_len(mRNA) / 4.0)
     return stats
 
 
@@ -214,11 +214,11 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
     dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
 
     stats["kaiju_genus_unassigned"] = kaiju_count(kaiju_tax_file) 
-    stats["kaiju_genus_unassigned"] = float(kaiju_genus[1])
-    stats["kaiju_genus_unclassified"] = float(kaiju_genus[5])
+    stats["kaiju_genus_unassigned"] = int(float(kaiju_genus[1]))
+    stats["kaiju_genus_unclassified"] = int(float(kaiju_genus[5]))
 
-    stats["bwa_mcds_contigs_ann"] = file_len(bwa_mcds_contigs_ann) / 4.0
-    stats["bwa_mcds_unassembled_ann"] = file_len(bwa_mcds_unassembled_ann) / 4.0
+    stats["bwa_mcds_contigs_ann"] = file_len(bwa_mcds_contigs_ann) / 4
+    stats["bwa_mcds_unassembled_ann"] = file_len(bwa_mcds_unassembled_ann) / 4
     
     stats["dmnd_refseq"] = file_len(dmnd_refseq)
     stats["dmnd_seed"] = file_len(dmnd_seed)
@@ -246,7 +246,7 @@ def assembly_stats(processed_dir, sub_dir, sample_id):
     unassembled_file = make_path("assembled", "_unassembled.fq")
     contig_file = make_path("assembled", "_contigs.fasta")
     stats["contigs"] = fasta_count(contig_file) 
-    stats["unassembled"] = file_len(unassembled_file) / 4.0
+    stats["unassembled"] = file_len(unassembled_file) / 4
     return stats
 
 
@@ -276,8 +276,7 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
     stats = dict()
     for sub_dir in os.listdir(processed_dir):
         main_proc_files = os.path.join(processed_dir, sub_dir, "main")
-        # Delete the following DBUr_Sub
-        if not os.path.isdir(main_proc_files) or 'DBUr' not in sub_dir:
+        if not os.path.isdir(main_proc_files) or 'DBU' not in main_proc_files:
             print("MESSAGE: Skipping " + sub_dir + " subdirectory.")
             continue
         print("STARTING STATS SUMMARY FOR " + sub_dir + " subdirectory...")
@@ -290,9 +289,10 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
         for res in results:
             sid, sid_orddict = res
             stats[sid] = sid_orddict
- 
+    
+    column_names = results[0][1].keys() 
     stats = pd.DataFrame(stats).T
-    #stats = stats.astype(int)
+    stats = stats[column_names]
     stats.index.name = "Meas_ID"
     stats.reset_index(inplace=True)
     if outfile is not None:

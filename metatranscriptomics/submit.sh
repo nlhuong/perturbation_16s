@@ -1,22 +1,27 @@
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
-export SCRIPT=${1:-workflow}
+export PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
+export SUBDIR=Relman_RNAseq_16
+
 #export IN=${2:-$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub}
 #export OUT=${3:-$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub}
 #export FWD=${4:-M3311_DBUsw_11r_TrM31_1P.fq.gz}
 #export REV=${5:-M3311_DBUsw_11r_TrM31_2P.fq.gz}
 #export LOG_DIR=$BASE_DIR/logs/$(basename $IN)
-export IN=${2:-$PI_SCRATCH/resilience/metatranscriptomics/raw/Relman_RNAseq_16}
-export OUT=${3:-$PI_SCRATCH/resilience/metatranscriptomics/processed/Relman_RNAseq_16}
-export FWD=${4:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R1_001.fastq}
-export REV=${5:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R2_001.fastq}
-export LOG_DIR=$PI_SCRATCH/resilience/logs/MetaT/$(basename $IN)
+
+export IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
+export OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
+export FWD=${3:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R1_001.fastq}
+export REV=${4:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R2_001.fastq}
+export LOG=${5:-$PI_BASE_DIR/logs/$(basename $IN)}
+
 export TIME=${6:-15:00:00}
 export NCPUS=${7:-8}
 export MEM=${8:-4G}
-SAMPLE=$(basename $FWD)
-SAMPLE=$(echo $SAMPLE | cut -d '_' -f1-3)
+
+export SAMPLE=$(basename $FWD)
+export SAMPLE=$(echo $SAMPLE | cut -d '_' -f1-3)
 export JOB_NAME=wf-${SAMPLE}
-mkdir -p $LOG_DIR
+mkdir -p $LOG
 sbatch <<EOT
 #!/bin/bash
 #
@@ -26,10 +31,10 @@ sbatch <<EOT
 #SBATCH --job-name=$JOB_NAME
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=${LOG_DIR}/${JOB_NAME}.%j.out
+#SBATCH --output=${LOG}/${JOB_NAME}.%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=${LOG_DIR}/${JOB_NAME}.%j.err
+#SBATCH --error=${LOG}/${JOB_NAME}.%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
@@ -89,6 +94,6 @@ echo =======================================================================
 echo " "
 
 cd $BASE_DIR/metatranscriptomics/
-bash ${SCRIPT}.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV
+bash workflow.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV
 
 EOT
