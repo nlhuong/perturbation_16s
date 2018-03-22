@@ -16,6 +16,7 @@ import pandas as pd
 import glob
 import os
 import subprocess
+import multiprocessing as mp
 from collections import OrderedDict
 from re import split
 
@@ -27,8 +28,29 @@ def file_len(fname):
     """
     https://stackoverflow.com/questions/845058/how-to-get-line-count-cheaply-in-python
     """
+    if '.gz' in fname:
+        bash_command = ["gunzip -c " + fname + " | wc -l"]
+    else:
+        bash_command = ['wc -l '+  fname]
+
     p = subprocess.Popen(
-        ['wc', '-l', fname],
+        bash_command,
+        shell = True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    result, err = p.communicate()
+    if p.returncode != 0:
+        raise IOError(err)
+    return int(result.strip().split()[0])
+
+def fasta_count(fname):
+    """ 
+    Only used for counting reads in .fasta files.    
+    """
+    p = subprocess.Popen(
+        ["grep -c '>' " +  fname],
+        shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
@@ -38,12 +60,30 @@ def file_len(fname):
     return int(result.strip().split()[0])
 
 
-def tail(f, n):
+def kaiju_count(fname):
+    """ 
+    The first column of kaiju output (files _tax_class.tsv) 
+    are U/C letters for unclassified/classified respectively.
+    We count the number of classified reads.    
+    """
+    p = subprocess.Popen(
+        ["cut -f1 " +  fname + " | grep -c 'C'"],
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    result, err = p.communicate()
+    if p.returncode != 0:
+        raise IOError(err)
+    return int(result.strip().split()[0])
+
+
+def tail(fname, n):
     """
     https://stackoverflow.com/questions/136168/get-last-n-lines-of-a-file-with-python-similar-to-tail
     """
     p = subprocess.Popen(
-        ["tail", "-n", str(n), f],
+        ["tail", "-n", str(n), fname],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
@@ -53,7 +93,7 @@ def tail(f, n):
     return result
 
 
-def bam_mapped(f):
+def bam_mapped(fname):
     """
     Number of mapped reads in a BAM file
 
@@ -62,7 +102,7 @@ def bam_mapped(f):
     https://www.biostars.org/p/138116/
     """
     p = subprocess.Popen(
-        ["samtools view -F 0x40" + f + "| cut -f1 | sort | uniq | wc -l"],
+        ["samtools view -F 0x40" + fname + "| cut -f1 | sort | uniq | wc -l"],
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
@@ -77,27 +117,54 @@ def bam_mapped(f):
 ## Functions to calculate summary statistics
 ###############################################################################
 
-def read_filter_stats(output_dir, subject_id, sample_id):
+def raw_input_stats(raw_dir, sub_dir, sample_id):
+    """
+    Raw input file read counts.
+    
+    Example:
+        raw_dir = "/scratch/PI/sph/resilience/metatranscriptomics/raw"
+        sub_dir = "Relman_RNAseq_16"
+        sample_id = "M3303_DBUsw_2r"
+        raw_input_stats(raw_dir, sub_dir, sample_id)
+    """
+    stats = OrderedDict()
+    sub_dir = os.path.join(raw_dir, sub_dir)
+    read_files = [ f for f in os.listdir(sub_dir) \
+                   if os.path.isfile(os.path.join(sub_dir, f )) and sample_id in f]
+    fwd_reads = [f for f in read_files \
+                 if '_R1_001.fastq' in f or '_1P.fq.gz' in f]
+    rev_reads = [f for f in read_files \
+                 if '_R2_001.fastq' in f or '_2P.fq.gz' in f]
+    fwd_reads = os.path.join(sub_dir, fwd_reads[0])
+    rev_reads = os.path.join(sub_dir, rev_reads[0])
+
+    ## statistics about trimming / quality filtering
+    stats["input_fwd"] = file_len(fwd_reads) / 4.0
+    stats["input_rev"] = file_len(fwd_reads) / 4.0
+    return stats
+
+
+def read_filter_stats(processed_dir, sub_dir, sample_id):
     """
     Statistics about Read Filtering
 
     Example:
-        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        subject_id = "DBUr_Sub"
-        sample_id = "M3303_DBUsw_2r_TrM31"
-        read_filter_stats(output_dir, subject_id, sample_id)
+        processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        sub_dir = "Relman_RNAseq_16" 
+        sample_id = "M3303_DBUsw_2r"
+        read_filter_stats(processed_dir, sub_dir, sample_id)
     """
     stats = OrderedDict()
-    subject_dir = os.path.join(output_dir, subject_id)
+    sub_dir = os.path.join(processed_dir, sub_dir)
 
     def make_path(dir, suffix):
-        return os.path.join(subject_dir, dir, sample_id + suffix)
+        return os.path.join(sub_dir, dir, sample_id + suffix)
 
     ## statistics about trimming / quality filtering
     trim_file = make_path("trimmed", "_trim.fq")
     qual_file = make_path("main", "_qual.fq")
-    stats["n_trim"] = file_len(trim_file) / 4.0
-    stats["n_qual"] = file_len(qual_file) / 4.0
+    stats["trimmed"] = file_len(trim_file) / 4.0
+    stats["qual_fltr"] = file_len(qual_file) / 4.0
 
     ## statistics about vector and host read removal
     unique = make_path("main", "_unique.fq")
@@ -118,95 +185,117 @@ def read_filter_stats(output_dir, subject_id, sample_id):
     return stats
 
 
-def annotation_stats(output_dir, subject_id, sample_id):
+def annotation_stats(processed_dir, sub_dir, sample_id):
     """
      Assess the quality of read annotation
 
     Example:
-        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        subject_id = "DBUr_Sub"
-        sample_id = "M3303_DBUsw_2r_TrM31"
-        annotation_stats(output_dir, subject_id, sample_id)
+        processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        sub_dir = "Relman_RNAseq_16" 
+        sample_id = "M3303_DBUsw_2r"
+        annotation_stats(processed_dir, sub_dir, sample_id)
     """
     stats = OrderedDict()
-    subject_dir = os.path.join(output_dir, subject_id)
+    sub_dir = os.path.join(processed_dir, sub_dir)
 
     def make_path(dir, suffix):
-        return os.path.join(subject_dir, dir, sample_id + suffix)
+        return os.path.join(sub_dir, dir, sample_id + suffix)
 
-    genus_file = make_path("taxonomy", "_genus_class_summary.txt")
-    genus_summary = split("\n|\t", tail(genus_file, 3))
-
-    stats["genus_unassigned_reads"] = float(genus_summary[1])
-    stats["genus_unclassified_reads"] = float(genus_summary[5])
-
+    kaiju_tax_file = make_path("taxonomy", "_tax_class.tsv")
+    kaiju_genus_file = make_path("taxonomy", "_genus_class_summary.txt")
+    kaiju_genus = split("\n|\t", tail(kaiju_genus_file, 3))
+    
+    bwa_mcds_contigs_ann = make_path("assembled", "_contigs_bwa_aligned.fq")
+    bwa_mcds_unassembled_ann = make_path("assembled", "_unassembled_bwa_aligned.fq")
+    
     dmnd_refseq = make_path("diamond", "_refseq.dmdout")
     dmnd_seed = make_path("diamond", "_seed.dmdout")
     dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
     dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
 
-    bwa_mcds_contigs_ann = make_path("assembled", "_contigs_annotation_bwa.bam")
-    bwa_mcds_unassembled_ann = make_path("assembled", "_unassembled_annotation_bwa.bam")
+    stats["kaiju_genus_unassigned"] = kaiju_count(kaiju_tax_file) 
+    stats["kaiju_genus_unassigned"] = float(kaiju_genus[1])
+    stats["kaiju_genus_unclassified"] = float(kaiju_genus[5])
 
+    stats["bwa_mcds_contigs_ann"] = file_len(bwa_mcds_contigs_ann) / 4.0
+    stats["bwa_mcds_unassembled_ann"] = file_len(bwa_mcds_unassembled_ann) / 4.0
+    
     stats["dmnd_refseq"] = file_len(dmnd_refseq)
     stats["dmnd_seed"] = file_len(dmnd_seed)
     stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
     stats["dmnd_nr_unassembled"] = file_len(dmnd_nr_unassembled)
-    stats["bwa_mcds_contigs_ann"] = bam_mapped(bwa_mcds_contigs_ann)
-    stats["bwa_mcds_unassembled_ann"] = bam_mapped(bwa_mcds_unassembled_ann)
-
     return stats
 
 
-def assembly_stats(output_dir, subject_id, sample_id):
+def assembly_stats(processed_dir, sub_dir, sample_id):
     """
     Assess the quality of the assembly
 
     Example:
-        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        subject_id = "DBUr_Sub"
-        sample_id = "M3303_DBUsw_2r_TrM31"
-        assembly_stats(output_dir, subject_id, sample_id)
+        processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        subj_dir = "Relman_RNAseq_16" 
+        sample_id = "M3303_DBUsw_2r"
+        assembly_stats(processed_dir, sub_dir, sample_id)
     """
     stats = OrderedDict()
-    subject_dir = os.path.join(output_dir, subject_id)
+    sub_dir = os.path.join(processed_dir, sub_dir)
 
     def make_path(dir, suffix):
-        return os.path.join(subject_dir, dir, sample_id + suffix)
+        return os.path.join(sub_dir, dir, sample_id + suffix)
 
-    original = make_path("main", "_mRNA.fq")
-    unassembled = make_path("assembled", "_unassembled.fq")
-    contigs = make_path("assembled", "_contigs.fq")
-    stats["original"] = file_len(original) / 4.0
-    stats["unassembled"] = file_len(unassembled) / 4.0
-
+    unassembled_file = make_path("assembled", "_unassembled.fq")
+    contig_file = make_path("assembled", "_contigs.fasta")
+    stats["contigs"] = fasta_count(contig_file) 
+    stats["unassembled"] = file_len(unassembled_file) / 4.0
     return stats
 
 
-def summary_stats(output_dir):
+def process_sample(raw_dir, processed_dir, sub_dir, sample_id):
+    print("Processing sample " + sample_id)
+    try:
+	smp_stats = OrderedDict()
+     	smp_stats.update(raw_input_stats(raw_dir, sub_dir, sample_id))
+ 	smp_stats.update(read_filter_stats(processed_dir, sub_dir, sample_id))
+	smp_stats.update(assembly_stats(processed_dir, sub_dir, sample_id))
+	smp_stats.update(annotation_stats(processed_dir, sub_dir, sample_id))
+    except:
+	smp_stats = "NA"
+    return (sample_id, smp_stats)
+        
+
+def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
     """
     Summaries across all samples
 
     Example:
-        output_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        stats = summary_stats(output_dir)
+        raw_dir = "/scratch/PI/sph/resilience/metatranscriptomics/raw"
+        processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
+        stats = summary_stats(raw_dir, processed_dir)
     """
+    num_cores = min(num_cores, mp.cpu_count())
     stats = dict()
-    for subject_id in os.listdir(output_dir):
-        sample_ids = glob.glob(os.path.join(output_dir, subject_id, "main", "*_unique.fq"))
+    for sub_dir in os.listdir(processed_dir):
+        main_proc_files = os.path.join(processed_dir, sub_dir, "main")
+        # Delete the following DBUr_Sub
+        if not os.path.isdir(main_proc_files) or 'DBUr' not in sub_dir:
+            print("MESSAGE: Skipping " + sub_dir + " subdirectory.")
+            continue
+        print("STARTING STATS SUMMARY FOR " + sub_dir + " subdirectory...")
+        sample_ids = glob.glob(os.path.join(main_proc_files,"*_unique.fq"))
         sample_ids = [os.path.basename(x.replace("_unique.fq", "")) for x in sample_ids]
-        for sid in sample_ids:
-            print("Processing sample " + sid)
-            try:
-                stats[sid] = OrderedDict()
-                stats[sid].update(read_filter_stats(output_dir, subject_id, sid))
-                stats[sid].update(assembly_stats(output_dir, subject_id, sid))
-                stats[sid].update(annotation_stats(output_dir, subject_id, sid))
-
-            except:
-                stats[sid] = "NA"
-
+	pool = mp.Pool(processes=num_cores)
+	results = [pool.apply(process_sample, \
+		   args=(raw_dir, processed_dir, sub_dir, sid)) \
+                   for sid in sample_ids]
+        for res in results:
+            sid, sid_orddict = res
+            stats[sid] = sid_orddict
+ 
     stats = pd.DataFrame(stats).T
+    #stats = stats.astype(int)
     stats.index.name = "Meas_ID"
     stats.reset_index(inplace=True)
+    if outfile is not None:
+        stats.to_csv(outfile, index=False)
     return stats
+

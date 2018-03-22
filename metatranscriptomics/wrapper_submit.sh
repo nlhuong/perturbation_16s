@@ -1,3 +1,10 @@
+# Arati_R_plate_11/
+# Arati_R_plate_9/
+# Relman_RNAseq_16/
+# Relman_RNAseq_17/
+# Relman_RNAseq_18/
+# Relman_RNAseq_21/
+
 SUBJECT=DBUr_Sub
 BASE_DIR=$SCRATCH/Projects/perturbation_16s/
 SCRIPT=$BASE_DIR/metatranscriptomics/submit.sh

@@ -1,15 +1,20 @@
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export SCRIPT=${1:-workflow}
-export IN=${2:-$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub}
-export OUT=${3:-$PI_SCRATCH/resilience/metatranscriptomics/processed/DBUr_Sub}
-export FWD=${4:-M3309_DBUsw_9r_TrM31_1P.fq.gz}
-export REV=${5:-M3309_DBUsw_9r_TrM31_2P.fq.gz}
-export TIME=${6:-20:00:00}
-export NCPUS=${7:-20}
+#export IN=${2:-$BASE_DIR/data/metatranscriptomics/resilience/input/DBUr_Sub}
+#export OUT=${3:-$BASE_DIR/data/metatranscriptomics/resilience/output/DBUr_Sub}
+#export FWD=${4:-M3311_DBUsw_11r_TrM31_1P.fq.gz}
+#export REV=${5:-M3311_DBUsw_11r_TrM31_2P.fq.gz}
+#export LOG_DIR=$BASE_DIR/logs/$(basename $IN)
+export IN=${2:-$PI_SCRATCH/resilience/metatranscriptomics/raw/Relman_RNAseq_16}
+export OUT=${3:-$PI_SCRATCH/resilience/metatranscriptomics/processed/Relman_RNAseq_16}
+export FWD=${4:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R1_001.fastq}
+export REV=${5:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R2_001.fastq}
+export LOG_DIR=$PI_SCRATCH/resilience/logs/MetaT/$(basename $IN)
+export TIME=${6:-15:00:00}
+export NCPUS=${7:-8}
 export MEM=${8:-4G}
-export LOG_DIR=$BASE_DIR/logs/$(basename $IN)
 SAMPLE=$(basename $FWD)
-SAMPLE=${SAMPLE%_1P.fq.gz}
+SAMPLE=$(echo $SAMPLE | cut -d '_' -f1-3)
 export JOB_NAME=wf-${SAMPLE}
 mkdir -p $LOG_DIR
 sbatch <<EOT
@@ -45,7 +50,8 @@ sbatch <<EOT
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
 #SBATCH --mem-per-cpu=$MEM
-#SBATCH --cpus-per-task=$NCPUS
+#SBATCH --cpus-per-task=$NCPUS   
+##SBATCH --mem=$MEM
 #################
 
 # Have SLURM send you an email when the job ends or fails, careful, the email could end up in your clutter folder
@@ -61,7 +67,7 @@ sbatch <<EOT
 if [ $SHERLOCK == "2" ]; then 
     module load biology
     module load python/2.7.13
-    module load py-biopython/1.70
+    module load py-biopython/1.70_py27
     module load bwa/0.7.17
     module load samtools/1.6
     module load ncbi-blast+/2.6.0

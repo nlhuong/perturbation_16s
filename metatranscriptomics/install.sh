@@ -19,6 +19,7 @@ if [ -z ${SCRATCH+x} ]; then
     PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 else
     echo Working on SHERLOCK cluster
+    pip2.7 install --user scipy numpy matplotlib xlwt joblib pandas
     BASE_DIR=$SCRATCH/Projects/perturbation_16s
     APP_DIR=$SCRATCH/applications/bin/
     PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
