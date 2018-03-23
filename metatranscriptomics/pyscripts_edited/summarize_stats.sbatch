@@ -17,5 +17,5 @@ export raw_dir=$data_dir/input
 cd $base_dir/metatranscriptomics/pyscripts_edited
 
 srun -p normal -c 10 python summarize_stats.py \
-    -R $raw_dir -P $processed_dir -O "./DBU_stats.csv" -N 10
+    -R $raw_dir -P $processed_dir -O "./DBUr_stats.csv" -N 10
 

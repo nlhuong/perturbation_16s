@@ -925,21 +925,34 @@ if $DIAMOND_COUNT; then
         echo Completed counting of the RefSeq anotated reads!
     fi
     
-    if [ ! -f $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs.dm_organism.tsv ];
+    if [ ! -f $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs_reads.dm_organism.tsv ];
     then 
         echo Diamond NR protein results aggreggation ...
         mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
-        for file in $OUTPUT_DIR/diamond/${base}_nr_*
-        do 
-            echo $file
-            if [[ ! -s $file ]]; then
-                 echo $file is empty.
-                 continue
-            fi
+        contig_file=$OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout    
+	unassembled_file=$OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout
+	echo Counting reads for: $contig_file
+        if [[ ! -s $contig_file ]]; then
+	    echo $contig_file is empty.
+        else
+	    # Count number contigs mapped times multiplicity of corresponding reads 
             python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
-                -I $file -D $REF_DIR/nr
-            mv ${file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR/
-        done
+                -I $contig_file -D $REF_DIR/nr \
+                -CONTIG_MAP $OUTPUT_DIR/assembled/${base}_contigs_map.tsv 
+            mv ${contig_file%.dmdout}.dm_function.tsv \
+                $OUTPUT_DIR/counts/dmnd_NR/${contig_file%.dmdout}_reads.dm_function.tsv
+            # Count number of contigs mapped.
+            python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
+                -I $contig_file -D $REF_DIR/nr 
+            mv ${contig_file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR
+        fi
+        if [[ ! -s $unassembled_file ]]; then
+	    echo $unassembled_file is empty.
+        else 
+            python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
+                -I $unassembled_file -D $REF_DIR/nr
+            mv ${unassembled_file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR/
+        fi 
         echo Completed counting of the RefSeq anotated reads!
     fi
 
