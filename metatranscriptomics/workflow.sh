@@ -33,7 +33,8 @@ else
 fi
 
 # Reference directories
-REF_DIR=$BASE_DIR/data/databases
+export PI_BASE_DIR=/scratch/PI/sph/resilience/metatranscriptomics
+REF_DIR=$BASE_DIR/database
 KAIJUBD_DB=$REF_DIR/kaijudb
 # Python scripts directory
 PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
