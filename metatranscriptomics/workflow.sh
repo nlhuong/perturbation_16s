@@ -801,14 +801,14 @@ if $PROT_ANN && [ ! -f $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
         -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout \
-        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 1 --sensitive
 
     $DIAMOND blastx --id 85 --query-cover 65 --min-score 60 \
         --threads $n_threads \
         -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout \
-        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 10
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 1 --sensitive
     
     end=`date +%s`
     runtime=$(((end-start)/60))
