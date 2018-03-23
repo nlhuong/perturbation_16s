@@ -57,12 +57,13 @@ samp <- read_xlsx("../data/Mapping_Files_22Jan2018.xlsx", "Samp", skip = 1) %>%
   filter(Samp_Type != "ExtrCont")
 
 # coverage stats
-stats <- read_csv("../data/metatranscriptomic/DBU_stats.csv")
-
+stats <- read_csv("../data/metatranscriptomic/DBUr_stats.csv")
 stats <- stats %>%
   mutate(
-    Subject = strsplit(Meas_ID, "_")[[1]][2], 
-    Meas_ID = strsplit(Meas_ID, "_")[[1]][1]) %>%
+    Subject = sapply(Meas_ID, function(x) strsplit(x, "_")[[1]][2]), 
+    Meas_ID = sapply(Meas_ID, function(x) strsplit(x, "_")[[1]][1]),
+    reads_in_contigs = mRNA - unassembled
+  ) %>%
   select(Meas_ID, Subject, input_fwd, input_rev, 
          trimmed, qual_fltr, unique,
          vector_bwa, vector_blat, human_bwa, human_blat, mRNA,
@@ -71,15 +72,39 @@ stats <- stats %>%
          contigs, bwa_mcds_contigs_ann, dmnd_nr_contigs,
          unassembled, bwa_mcds_unassembled_ann, dmnd_nr_unassembled)
 
-preproc_cols <- c("input_fwd", "input_rev", "trimmed", "qual_fltr", "unique",
-                  "vector_bwa", "vector_blat", "human_bwa", "human_blat", "mRNA",
-                  "contigs", "unassembled")
-melt_preproc <- stats[, c("Meas_ID", preproc_cols)] %>%
-  mutate(Meas_ID)
-  gather(step, count, input_fwd:unassembled) %>%
+preproc_cols <- 
+  c("input_fwd", "input_rev", "trimmed", "qual_fltr", 
+    "mRNA", "reads_in_contigs", "unassembled",
+    "unique", "vector_bwa", "vector_blat", "human_bwa", 
+    "human_blat", "mRNA_unique", "contigs")
+
+melt_preproc <- stats[, c("Meas_ID", "Subject", preproc_cols)] %>%
+  gather(step, count, input_fwd:contigs) %>%
   mutate(step = factor(step, levels = preproc_cols))
 
 
-ggplot(melt_preproc) +
-  geom_point(aes(x = step, y=count, color=))
+ggplot(melt_preproc, aes(x = step, y=count)) +
+  geom_boxplot() + 
+  geom_jitter(
+    aes(color=Subject),
+    alpha = 0.5, height = 0, width = 0.1)  +
+  theme(axis.text.x = element_text(angle = 90))
+
+ann_cols <- 
+  c("input_fwd", "mRNA",
+    # kaiju
+    "dmnd_refseq", "dmnd_seed",
+    "unassembled", "bwa_mcds_unassembled_ann", "dmnd_nr_unassembled",
+    "contigs", "bwa_mcds_contigs_ann", "dmnd_nr_contigs")
+
+melt_ann <- stats[, c("Meas_ID", "Subject", ann_cols)] %>%
+  gather(step, count, input_fwd:dmnd_nr_contigs) %>%
+  mutate(step = factor(step, levels = ann_cols))
+
+ggplot(melt_ann, aes(x = step, y=count)) +
+  geom_boxplot() + 
+  geom_jitter(  
+    aes(color=Subject),
+    alpha = 0.5, height = 0, width = 0.1) +
+  theme(axis.text.x = element_text(angle = 90))
 
