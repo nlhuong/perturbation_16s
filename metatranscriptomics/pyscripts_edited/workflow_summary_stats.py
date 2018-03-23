@@ -93,9 +93,12 @@ def tail(fname, n):
     return result
     
 def contig_reads(fname):
-  infile = open (infile_name, "r")
-
-
+  num_reads_in_contigs = 0
+  contig_file = open (fname, "r")
+  for line in contig_file:
+    splitline = line.split("\t")
+    num_reads_in_contigs += int(splitline[1]])
+  return(num_reads_in_contigs)
 
 def bam_mapped(fname):
     """
