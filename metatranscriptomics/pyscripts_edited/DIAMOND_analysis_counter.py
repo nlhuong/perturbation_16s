@@ -34,9 +34,11 @@
 #								for results
 # -O		organism		returns organism results
 # -F		function		returns functional results
-# -SO		specific org	creates a separate outfile for results that hit
-#							a specific organism
-#
+# -SO		specific org	        creates a separate outfile for results that hit
+#					a specific organism
+# -CONTIG_MAP   contig map              a contig map .tsv file with first column 
+#                                       containing contig id and the second the number 
+#                                       of corresponding reads
 ##########################################################################
 
 # imports
@@ -44,32 +46,39 @@ import operator, sys, time, gzip, re
 
 # String searching function:
 def string_find(usage_term):
-	for idx, elem in enumerate(sys.argv):
-		next_elem = sys.argv[(idx + 1) % len(sys.argv)]
-		if elem == usage_term:
-			 return next_elem
+    for idx, elem in enumerate(sys.argv):
+        next_elem = sys.argv[(idx + 1) % len(sys.argv)]
+	    if elem == usage_term:
+	        return next_elem
 
 
 # checking for an option (organism or function) to be specified
 if "-O" not in sys.argv:
-	if "-F" not in sys.argv:
-		sys.exit("WARNING: need to specify either organism results (with -O flag in command) or functional results (with -F flag in command).")
+    if "-F" not in sys.argv:
+	sys.exit("WARNING: need to specify either organism results (with -O flag in command) or functional results (with -F flag in command).")
 
 # loading starting file
 if "-I" in sys.argv:
-	infile_name = string_find("-I")
+    infile_name = string_find("-I")
 else:
-	sys.exit ("WARNING: infile must be specified using '-I' flag.")
+    sys.exit ("WARNING: infile must be specified using '-I' flag.")
 
 # checking to make sure database is specified
 if "-D" in sys.argv:
-	db_name = string_find("-D")
+    db_name = string_find("-D")
 else:
-	sys.exit( "No database file indicated; skipping database search step.")
+    sys.exit( "No database file indicated; skipping database search step.")
+
+if "-CONTIG_MAP" in sys.argv:
+    contig_map_name = string_find("-CONTIG_MAP")
+    contig_file = open(contig_map_name, "r")
+    contig_map = {}
+    for line in contig_file:
+        splitline = line.split("\t")
+        contig_map[splitline[0]] = int(splitline[1]])
 
 
-infile = open (infile_name, "r")
-
+infile = open(infile_name, "r")
 # setting up databases
 RefSeq_hit_count_db = {}
 unique_seq_db = {}
@@ -79,19 +88,22 @@ line_counter = 0
 print "\nNow reading through the m8 results infile."
 t0 = time.clock()
 for line in infile:
-	line_counter += 1
-	splitline = line.split("\t")
-	if line_counter % 1000000 == 0:
-		t1 = time.clock()
-		print str(line_counter)[:-6] + "M lines processed so far in " + str(t1-t0) + " seconds."
+    line_counter += 1
+    splitline = line.split("\t")
+    if line_counter % 1000000 == 0:
+	t1 = time.clock()
+	print str(line_counter)[:-6] + "M lines processed so far in " + str(t1-t0) + " seconds."
 
-	unique_seq_db[splitline[0]] = 1
-
-	try:
-		RefSeq_hit_count_db[splitline[1]] += 1
-	except KeyError:
-		RefSeq_hit_count_db[splitline[1]] = 1
-		continue
+    unique_seq_db[splitline[0]] = 1
+    if "-CONTIG_MAP" in sys.argv:
+	increment = contig_map[splitline[0]]
+    else:
+	increment = 1
+    try:
+        RefSeq_hit_count_db[splitline[1]] += increment 
+    except KeyError:
+	RefSeq_hit_count_db[splitline[1]] = increment
+	continue
 
 t2 = time.clock()
 print "\nAnalysis of " + infile_name + " complete."
