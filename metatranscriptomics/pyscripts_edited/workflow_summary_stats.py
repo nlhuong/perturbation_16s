@@ -91,6 +91,10 @@ def tail(fname, n):
     if p.returncode != 0:
         raise IOError(err)
     return result
+    
+def contig_reads(fname):
+  infile = open (infile_name, "r")
+
 
 
 def bam_mapped(fname):
@@ -232,6 +236,7 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
     dmnd_refseq = make_path("diamond", "_refseq.dmdout")
     dmnd_seed = make_path("diamond", "_seed.dmdout")
     dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
+    dmnd_nr_contigs_reads= make_path("diamond", "_nr_contigs_reads.dmdout")
     dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
 
     stats["kaiju_tax"] = kaiju_count(kaiju_tax_file) 
@@ -243,6 +248,7 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
     stats["dmnd_refseq"] = file_len(dmnd_refseq)
     stats["dmnd_seed"] = file_len(dmnd_seed)
     stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
+    stats["dmnd_nr_contig_reads"] = contig_reads(dmnd_nr_contigs_reads)
     stats["dmnd_nr_unassembled"] = file_len(dmnd_nr_unassembled)
     return stats
 

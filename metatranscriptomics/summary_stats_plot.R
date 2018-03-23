@@ -66,11 +66,11 @@ stats <- stats %>%
   ) %>%
   select(Meas_ID, Subject, input_fwd, input_rev, 
          trimmed, qual_fltr, unique,
-         vector_bwa, vector_blat, human_bwa, human_blat, mRNA,
-         # kaiju
+         vector_bwa, vector_blat, human_bwa, human_blat, mRNA_unique,
+         kaiju_tax, kaiju_genus,   
          dmnd_refseq, dmnd_seed,
-         contigs, bwa_mcds_contigs_ann, dmnd_nr_contigs,
-         unassembled, bwa_mcds_unassembled_ann, dmnd_nr_unassembled)
+         contigs, bwa_mcds_contigs, dmnd_nr_contigs,
+         unassembled, bwa_mcds_unassembled, dmnd_nr_unassembled)
 
 preproc_cols <- 
   c("input_fwd", "input_rev", "trimmed", "qual_fltr", 
@@ -92,7 +92,7 @@ ggplot(melt_preproc, aes(x = step, y=count)) +
 
 ann_cols <- 
   c("input_fwd", "mRNA",
-    # kaiju
+    "kaiju_tax", "kaiju_genus",   
     "dmnd_refseq", "dmnd_seed",
     "unassembled", "bwa_mcds_unassembled_ann", "dmnd_nr_unassembled",
     "contigs", "bwa_mcds_contigs_ann", "dmnd_nr_contigs")
