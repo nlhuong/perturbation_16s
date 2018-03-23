@@ -14,7 +14,7 @@ export FWD=${3:-M3312_DBUsw_12r_ATTACTCG-AGGCTATA_L005_R1_001.fastq}
 export REV=${4:-M3312_DBUsw_12r_ATTACTCG-AGGCTATA_L005_R2_001.fastq}
 export LOG=${5:-$PI_BASE_DIR/logs/kris_test/$(basename $IN)}
 
-export TIME=${6:-03:00:00}
+export TIME=${6:-20:00:00}
 export NCPUS=${7:-8}
 export MEM=${8:-6G}
 
