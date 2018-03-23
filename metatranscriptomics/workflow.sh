@@ -276,7 +276,7 @@ fi
 
 
 ## Remove adapter seqs and trim low-quality seqs  ------------
-if $TRIM && ! $paired && [ ! -f $OUTPUT_DIR/trimmed/${fwd}_trim.fastq ]; then
+if $TRIM && ! $paired && [ ! -s $OUTPUT_DIR/trimmed/${fwd}_trim.fastq ]; then
    echo =======================================================================
    echo Trimming and removing adapters ...
    start=`date +%s`
@@ -301,7 +301,7 @@ fi
 
 
 ## Do the same for paired ends ------------
-if $TRIM && $paired && [ ! -f $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
+if $TRIM && $paired && [ ! -s $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
     echo =======================================================================
     echo Trimming and removing adapters ...
     start=`date +%s`
@@ -332,7 +332,7 @@ fi
 
 
 ## Merge pairs ------------
-if $MERGE_PAIRS && [ ! -f $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq ]; then
+if $MERGE_PAIRS && [ ! -s $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq ]; then
     echo =======================================================================
     echo Merging paired reads ...
     start=`date +%s`
@@ -355,7 +355,7 @@ fi
 
 
 ## Global quality filtering ------------
-if $QUAL_FLTR && [ ! -f $OUTPUT_DIR/main/${base}_qual.fq ]; then
+if $QUAL_FLTR && [ ! -s $OUTPUT_DIR/main/${base}_qual.fq ]; then
     echo =======================================================================
     echo Quality filtering ...
     start=`date +%s`
@@ -373,7 +373,7 @@ fi
 
 
 ## Remove duplicate reads ------------
-if $RM_DUPL && [ ! -f $OUTPUT_DIR/main/${base}_unique.fq ]; then
+if $RM_DUPL && [ ! -s $OUTPUT_DIR/main/${base}_unique.fq ]; then
     echo =======================================================================
     echo Remove duplicates ...
     start=`date +%s`
@@ -390,7 +390,7 @@ fi
 
 
 ## Remove unwanted vector contamination ------------
-if $RM_VECTOR && [ ! -f $OUTPUT_DIR/aligned/${base}_univec_blat.fq ]; then
+if $RM_VECTOR && [ ! -s $OUTPUT_DIR/aligned/${base}_univec_blat.fq ]; then
     echo =======================================================================
     echo Remove vector sequences ...
     start=`date +%s`
@@ -437,7 +437,7 @@ fi
 
 ## Remove host reads ----------
 # the same logic as the previous step
-if $RM_HOST && [ ! -f $OUTPUT_DIR/aligned/${base}_human_blat.fq ]; then
+if $RM_HOST && [ ! -s $OUTPUT_DIR/aligned/${base}_human_blat.fq ]; then
     echo =======================================================================
     echo Remove host sequences ...
     start=`date +%s`
@@ -478,7 +478,7 @@ if $RM_HOST && [ ! -f $OUTPUT_DIR/aligned/${base}_human_blat.fq ]; then
 fi
 
 ## Remove rRNA seqs -----------
-if $RM_rRNA && $use_sortmerna && [ ! -f $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
+if $RM_rRNA && $use_sortmerna && [ ! -s $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
     echo =======================================================================
     echo Ribodepletion with SortMeRNA ...
     start=`date +%s`
@@ -497,7 +497,7 @@ if $RM_rRNA && $use_sortmerna && [ ! -f $OUTPUT_DIR/main/${base}_unique_mRNA.fq 
         $OUTPUT_DIR/time/${base}_time.log
 fi
 
-if $RM_rRNA && ! $use_sortmerna && [ ! -f $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
+if $RM_rRNA && ! $use_sortmerna && [ ! -s $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
     echo =======================================================================
     echo Ribodepletion with infernalout ...
     start=`date +%s`
@@ -565,7 +565,7 @@ fi
 
 
 ## Taxonomic Classification ------------
-if $TAX_CLASS && [ ! -f $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt ]; then
+if $TAX_CLASS && [ ! -s $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt ]; then
     mkdir -p taxonomy
     echo =======================================================================
     echo Taxonomy classification ...
@@ -616,7 +616,7 @@ fi
 
 
 ## Assemble reads into contigs -----------
-if $ASSEMBLE && [ ! -f $OUTPUT_DIR/assembled/${base}_contigs_map.tsv ]; then
+if $ASSEMBLE && [ ! -s $OUTPUT_DIR/assembled/${base}_contigs_map.tsv ]; then
     echo =======================================================================
     echo Contigs assembly ...
 
@@ -685,7 +685,7 @@ fi
 
 
 ## Genome annotation -----------
-if $GENOME_ANN && [ ! -f $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq ]; then
+if $GENOME_ANN && [ ! -s $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq ]; then
     echo =======================================================================
     echo Genome annotation with BWA ...
     mkdir -p $OUTPUT_DIR/genome/
@@ -791,7 +791,7 @@ fi
 
 
 ## Protein annotation -----------
-if $PROT_ANN && [ ! -f $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
+if $PROT_ANN && [ ! -s $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
     echo =======================================================================
     echo Protein annotation with DIAMOND on unmapped sequences ...
 
@@ -838,7 +838,7 @@ fi
 
 
 ## DIAMOND annotation -----------
-if $DIAMOND_REFSEQ && [ ! -f $OUTPUT_DIR/diamond/${base}_refseq.dmdout ]; then
+if $DIAMOND_REFSEQ && [ ! -s $OUTPUT_DIR/diamond/${base}_refseq.dmdout ]; then
     echo =======================================================================
     echo Refseq annotation with DIAMOND ...
 
@@ -872,7 +872,7 @@ if $DIAMOND_REFSEQ && [ ! -f $OUTPUT_DIR/diamond/${base}_refseq.dmdout ]; then
 fi
 
 
-if $DIAMOND_SEED && [ ! -f $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
+if $DIAMOND_SEED && [ ! -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
     echo =======================================================================
     echo SEED annotation with DIAMOND ...
 
@@ -910,7 +910,7 @@ if $DIAMOND_COUNT; then
     echo Aggregate DIAMOND results and count reads...
 
     start=`date +%s`
-    if [ ! -f $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ];
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ];
     then 
         echo Diamond RefSeq Results aggreggation ...
         python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -O \
@@ -925,7 +925,7 @@ if $DIAMOND_COUNT; then
         echo Completed counting of the RefSeq anotated reads!
     fi
     
-    if [ ! -f $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs_reads.dm_organism.tsv ];
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs_reads.dm_organism.tsv ];
     then 
         echo Diamond NR protein results aggreggation ...
         mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
@@ -956,7 +956,7 @@ if $DIAMOND_COUNT; then
         echo Completed counting of the RefSeq anotated reads!
     fi
 
-    if [ ! -f $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt ];
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt ];
     then
         echo Diamond SEED results aggregation ...
         mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
