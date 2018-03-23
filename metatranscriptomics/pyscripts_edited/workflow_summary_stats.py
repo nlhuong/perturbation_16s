@@ -237,8 +237,8 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
     stats["kaiju_tax"] = kaiju_count(kaiju_tax_file) 
     stats["kaiju_genus"] = kaiju_count(kaiju_genus_file) 
 
-    stats["bwa_mcds_contigs_ann"] = file_len(bwa_mcds_contigs_ann) / 4
-    stats["bwa_mcds_unassembled_ann"] = file_len(bwa_mcds_unassembled_ann) / 4
+    stats["bwa_mcds_contigs"] = file_len(bwa_mcds_contigs_ann) / 4
+    stats["bwa_mcds_unassembled"] = file_len(bwa_mcds_unassembled_ann) / 4
     
     stats["dmnd_refseq"] = file_len(dmnd_refseq)
     stats["dmnd_seed"] = file_len(dmnd_seed)
