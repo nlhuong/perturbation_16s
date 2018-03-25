@@ -42,7 +42,11 @@ def file_len(fname):
     result, err = p.communicate()
     if p.returncode != 0:
         raise IOError(err)
-    return int(result.strip().split()[0])
+    try:
+        res = int(result.strip().split()[0])
+    except:
+        res = "NA"
+    return res
 
 def fasta_count(fname):
     """ 
@@ -57,8 +61,11 @@ def fasta_count(fname):
     result, err = p.communicate()
     if p.returncode != 0:
         raise IOError(err)
-    return int(result.strip().split()[0])
-
+    try:
+        res = int(result.strip().split()[0])
+    except:
+        res = "NA"
+    return res
 
 def kaiju_count(fname):
     """ 
@@ -75,8 +82,11 @@ def kaiju_count(fname):
     result, err = p.communicate()
     if p.returncode != 0:
         raise IOError(err)
-    return int(result.strip().split()[0])
-
+    try:
+       res = int(result.strip().split()[0])
+    except:
+       res = "NA"
+    return res
 
 def tail(fname, n):
     """
@@ -117,8 +127,11 @@ def bam_mapped(fname):
     result, err = p.communicate()
     if p.returncode != 0:
         raise IOError(err)
-    return int(float(result))
-
+    try:
+       res = int(float(result))
+    except:
+       res = "NA"
+    return res
 
 ###############################################################################
 ## Functions to calculate summary statistics
@@ -169,16 +182,16 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
 
     ## statistics about trimming / quality filtering
     trim_file = make_path("trimmed", "_trim.fq")
-    qual_file = make_path("main", "_qual.fq")
+    qual_file = make_path("trimmed", "_qual.fq")
     stats["trimmed"] = file_len(trim_file) / 4
     stats["qual_fltr"] = file_len(qual_file) / 4
 
     ## statistics about vector and host read removal
-    unique = make_path("main", "_unique.fq")
-    vector_bwa = make_path("aligned", "_univec_bwa.fq")
-    vector_blat = make_path("aligned", "_univec_blat.fq")
-    host_bwa = make_path("aligned", "_human_bwa.fq")
-    host_blat = make_path("aligned", "_human_blat.fq")
+    unique = make_path("unique", "_unique.fq")
+    vector_bwa = make_path("unique", "_univec_bwa.fq")
+    vector_blat = make_path("unique", "_univec_blat.fq")
+    host_bwa = make_path("unique", "_human_bwa.fq")
+    host_blat = make_path("unique", "_human_blat.fq")
     stats["unique"] = file_len(unique) / 4
     stats["vector_bwa"] = file_len(vector_bwa) / 4
     stats["vector_blat"] = file_len(vector_blat) / 4
@@ -186,7 +199,7 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
     stats["human_blat"] = file_len(vector_bwa) / 4
 
     ## statistics about rRNA filtering
-    mRNA_unique = make_path("main", "_unique_mRNA.fq")
+    mRNA_unique = make_path("unique", "_unique_mRNA.fq")
     mRNA = make_path("main", "_mRNA.fq")
     stats["mRNA_unique"] = file_len(mRNA_unique) / 4
     stats["mRNA"] = file_len(mRNA) / 4

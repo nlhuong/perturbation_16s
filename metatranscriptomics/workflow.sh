@@ -13,11 +13,12 @@ if [ -z ${SCRATCH+x} ]; then
     module load gcc/gcc6
     BASE_DIR=~/Projects/perturbation_16s
     APP_DIR=~/.local/bin/
-    # PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
+    DATA_DIR=$BASE_DIR/data
 else
     echo Working on SHERLOCK cluster
     BASE_DIR=$SCRATCH/Projects/perturbation_16s
     APP_DIR=$SCRATCH/applications/bin/
+    DATA_DIR=/scratch/PI/sph/resilience/
     # PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
     if [ $SHERLOCK == "1" ]; then
         CDHIT_DIR=$APP_DIR/for_sherlock1/cdhit
@@ -33,8 +34,7 @@ else
 fi
 
 # Reference directories
-export PI_BASE_DIR=/scratch/PI/sph/resilience/metatranscriptomics
-REF_DIR=$BASE_DIR/database
+REF_DIR=$DATA_DIR/databases
 KAIJUBD_DB=$REF_DIR/kaijudb
 # Python scripts directory
 PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
@@ -215,7 +215,7 @@ mkdir -p $OUTPUT_DIR/time
 mkdir -p $OUTPUT_DIR/main
 mkdir -p $OUTPUT_DIR/QC
 mkdir -p $OUTPUT_DIR/trimmed/
-mkdir -p $OUTPUT_DIR/aligned/
+mkdir -p $OUTPUT_DIR/unique/
 mkdir -p $OUTPUT_DIR/dmnd_tmp/
 mkdir -p $OUTPUT_DIR/counts/
 
@@ -320,8 +320,8 @@ if $TRIM && $paired && [ ! -s $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
     $APP_DIR/FastQC/fastqc $INPUT_DIR/$input_rev
     $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq
     $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq
-    mv $INPUT_DIR/*.html $OUTPUT_DIR/QC/
-    mv $INPUT_DIR/*.zip $OUTPUT_DIR/QC/
+    mv $INPUT_DIR/*_fastcq.html $OUTPUT_DIR/QC/
+    mv $INPUT_DIR/*_fastqc.zip $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
     end=`date +%s`
@@ -356,14 +356,14 @@ fi
 
 
 ## Global quality filtering ------------
-if $QUAL_FLTR && [ ! -s $OUTPUT_DIR/main/${base}_qual.fq ]; then
+if $QUAL_FLTR && [ ! -s $OUTPUT_DIR/trimmed/${base}_qual.fq ]; then
     echo =======================================================================
     echo Quality filtering ...
     start=`date +%s`
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
        --fastq_filter $OUTPUT_DIR/trimmed/${base}_trim.fq \
        --fastq_maxee 2.0 \
-       --fastqout $OUTPUT_DIR/main/${base}_qual.fq
+       --fastqout $OUTPUT_DIR/trimmed/${base}_qual.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Quality filtering: $runtime min" >> \
@@ -374,13 +374,13 @@ fi
 
 
 ## Remove duplicate reads ------------
-if $RM_DUPL && [ ! -s $OUTPUT_DIR/main/${base}_unique.fq ]; then
+if $RM_DUPL && [ ! -s $OUTPUT_DIR/unique/${base}_unique.fq ]; then
     echo =======================================================================
     echo Remove duplicates ...
     start=`date +%s`
     $CDHIT_DIR/cd-hit-auxtools/cd-hit-dup \
-        -i $OUTPUT_DIR/main/${base}_qual.fq \
-        -o $OUTPUT_DIR/main/${base}_unique.fq
+        -i $OUTPUT_DIR/trimmed/${base}_qual.fq \
+        -o $OUTPUT_DIR/unique/${base}_unique.fq
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Remove duplicates: $runtime min" >> \
@@ -389,44 +389,43 @@ if $RM_DUPL && [ ! -s $OUTPUT_DIR/main/${base}_unique.fq ]; then
         $OUTPUT_DIR/time/${base}_time.log
 fi
 
-
 ## Remove unwanted vector contamination ------------
-if $RM_VECTOR && [ ! -s $OUTPUT_DIR/aligned/${base}_univec_blat.fq ]; then
-    echo =======================================================================
+if $RM_VECTOR && [ ! -s $OUTPUT_DIR/unique/${base}_univec_blat.fq ]; then
+    echo ======================================================================
     echo Remove vector sequences ...
     start=`date +%s`
     # align reads with vector db  and filter any reads that align to it
     bwa mem -t $n_threads $REF_DIR/UniVec_Core \
-        $OUTPUT_DIR/main/${base}_unique.fq > \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.sam
+        $OUTPUT_DIR/unique/${base}_unique.fq > \
+        $OUTPUT_DIR/unique/${base}_univec_bwa.sam
     samtools view -bS \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.sam > \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.bam
+        $OUTPUT_DIR/unique/${base}_univec_bwa.sam > \
+        $OUTPUT_DIR/unique/${base}_univec_bwa.bam
     samtools fastq -n -F 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa_contam.fq \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.bam
+        $OUTPUT_DIR/unique/${base}_univec_bwa_contam.fq \
+        $OUTPUT_DIR/unique/${base}_univec_bwa.bam
     samtools fastq -n -f 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.fq \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.bam
+        $OUTPUT_DIR/unique/${base}_univec_bwa.fq \
+        $OUTPUT_DIR/unique/${base}_univec_bwa.bam
 
     # additional alignments for the reads with BLAT to filter out any remaining
     # reads that align to our vector contamination database but BLAT only
     # accepts .fasta so we convert reads from fastq to fasta w/ vsearch
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_filter $OUTPUT_DIR/aligned/${base}_univec_bwa.fq \
-        --fastaout $OUTPUT_DIR/aligned/${base}_univec_bwa.fasta
+        --fastq_filter $OUTPUT_DIR/unique/${base}_univec_bwa.fq \
+        --fastaout $OUTPUT_DIR/unique/${base}_univec_bwa.fasta
 
     blat $REF_DIR/UniVec_Core \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.fasta \
+        $OUTPUT_DIR/unique/${base}_univec_bwa.fasta \
         -noHead -minIdentity=90 -minScore=65 \
         -fine -q=rna -t=dna -out=blast8 \
-        $OUTPUT_DIR/aligned/${base}_univec.blatout
+        $OUTPUT_DIR/unique/${base}_univec.blatout
 
     $PYSCRIPT_DIR/1_BLAT_Filter.py \
-        $OUTPUT_DIR/aligned/${base}_univec_bwa.fq \
-        $OUTPUT_DIR/aligned/${base}_univec.blatout \
-        $OUTPUT_DIR/aligned/${base}_univec_blat.fq \
-        $OUTPUT_DIR/aligned/${base}_univec_blat_contam.fq
+        $OUTPUT_DIR/unique/${base}_univec_bwa.fq \
+        $OUTPUT_DIR/unique/${base}_univec.blatout \
+        $OUTPUT_DIR/unique/${base}_univec_blat.fq \
+        $OUTPUT_DIR/unique/${base}_univec_blat_contam.fq
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -438,38 +437,38 @@ fi
 
 ## Remove host reads ----------
 # the same logic as the previous step
-if $RM_HOST && [ ! -s $OUTPUT_DIR/aligned/${base}_human_blat.fq ]; then
+if $RM_HOST && [ ! -s $OUTPUT_DIR/unique/${base}_human_blat.fq ]; then
     echo =======================================================================
     echo Remove host sequences ...
     start=`date +%s`
     bwa mem -t $n_threads $REF_DIR/human_cds.fa \
-        $OUTPUT_DIR/aligned/${base}_univec_blat.fq > \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.sam
+        $OUTPUT_DIR/unique/${base}_univec_blat.fq > \
+        $OUTPUT_DIR/unique/${base}_human_bwa.sam
     samtools view -bS \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.sam > \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.bam
+        $OUTPUT_DIR/unique/${base}_human_bwa.sam > \
+        $OUTPUT_DIR/unique/${base}_human_bwa.bam
     samtools fastq -n -F 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_human_bwa_contam.fq \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.bam
+        $OUTPUT_DIR/unique/${base}_human_bwa_contam.fq \
+        $OUTPUT_DIR/unique/${base}_human_bwa.bam
     samtools fastq -n -f 4 -0 \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.fq \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.bam
+        $OUTPUT_DIR/unique/${base}_human_bwa.fq \
+        $OUTPUT_DIR/unique/${base}_human_bwa.bam
 
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_filter $OUTPUT_DIR/aligned/${base}_human_bwa.fq \
-        --fastaout $OUTPUT_DIR/aligned/${base}_human_bwa.fasta
+        --fastq_filter $OUTPUT_DIR/unique/${base}_human_bwa.fq \
+        --fastaout $OUTPUT_DIR/unique/${base}_human_bwa.fasta
 
     blat $REF_DIR/human_cds.fa \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.fasta \
+        $OUTPUT_DIR/unique/${base}_human_bwa.fasta \
         -noHead -minIdentity=90 -minScore=65 \
         -fine -q=rna -t=dna -out=blast8 \
-        $OUTPUT_DIR/aligned/${base}_human.blatout
+        $OUTPUT_DIR/unique/${base}_human.blatout
 
     $PYSCRIPT_DIR/1_BLAT_Filter.py \
-        $OUTPUT_DIR/aligned/${base}_human_bwa.fq \
-        $OUTPUT_DIR/aligned/${base}_human.blatout \
-        $OUTPUT_DIR/aligned/${base}_human_blat.fq \
-        $OUTPUT_DIR/aligned/${base}_human_blat_contam.fq
+        $OUTPUT_DIR/unique/${base}_human_bwa.fq \
+        $OUTPUT_DIR/unique/${base}_human.blatout \
+        $OUTPUT_DIR/unique/${base}_human_blat.fq \
+        $OUTPUT_DIR/unique/${base}_human_blat_contam.fq
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -479,15 +478,15 @@ if $RM_HOST && [ ! -s $OUTPUT_DIR/aligned/${base}_human_blat.fq ]; then
 fi
 
 ## Remove rRNA seqs -----------
-if $RM_rRNA && $use_sortmerna && [ ! -s $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
+if $RM_rRNA && $use_sortmerna && [ ! -s $OUTPUT_DIR/unique/${base}_unique_mRNA.fq ]; then
     echo =======================================================================
     echo Ribodepletion with SortMeRNA ...
     start=`date +%s`
     $SORTMERNA_DIR/build/Release/src/sortmerna/sortmerna \
         --ref $SORTMERNA_DIR/rRNA_databases/silva-bac-16s-id90.fasta,$SORTMERNA_DIR/index/silva-bac-16s \
-        --reads $OUTPUT_DIR/aligned/${base}_human_blat.fq \
-        --aligned $OUTPUT_DIR/main/${base}_unique_rRNA \
-        --other $OUTPUT_DIR/main/${base}_unique_mRNA \
+        --reads $OUTPUT_DIR/unique/${base}_human_blat.fq \
+        --aligned $OUTPUT_DIR/unique/${base}_unique_rRNA \
+        --other $OUTPUT_DIR/unique/${base}_unique_mRNA \
         --fastx --num_alignments 0 --log \
         -a $n_threads -v
     end=`date +%s`
@@ -498,21 +497,21 @@ if $RM_rRNA && $use_sortmerna && [ ! -s $OUTPUT_DIR/main/${base}_unique_mRNA.fq 
         $OUTPUT_DIR/time/${base}_time.log
 fi
 
-if $RM_rRNA && ! $use_sortmerna && [ ! -s $OUTPUT_DIR/main/${base}_unique_mRNA.fq ]; then
+if $RM_rRNA && ! $use_sortmerna && [ ! -s $OUTPUT_DIR/unique/${base}_unique_mRNA.fq ]; then
     echo =======================================================================
     echo Ribodepletion with infernalout ...
     start=`date +%s`
     mkdir -p $OUTPUT_DIR/infernal
     $APP_DIR/vsearch-2.7.0-linux-x86_64/bin/vsearch \
-        --fastq_filter $OUTPUT_DIR/aligned/${base}_human_blat.fq \
-        --fastaout $OUTPUT_DIR/aligned/${base}_human_blat.fasta
+        --fastq_filter $OUTPUT_DIR/unique/${base}_human_blat.fq \
+        --fastaout $OUTPUT_DIR/unique/${base}_human_blat.fasta
 
     $APP_DIR/infernal-1.1.2-linux-intel-gcc/binaries/cmsearch \
         -o $OUTPUT_DIR/infernal/${base}_rRNA.log \
         --tblout $OUTPUT_DIR/infernal/${base}_rRNA.infernalout \
         --anytrunc --rfam -E 0.001 --cpu $n_threads \
         $REF_DIR/Rfam.cm \
-        $OUTPUT_DIR/aligned/${base}_human_blat.fasta
+        $OUTPUT_DIR/unique/${base}_human_blat.fasta
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -521,10 +520,10 @@ if $RM_rRNA && ! $use_sortmerna && [ ! -s $OUTPUT_DIR/main/${base}_unique_mRNA.f
 
     start=`date +%s`
     $PYSCRIPT_DIR/2_Infernal_Filter.py \
-        $OUTPUT_DIR/aligned/${base}_human_blat.fq \
+        $OUTPUT_DIR/unique/${base}_human_blat.fq \
         $OUTPUT_DIR/infernal/${base}_rRNA.infernalout \
-        $OUTPUT_DIR/main/${base}_unique_mRNA.fq \
-        $OUTPUT_DIR/main/${base}_unique_rRNA.fq
+        $OUTPUT_DIR/unique/${base}_unique_mRNA.fq \
+        $OUTPUT_DIR/unique/${base}_unique_rRNA.fq
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -543,14 +542,14 @@ if $REREPLICATION; then
         outfile=$OUTPUT_DIR/main/${base}_fltr.fq
     fi
     
-    if [ ! -f $outfile ]; then
+    if [ ! -s $outfile ]; then
         echo =======================================================================
         echo Rereplication ...
         start=`date +%s`
         $PYSCRIPT_DIR/3_Reduplicate.py \
-            $OUTPUT_DIR/main/${base}_qual.fq \
-            $OUTPUT_DIR/aligned/${base}_human_blat.fq \
-            $OUTPUT_DIR/main/${base}_unique.fq.clstr \
+            $OUTPUT_DIR/trimmed/${base}_qual.fq \
+            $OUTPUT_DIR/unique/${base}_unique_mRNA.fq \
+            $OUTPUT_DIR/unique/${base}_unique.fq.clstr \
             $outfile
 
         $APP_DIR/FastQC/fastqc $outfile
@@ -891,13 +890,6 @@ if $DIAMOND_SEED && [ ! -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
         -o $OUTPUT_DIR/diamond/${base}_seed.dmdout \
         -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
 
-    # $DIAMOND blastx -p $n_threads -d $REF_DIR/subsys_d \
-    #     -q $infile \
-    #     -a $OUTPUT_DIR/diamond/${base}.Subsys \
-    #     -t ./dmnd_tmp -k 1 --sensitive
-    # $DIAMOND view --daa ${base}.Subsys.daa -f 6 \
-    #     -o $OUTPUT_DIR/diamond/${base}_seed.dmdout
-
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "DIAMOND SEED gene annotation: $runtime min" >> \
@@ -914,15 +906,10 @@ if $DIAMOND_COUNT; then
     if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ];
     then 
         echo Diamond RefSeq Results aggreggation ...
-        python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -O \
-            -I $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
-            -D $REF_DIR/RefSeq_bac.fa
-        python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
-            -I $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
-            -D $REF_DIR/RefSeq_bac.fa
-        mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
-        mv $OUTPUT_DIR/diamond/${base}_refseq.dm_organism.tsv $OUTPUT_DIR/counts/dmnd_RefSeq/
-        mv $OUTPUT_DIR/diamond/${base}_refseq.dm_function.tsv $OUTPUT_DIR/counts/dmnd_RefSeq/
+        python $PYSCRIPT_DIR/diamond_reads_counter.py \ 
+            $OUTPUT_DIR/diamond/${base}_refseq.dmdout \  
+            $REF_DIR/RefSeq_bac.fa \ 
+            -outfile $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq_genes.tsv
         echo Completed counting of the RefSeq anotated reads!
     fi
     
@@ -931,28 +918,30 @@ if $DIAMOND_COUNT; then
         echo Diamond NR protein results aggreggation ...
         mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
         contig_file=$OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout    
-	unassembled_file=$OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout
-	echo Counting reads for: $contig_file
-        if [[ ! -s $contig_file ]]; then
-	    echo $contig_file is empty.
-        else
-	    # Count number contigs mapped times multiplicity of corresponding reads 
-            python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
-                -I $contig_file -D $REF_DIR/nr \
-                -CONTIG_MAP $OUTPUT_DIR/assembled/${base}_contigs_map.tsv 
-            mv ${contig_file%.dmdout}.dm_function.tsv \
-                $OUTPUT_DIR/counts/dmnd_NR/${contig_file%.dmdout}_reads.dm_function.tsv
+	    unassembled_file=$OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout
+	    echo Counting reads for: $contig_file
+            if [[ ! -s $contig_file ]]; then
+	            echo $contig_file is empty.
+            else
+	        # Count number contigs mapped times multiplicity of corresponding reads 
+            python $PYSCRIPT_DIR/diamond_reads_counter.py \ 
+                $contig_file \
+                $REF_DIR/nr \ 
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contig_reads_nr_genes.tsv \ 
+                -contig-map $OUTPUT_DIR/assembled/${base}_contigs_map.tsv 
             # Count number of contigs mapped.
-            python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
-                -I $contig_file -D $REF_DIR/nr 
-            mv ${contig_file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR
+            python $PYSCRIPT_DIR/diamond_reads_counter.py \
+                $contig_file \ 
+                $REF_DIR/nr \ 
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contigs_nr_genes.tsv
         fi
         if [[ ! -s $unassembled_file ]]; then
 	    echo $unassembled_file is empty.
         else 
-            python $PYSCRIPT_DIR/DIAMOND_analysis_counter.py -F \
-                -I $unassembled_file -D $REF_DIR/nr
-            mv ${unassembled_file%.dmdout}.dm_function.tsv $OUTPUT_DIR/counts/dmnd_NR/
+            python $PYSCRIPT_DIR/diamond_reads_counter.py \ 
+                $unassembled_file \ 
+                $REF_DIR/nr \ 
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_unassembled_reads_nr_genes.tsv
         fi 
         echo Completed counting of the RefSeq anotated reads!
     fi
@@ -972,7 +961,7 @@ if $DIAMOND_COUNT; then
         echo Completed counting of the SEED  anotated reads!
     fi
     
-    end=`date +%s`
+    end=`date +%s
     runtime=$(((end-start)/60))
     echo "SAMSA2 python scripts summarise DIAMOND results: $runtime min" >> \
         $OUTPUT_DIR/time/${base}_time.log
