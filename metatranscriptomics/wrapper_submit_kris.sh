@@ -9,7 +9,7 @@
 CODE_DIR=$SCRATCH/Projects/perturbation_16s/metatranscriptomics
 PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 
-declare -a arr=("Relman_RNAseq_16" "Relman_RNAseq_17/" "Relman_RNAseq_18")
+declare -a arr=("Arati_R_plate_11" "Arati_R_plate_11" "Relman_RNAseq_21")
 for SUBDIR in "${arr[@]}"
 do
 

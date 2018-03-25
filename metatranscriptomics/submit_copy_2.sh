@@ -10,13 +10,13 @@ export SUBDIR=Relman_RNAseq_16
 
 export IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 export OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
-export FWD=${3:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R1_001.fastq}
-export REV=${4:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R2_001.fastq}
+export FWD=${3:-M3301_PL16_B2r_TCCGGAGA-GTCAGTAC_L004_R1_001.fastq}
+export REV=${4:-M3301_PL16_B2r_TCCGGAGA-GTCAGTAC_L004_R2_001.fastq}
 export LOG=${5:-$PI_BASE_DIR/logs/$(basename $IN)}
 
-export TIME=${6:-20:00:00}
+export TIME=${6:-15:00:00}
 export NCPUS=${7:-8}
-export MEM=${8:-6G}
+export MEM=${8:-4G}
 
 export SAMPLE=$(basename $FWD)
 export SAMPLE=$(echo $SAMPLE | cut -d '_' -f1-3)
