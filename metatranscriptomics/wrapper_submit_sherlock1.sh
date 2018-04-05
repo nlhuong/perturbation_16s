@@ -9,29 +9,30 @@
 CODE_DIR=$SCRATCH/Projects/perturbation_16s/metatranscriptomics
 PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 
-#declare -a arr=("Relman_RNAseq_16" "Relman_RNAseq_17/" "Relman_RNAseq_18")
+#declare -a arr=("Relman_RNAseq_16" "Relman_RNAseq_17" "Relman_RNAseq_18" "Relman_RNAseq_21")
 #for SUBDIR in "${arr[@]}"
 #do
 
-SUBDIR=Relman_RNAseq_18
-
+SUBDIR=Arati_R_plate_9
+ 
 IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
-LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh2_rerun_2}
+LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh1_no_diamond}
 
-TIME=${3:-18:30:00}
+TIME=${3:-20:00:00}
 NCPUS=${4:-8}
 MEM=${5:-6G}
 
 cd $IN
 mkdir -p $OUT
+mkdir -p $LOG
 for fwd_file in *_R1_001.fastq; do
     base="$(echo $fwd_file | cut -d '_' -f1-3)"
-    if [ ! -s $OUT/counts/dmnd_SEED/${base}_seed.hierarchy.reduced ]; then
+    if [ ! -s $OUT/counts/dmnd_SEED/${base}_seed.hierarchy.reduced ]; then 
         echo $base
         FWD=$fwd_file
         REV=${FWD%_R1_001.fastq}_R2_001.fastq
-        bash $CODE_DIR/submit.sh $IN $OUT $FWD $REV $LOG $TIME $NCPUS $MEM
+        bash $CODE_DIR/submit_no_diamond.sh $IN $OUT $FWD $REV $LOG $TIME $NCPUS $MEM
         sleep 1 
     fi
 done

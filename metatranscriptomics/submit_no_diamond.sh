@@ -12,9 +12,9 @@ export IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 export OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
 export FWD=${3:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R1_001.fastq}
 export REV=${4:-M3311_DBUsw_11r_AGCGATAG-GTCAGTAC_L004_R2_001.fastq}
-export LOG=${5:-$PI_BASE_DIR/logs/$(basename $IN)}
+export LOG=${5:-$PI_BASE_DIR/logs/$(basename $IN)/no_diamond}
 
-export TIME=${6:-24:00:00}
+export TIME=${6:-12:00:00}
 export NCPUS=${7:-8}
 export MEM=${8:-6G}
 
@@ -94,6 +94,6 @@ echo =======================================================================
 echo " "
 
 cd $BASE_DIR/metatranscriptomics/
-bash workflow.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV
+bash workflow.sh -t $NCPUS -i $IN -o $OUT -f $FWD -r $REV --no-diamond
 
 EOT

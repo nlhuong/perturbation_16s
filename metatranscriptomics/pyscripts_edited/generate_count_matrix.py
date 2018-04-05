@@ -45,10 +45,10 @@ import pandas as pd
 
 # String searching function:
 def string_find(usage_term):
-        for idx, elem in enumerate(sys.argv):
-                next_elem = sys.argv[(idx + 1) % len(sys.argv)]
-                if elem == usage_term:
-                         return next_elem
+    for idx, elem in enumerate(sys.argv):
+        next_elem = sys.argv[(idx + 1) % len(sys.argv)]
+        if elem == usage_term:
+            return next_elem
 
 # If not be specified input directory is the current directory
 if "-D" in sys.argv:
@@ -78,7 +78,7 @@ for idx, filename in enumerate(filenames):
     if ".hierarchy" in filename:
         colnames = ['freq', sample] + ['SEED_' + str(i) for i in range(5)]
     else:
-        colnames = ['freq', sample, 'feature_name']
+        colnames = ['freq', sample, 'GeneID']
     sample_df = pd.read_table(filename, header=None, names=colnames)
     col_intersect = list(set(colnames) - set([sample, 'freq'])) 
     sample_df = sample_df[col_intersect + [sample]]
@@ -90,4 +90,4 @@ for idx, filename in enumerate(filenames):
 
 count_matrix = count_matrix.fillna(0)
 count_matrix[sample_lst] = count_matrix[sample_lst].astype(int)
-count_matrix.to_csv(output)
+count_matrix.to_csv(output, index=False)
