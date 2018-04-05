@@ -72,21 +72,23 @@ tab="    "
 echo
 echo This program is a pipeline for processing raw metatranscriptomic reads.
 echo
-echo  "$s" -h --help  prints documentation
+echo  "$s" -h --help "        " prints documentation
 echo
-echo  "$s" -i, --in_dir "$tab" location of input raw read files \(.fastq, .fq, .fasta, .fa\)
-echo  "$s" -o, --out_dir "$tab" directory of output files
-echo  "$s" -f, --fwd "$tab" forward reads file
-echo  "$s" -r, --rev "$tab" \(optional\) reverse reads file
+echo  "$s" -i, --in_dir "     " location of input raw read files \(.fastq, .fq, .fasta, .fa\)
+echo  "$s" -o, --out_dir "    " directory of output files
+echo  "$s" -f, --fwd "        " forward reads file
+echo  "$s" -r, --rev "        " \(optional\) reverse reads file
 echo
 echo Additional options:
 echo
-echo  "$s" -t X "$tab" set number of parallel threads for the pipeline X \(default:5\)
-echo  "$s" --metagenome "$tab" whether to input files are metagenomic, NOT metatranscriptomic reads \(default:false\).
-echo  "$s" --no-assembly "$tab" whether to apply DIAMOND directly to processed short reads w/o assembling first \(default:false\).
-echo  "$s" --index-db "$tab" whether to index databases \(default:false should be done ahead\).
-echo  "$s" --sortmerna "$tab" use SortMeRNA instead of Infernal for ribodepletion step \(default:true\).
-echo  "$s" --extra-blat "$tab" use extra BLAT step during genome annotation \(default:false\).
+echo  "$s" -t X "             " number of parallel threads for the pipeline X \(default:5\)
+echo  "$s" --metagenome "     " input files are metagenomic, NOT metatranscriptomic reads.
+echo  "$s" --index-db "      "  index databases \(time consuming\). Should be completed prior starting the pipeline for the first sample.
+echo  "$s" --sortmerna "      " use SortMeRNA instead of Infernal for ribodepletion step \(default:true\).
+echo  "$s" --extra-blat "     " use extra BLAT step during genome annotation \(default:false\).
+echo  "$s" --no-assembly "    " do not assemble into contigs and apply DIAMOND directly to processed short reads.
+echo  "$s" --no-diamond "     " do not use DIAMOND to align the read.
+echo  "$s" --only-diamond "   " perform only DIAMOND alignment stem on previously processed short reads.
 echo
 }
 
@@ -148,25 +150,47 @@ case $key in
     PROT_ANN=false
     shift # past argument
     ;;
-    --no-assembly)
-    ASSEMBLE=false
-    GENOME_ANN=false
-    PROT_ANN=false
-    DIAMOND_REFSEQ=true
-    DIAMOND_SEED=true
+    --index-db)
+    index_db=true
     shift # past argument
     ;;
     --sortmerna)
     use_sortmerna=true
     shift # past argument
     ;;
-    --index-db)
-    index_db=true
-    shift # past argument
-    ;;
     --extra-blat)
     extra_blat=true
     shift # past argument
+    ;;
+    --no-assembly)
+    ASSEMBLE=false
+    GENOME_ANN=false
+    PROT_ANN=false
+    shift # past argument
+    ;;
+    --no-diamond)
+    PROT_ANN=false
+    DIAMOND_REFSEQ=false
+    DIAMOND_SEED=false
+    shift # past argument
+    ;;
+    --only-diamond)
+    TRIM=false
+    MERGE_PAIRS=false
+    QUAL_FLTR=false
+    RM_DUPL=false
+    RM_VECTOR=false
+    RM_HOST=false
+    RM_rRNA=false
+    REREPLICATION=false
+    TAX_CLASS=false
+    ASSEMBLE=false
+    GENOME_ANN=false
+    PROT_ANN=true
+    DIAMOND_REFSEQ=true
+    DIAMOND_SEED=true
+    DIAMOND_COUNT=true
+    shift
     ;;
     -*) echo "unknown option: $1" >&2; exit 1;;
     *) handle_argument "$1"; shift 1;;
@@ -320,7 +344,7 @@ if $TRIM && $paired && [ ! -s $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
     $APP_DIR/FastQC/fastqc $INPUT_DIR/$input_rev
     $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq
     $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq
-    mv $INPUT_DIR/*_fastcq.html $OUTPUT_DIR/QC/
+    mv $INPUT_DIR/*_fastqc.html $OUTPUT_DIR/QC/
     mv $INPUT_DIR/*_fastqc.zip $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
@@ -553,8 +577,8 @@ if $REREPLICATION; then
             $outfile
 
         $APP_DIR/FastQC/fastqc $outfile
-        mv $OUTPUT_DIR/main/*.html $OUTPUT_DIR/QC/
-        mv $OUTPUT_DIR/main/*.zip $OUTPUT_DIR/QC/
+        mv $OUTPUT_DIR/main/${base}_mRNA_fastqc.html $OUTPUT_DIR/QC/
+        mv $OUTPUT_DIR/main/_mRNA_fastqc.zip $OUTPUT_DIR/QC/
         end=`date +%s`
         runtime=$(((end-start)/60))
         echo "Rereplication: $runtime min" >> $OUTPUT_DIR/time/${base}_time.log
@@ -565,7 +589,7 @@ fi
 
 
 ## Taxonomic Classification ------------
-if $TAX_CLASS && [ ! -s $OUTPUT_DIR/taxonomy/${base}_genus_class_summary.txt ]; then
+if $TAX_CLASS && [ ! -s $OUTPUT_DIR/taxonomy/${base}_genus_class.tsv ]; then
     mkdir -p taxonomy
     echo =======================================================================
     echo Taxonomy classification ...
@@ -903,13 +927,15 @@ if $DIAMOND_COUNT; then
     echo Aggregate DIAMOND results and count reads...
 
     start=`date +%s`
-    if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ];
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ] && \
+    [ -s $OUTPUT_DIR/diamond/${base}_refseq.dmdout ];
     then 
         echo Diamond RefSeq Results aggreggation ...
-        python $PYSCRIPT_DIR/diamond_reads_counter.py \ 
-            $OUTPUT_DIR/diamond/${base}_refseq.dmdout \  
-            $REF_DIR/RefSeq_bac.fa \ 
-            -outfile $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq_genes.tsv
+        mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
+        python $PYSCRIPT_DIR/diamond_reads_counter.py \
+            $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
+            $REF_DIR/RefSeq_bac.fa \
+            -outfile $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq
         echo Completed counting of the RefSeq anotated reads!
     fi
     
@@ -924,29 +950,30 @@ if $DIAMOND_COUNT; then
 	            echo $contig_file is empty.
             else
 	        # Count number contigs mapped times multiplicity of corresponding reads 
-            python $PYSCRIPT_DIR/diamond_reads_counter.py \ 
+            python $PYSCRIPT_DIR/diamond_reads_counter.py \
                 $contig_file \
-                $REF_DIR/nr \ 
-                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contig_reads_nr_genes.tsv \ 
-                -contig-map $OUTPUT_DIR/assembled/${base}_contigs_map.tsv 
+                $REF_DIR/nr \
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contig_reads_nr \
+                -contig-map $OUTPUT_DIR/assembled/${base}_contigs_map.tsv
             # Count number of contigs mapped.
             python $PYSCRIPT_DIR/diamond_reads_counter.py \
-                $contig_file \ 
-                $REF_DIR/nr \ 
-                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contigs_nr_genes.tsv
+                $contig_file \
+                $REF_DIR/nr \
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contigs_nr
         fi
         if [[ ! -s $unassembled_file ]]; then
 	    echo $unassembled_file is empty.
-        else 
-            python $PYSCRIPT_DIR/diamond_reads_counter.py \ 
-                $unassembled_file \ 
-                $REF_DIR/nr \ 
-                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_unassembled_reads_nr_genes.tsv
+        else
+            python $PYSCRIPT_DIR/diamond_reads_counter.py \
+                $unassembled_file \
+                $REF_DIR/nr \
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_unassembled_reads_nr
         fi 
         echo Completed counting of the RefSeq anotated reads!
     fi
 
-    if [ ! -s $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt ];
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt ] && \
+    [ -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ];
     then
         echo Diamond SEED results aggregation ...
         mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
@@ -961,7 +988,7 @@ if $DIAMOND_COUNT; then
         echo Completed counting of the SEED  anotated reads!
     fi
     
-    end=`date +%s
+    end=`date +%s`
     runtime=$(((end-start)/60))
     echo "SAMSA2 python scripts summarise DIAMOND results: $runtime min" >> \
         $OUTPUT_DIR/time/${base}_time.log
