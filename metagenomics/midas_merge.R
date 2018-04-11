@@ -11,14 +11,12 @@
 ## author: sankaran.kris@gmail.com
 ## date: 11/29/2017
 
-USR <- "lanhuong"
-
 library("tidyverse")
 library("feather")
 library("argparser")
 
 parser <- arg_parser("Merge MIDAS species and gene results across samples")
-parser <- add_argument(parser, "--subdir", help = "The directory containing the processed data", default = "metagenomic")
+parser <- add_argument(parser, "--subdir", help = "The directory containing the processed data", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics")
 argv <- parse_args(parser)
 
 bind_wrapper <- function(x) {
@@ -30,7 +28,7 @@ bind_wrapper <- function(x) {
 ###############################################################################
 ## Setup PATH to MIDAS
 ###############################################################################
-midas_path <- file.path("/scratch/users", USR, "applications/MIDAS")
+midas_path <- file.path(Sys.getenv("SCRATCH"), "applications/MIDAS")
 python_path <- sprintf("%s:%s", Sys.getenv("PYTHONPATH"), midas_path)
 path <- sprintf("%s:%s", Sys.getenv("PATH"), file.path(midas_path, "scripts"))
 Sys.setenv("PYTHONPATH" = python_path)
@@ -40,8 +38,8 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 ###############################################################################
 ## Merge data across samples
 ###############################################################################
-samples_dir <- file.path("..", "data", argv$subdir, "processed")
-merged_dir <- file.path("..", "data", "merged")
+samples_dir <- file.path(argv$subdir, "processed")
+merged_dir <- file.path(argv$subdir, "merged")
 genes_dirs <- file.path(merged_dir, "genes")
 dir.create(merged_dir)
 dir.create(genes_dirs)
