@@ -15,16 +15,15 @@
 library("stringr")
 library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
-parser <- add_argument(parser, "--user", help = "Sherlock user name, necessary for specifying directory paths", default = "lanhuong")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
-parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "../data/metagenomic")
+parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "$PI_SCRATCH/resilience/metagenomics/raw/")
 argv <- parse_args(parser)
 
 ###############################################################################
 ## Setup paths and load modules
 ###############################################################################
-midas_path <- file.path("/scratch/users", argv$user, "applications/MIDAS")
+midas_path <- file.path(Sys.getenv("SCRATCH"), "applications/MIDAS")
 python_path <- sprintf("%s:%s", Sys.getenv("PYTHONPATH"), midas_path)
 path <- sprintf("%s:%s", Sys.getenv("PATH"), file.path(midas_path, "scripts"))
 Sys.setenv("PYTHONPATH" = python_path)
@@ -37,7 +36,7 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 outdir <- file.path(argv$indir, "processed")
 dir.create(outdir)
 
-input_files <- list.files(argv$indir, "*.fq*", full.names = TRUE)
+input_files <- list.files(argv$indir, "*.fq*", recursive = TRUE, full.names = TRUE)
 input_files <- unique(gsub("_1P||_2P", "", input_files))
 
 ## Identify and filter away procesed samples
