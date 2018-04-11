@@ -45,6 +45,6 @@ module load samtools/1.6
 
 #now run normal batch commands
 #cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
-cd /scratch/users/kriss1/Projects/PerturbationStudy/perturbation_16s/metagenomics
+cd /scratch/users/kriss1/Projects/perturbation_16s/metagenomics
 Rscript midas_profile.R -s $1 -e $2 -i $3
 EOT

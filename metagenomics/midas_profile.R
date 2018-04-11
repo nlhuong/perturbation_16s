@@ -17,7 +17,7 @@ library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
-parser <- add_argument(parser, "--indir", help = "The path to the directory containing all the raw data", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics", "raw")
+parser <- add_argument(parser, "--indir", help = "The path to the directory containing all the raw data", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics", "raw"))
 argv <- parse_args(parser)
 
 ###############################################################################
@@ -54,8 +54,8 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
 for (f in input_files) {
-  f1 <- gsub(".fq", "_1P.fq", f)
-  f2 <- gsub(".fq", "_2P.fq", f)
+  f1 <- gsub(".fq", "_1P.fq", basename(f))
+  f2 <- gsub(".fq", "_2P.fq", basename(f))
   print(f1)
   meas <- str_extract(f1, "M[0-9]+")
 

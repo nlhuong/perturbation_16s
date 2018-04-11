@@ -12,7 +12,7 @@ library("argparser")
 parser <- arg_parser("Wrap metagenomic and metatranscriptomic profiling")
 parser <- add_argument(parser, "--workdir", help = "The directory within which to run the R process", default = "metagenomics")
 parser <- add_argument(parser, "--subdir", help = "The subdirectory containing all the raw data", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics", "raw"))
-parser <- add_argument(parser, "--logdir", help = "Relative path to directory within which to store all cluster logs", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics", "logs"))
+parser <- add_argument(parser, "--logdir", help = "Path to directory within which to store all cluster logs", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics", "logs"))
 argv <- parse_args(parser)
 
 message(argv$workdir)
@@ -32,10 +32,10 @@ for (f in processed_files) {
 }
 
 n_files <- length(input_files)
-n_per_batch <- 4
+n_per_batch <- 20
 
 for (i in seq(1, n_files, n_per_batch)) {
-  cmd <- sprintf("bash submit.sh %s %s %s", i, min(n_files, i + n_per_batch - 1), argv$subdir, argv$logdir)
+  cmd <- sprintf("bash submit.sh %s %s %s %s", i, min(n_files, i + n_per_batch - 1), argv$subdir, argv$logdir)
   message(cmd)
   system(cmd)
 }
