@@ -54,22 +54,21 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
 for (f in input_files) {
-  f1 <- gsub(".fq", "_1P.fq", basename(f))
-  f2 <- gsub(".fq", "_2P.fq", basename(f))
-  print(f1)
-  meas <- str_extract(f1, "M[0-9]+")
+  f1 <- gsub(".fq", "_1P.fq", f)
+  f2 <- gsub(".fq", "_2P.fq", f)
 
   ## species profiling
   cmd <- sprintf(
     "run_midas.py species %s/%s -1 %s -2 %s",
-    outdir, meas, f1, f2
+    outdir, gsub(".fastq", "", basename(f1)), f1, f2
   )
   system(cmd)
 
   ## gene profiling
+  print(gsub(".fq", "", basename(f1)))
   cmd <- sprintf(
     "run_midas.py genes %s/%s -1 %s -2 %s",
-    outdir, meas, f1, f2
+    outdir, gsub(".fastq", "", basename(f1)), f1, f2
   )
   system(cmd)
 }
