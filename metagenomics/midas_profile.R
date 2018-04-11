@@ -17,7 +17,7 @@ library("argparser")
 parser <- arg_parser("Apply MIDAS profiling to raw reads")
 parser <- add_argument(parser, "--start_ix", help = "Start index of files for input", default = 1)
 parser <- add_argument(parser, "--end_ix", help = "End index of files for input", default = 5)
-parser <- add_argument(parser, "--indir", help = "The relative path to the directory containing all the raw data", default = "$PI_SCRATCH/resilience/metagenomics/raw/")
+parser <- add_argument(parser, "--indir", help = "The path to the directory containing all the raw data", default = "$PI_SCRATCH/resilience/metagenomics/raw/")
 argv <- parse_args(parser)
 
 ###############################################################################
@@ -33,7 +33,7 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 ###############################################################################
 ## Define input and output directories
 ###############################################################################
-outdir <- file.path(argv$indir, "processed")
+outdir <- file.path(argv$indir, "..", "processed")
 dir.create(outdir)
 
 input_files <- list.files(argv$indir, "*.fq*", recursive = TRUE, full.names = TRUE)

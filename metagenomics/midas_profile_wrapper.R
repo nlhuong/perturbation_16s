@@ -20,11 +20,10 @@ setwd(argv$workdir)
 dir.create(argv$logdir)
 
 input_files <- list.files(argv$subdir, "*.fq*", full.names = TRUE, recursive = TRUE)
-print(input_files)
 input_files <- unique(gsub("_1P||_2P", "", input_files))
 
 ## Identify and filter away procesed samples
-processed_files <- list.files(file.path(argv$subdir, "processed"), full.names = TRUE)
+processed_files <- list.files(file.path(argv$subdir, "..", "processed"), full.names = TRUE)
 for (f in processed_files) {
   genes_dir <- file.path(f, "genes", "output")
   if (length(list.files(genes_dir)) > 0) {
