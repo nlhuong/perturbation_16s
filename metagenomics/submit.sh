@@ -8,10 +8,10 @@ sbatch <<EOT
 #SBATCH --job-name=midas_profiling
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=../logs/pipeline%j.out
+#SBATCH --output=$4/pipeline%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=../logs/pipeline%j.err
+#SBATCH --error=$4/pipeline%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm

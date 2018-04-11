@@ -35,7 +35,7 @@ n_files <- length(input_files)
 n_per_batch <- 4
 
 for (i in seq(1, n_files, n_per_batch)) {
-  cmd <- sprintf("bash submit.sh %s %s %s", i, min(n_files, i + n_per_batch - 1), argv$subdir)
+  cmd <- sprintf("bash submit.sh %s %s %s", i, min(n_files, i + n_per_batch - 1), argv$subdir, argv$logdir)
   message(cmd)
   system(cmd)
 }
