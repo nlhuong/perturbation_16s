@@ -37,12 +37,12 @@ sbatch <<EOT
 
 #SBATCH --mail-type=END,FAIL # notifications for job done & fail
 # Remember to change this to your email
-#SBATCH --mail-user=lanhuong@stanford.edu
+#SBATCH --mail-user=kriss1@stanford.edu
 
 module load R/3.4.0
 
 #now run normal batch commands
-cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
-#cd /scratch/users/kriss1/research/perturbation_16s/metagenomics
+# cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
+cd /scratch/users/kriss1/Projects/PerturbationStudy/perturbation_16s/metagenomics
 Rscript midas_merge.R
 EOT
