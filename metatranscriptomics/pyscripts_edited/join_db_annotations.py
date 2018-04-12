@@ -18,12 +18,12 @@ print(args)
 cnt_mat = pd.read_csv(args.infile[0])
 print(cnt_mat.head())
 
-#db_map = pd.DataFrame()
-#for chunk in pd.read_csv(args.dbfile[0], sep='\t', chunksize = 100000, low_memory = False):
-#    chunk_fltr = chunk[chunk['GeneID'].isin(cnt_mat['GeneID'])]
-#    db_map = pd.concat([db_map, chunk_fltr])
+db_map = pd.DataFrame()
+for chunk in pd.read_csv(args.dbfile[0], sep='\t', chunksize = 100000, low_memory = False):
+    chunk_fltr = chunk[chunk['GeneID'].isin(cnt_mat['GeneID'])]
+    db_map = pd.concat([db_map, chunk_fltr])
 
-db_map = pd.read_csv(args.dbfile[0], sep='\t')
+#db_map = pd.read_csv(args.dbfile[0], sep='\t')
 print(db_map.head())
 
 res = pd.merge(cnt_mat, db_map, on='GeneID', how='left')

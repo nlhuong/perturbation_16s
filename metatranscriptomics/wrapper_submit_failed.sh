@@ -13,13 +13,13 @@ PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 #for SUBDIR in "${arr[@]}"
 #do
 
-SUBDIR=Relman_RNAseq_17
+SUBDIR=Relman_RNAseq_18
 
 IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
 LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh2_failed}
 
-TIME=${3:-12:00:00}
+TIME=${3:-24:00:00}
 NCPUS=${4:-10}
 MEM=${5:-8G}
 
