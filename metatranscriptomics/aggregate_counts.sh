@@ -1,7 +1,7 @@
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 export PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited/
-export RES_DIR=${1:-$PI_BASE_DIR/processed/Relman_RNAseq_16}
+export RES_DIR=${1:-$PI_BASE_DIR/processed/Relman_RNAseq_17}
 export OUT=${2:-$PI_BASE_DIR/processed/final_results/}
 export LOG_DIR=$PI_BASE_DIR/logs/final_results/
 export SUBDIR=$(basename $RES_DIR)

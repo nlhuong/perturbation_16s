@@ -43,11 +43,11 @@ theme_updates <- theme(
 ###############################################################################
 
 # loading sample info
-meas <- read_xlsx("../data/Mapping_Files_22Jan2018.xlsx", "Meas", skip = 1) %>%
+meas <- read_xlsx("data/Mapping_Files_22Jan2018.xlsx", "Meas", skip = 1) %>%
   rename(Samp_ID = SampID)
 interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", "PreCC", "MidCC",
                  "PostCC", "PreAbx", "MidAbx", "PostAbx")
-samp <- read_xlsx("../data/Mapping_Files_22Jan2018.xlsx", "Samp", skip = 1) %>%
+samp <- read_xlsx("data/Mapping_Files_22Jan2018.xlsx", "Samp", skip = 1) %>%
   mutate(
     Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
     CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
@@ -59,23 +59,43 @@ samp <- read_xlsx("../data/Mapping_Files_22Jan2018.xlsx", "Samp", skip = 1) %>%
   filter(Samp_Type != "ExtrCont")
 
 # loading counts
-ps <- readRDS("../data/16s/perturb_physeq_22Jan18.rds") 
-metag <- read_tsv("../data/metagenomic/coverage.tsv") %>%
+# MetatT Data
+metat <- read_csv("data/metatranscriptomic/counts/Annotated_Relman_RNAseq_16_refseq_genes.csv") 
+geneSums <- metat %>% select(starts_with("M")) %>% rowSums()
+metat <- metat[geneSums > 10, ]
+RPKM <- sweep(metat%>%select(starts_with("M")), 2, colSums(metat%>%select(starts_with("M"))), "/")
+RPKM <- 10^9 * RPKM
+RPKM <- sweep(RPKM, 1, metat$Length, "/")
+rownames(RPKM) <- metat$GeneID
+RPKM <- RPKM[rowSums(RPKM) > 5, ]
+metatInfo <- metat %>% filter(GeneID %in% rownames(RPKM)) %>% select(GeneID, Length, Organism, Function)
+rm(metat)
+
+metatInfo <- metatInfo %>%
+  separate(Organism, c("Genus", "species"), sep = " ", remove = FALSE,
+           extra = "merge", fill = "right") %>%
+  mutate(species_id = Organism)
+
+smp_names <- colnames(RPKM) 
+colnames(RPKM) <- gsub("\\_(.*)", "", smp_names)
+metat <- cbind(metatInfo, RPKM)
+rm(RPKM, metatInfo)
+
+# 16S Data
+ps <- readRDS("data/16s/perturb_physeq_22Jan18.rds") 
+
+# MetaG Data
+metag <- read_tsv("data/metagenomic/coverage.tsv") %>%
   separate(species_id, c("Genus", "species", "strain_id"), 
            remove = FALSE, extra = "merge")
 bad_samples <- c("M3728", "M3673", "M3695", "M3204", "M3064", "M3109", "M3188",
                  "M3654")
 metag <- metag[ !(colnames(metag) %in% bad_samples)]
-metat <- read_csv("../data/metatranscriptomic/DBUr_Sub_refseq_organism.csv") %>%
-  select(-X1) %>%
-  separate(feature_name, c("Genus", "species"), sep = " ", remove = FALSE,
-           extra = "merge", fill = "right")
-colnames(metat) <- gsub("\\_(.*)", "", colnames(metat))
-metat <- metat  %>%  rename(species_id = feature)
+
 
 # samples with in all 3 datasets:
 keep_samples <- meas %>%
-  filter(Meas_ID %in% c(colnames(metag), colnames(metat), sample_names(ps))) %>%
+  filter(Meas_ID %in% c(colnames(metag), colnames(metat_RPKM), sample_names(ps))) %>%
   group_by(Samp_ID) %>%
   mutate(n_types = n()) %>%
   filter(n_types == 3) %>%
@@ -95,12 +115,12 @@ ps <- subset_samples(ps, sample_names(ps) %in% keep_meas)
 metag_rowsums <- metag %>%
   select(starts_with("M")) %>%
   rowSums()
-metag <- metag[metag_rowsums != 0, ]
+metag <- metag[metag_rowsums > 0, ]
 
 metat_rowsums <- metat %>% 
   select(starts_with("M")) %>%
   rowSums()
-metat <- metat[metat_rowsums != 0, ]
+metat <- metat[metat_rowsums > 1, ]
 
 ###############################################################################
 ## Functions used throughout
@@ -127,9 +147,16 @@ melt_metat <- metat %>%
   gather(Meas_ID, count, starts_with("M")) %>%
   left_join(meas %>% select("Meas_ID", "Samp_ID"))
 
+sums_metat <- count_taxa(melt_metat) %>%
+  mutate(source = "metatranscriptomic")
+rm(melt_metat)
+
 melt_metag <- metag %>%
   gather(Meas_ID, count, starts_with("M")) %>%
   left_join(meas %>% select("Meas_ID", "Samp_ID"))
+sums_metag <- count_taxa(melt_metag) %>%
+  mutate(source = "metagenomic")
+rm(melt_metag)
 
 melt_16s <- ps %>%
   get_taxa() %>%
@@ -139,45 +166,32 @@ melt_16s <- ps %>%
   left_join(taxa %>% select("seq_id", "Genus")) %>%
   left_join(meas %>% select("Meas_ID", "Samp_ID"))
 
-sums_metat <- count_taxa(melt_metat) %>%
-  mutate(source = "metatranscriptomic")
-
-sums_metag <- count_taxa(melt_metag) %>%
-  mutate(source = "metagenomic")
-
 sums_16s <- count_taxa(melt_16s) %>%
   mutate(source = "16s")
+rm(melt_16s)
 
-rm(melt_16s, melt_metag, melt_metat)
 
-melt_genus <- bind_rows(sums_metat, sums_metag, sums_16s) 
+# melt_genus <- bind_rows(sums_metat, sums_metag, sums_16s) 
+# 
 
-genus <- melt_genus %>%
+melt_genus <- bind_rows(sums_metat, sums_16s, sums_metag)
+genus <- melt_genus  %>%
   select(-Meas_ID, -total) %>%
   spread(key = source, value = rel_total) %>%
   mutate(
     `16s` = ifelse(is.na(`16s`), 0, `16s`)
-  ) %>%
-  filter(!is.na(metagenomic), !is.na(metatranscriptomic))
+  ) 
 
 genus_levels <- genus %>%
   select(-Samp_ID) %>%
   group_by(Genus) %>%
   summarise_all(mean) %>%
-  mutate(mean_dataset = `16s` + metagenomic + metatranscriptomic) %>%
+  mutate(mean_dataset = `16s` + metatranscriptomic + metagenomic) %>%
   arrange(desc(mean_dataset))
 
-melt_genus <- melt_genus %>%
-  mutate(Genus = factor(Genus, genus_levels$Genus)) 
-
-
-###############################################################################
-## Plot genus count comparions
-###############################################################################
-keep_genus <- genus_levels$Genus
 ## scatterplot of abundances from the two sources, per sample
-scatter_data <- melt_genus %>%
-  filter(Genus %in% keep_genus) %>%
+scatter_data <- melt_genus  %>%
+  filter(Genus %in% genus_levels$Genus) %>%
   left_join(samp) %>%
   select(-Meas_ID, -total) %>%
   spread(source, rel_total)
@@ -188,10 +202,17 @@ genus_centroid <- scatter_data %>%
     `16s` = median(`16s`),
     metagenomic = median(metagenomic, na.rm = TRUE),
     metatranscriptomic = median(metatranscriptomic, na.rm = TRUE)
-  )
+  ) 
+
+melt_genus <- melt_genus %>%
+  mutate(Genus = factor(Genus, genus_levels$Genus))
 
 
-pdf("../figs/comparison_scatter.pdf", width = 8, height = 6)
+
+###############################################################################
+## Plot genus count comparions
+###############################################################################
+
 
 ggplot(
   melt_genus %>%
@@ -209,7 +230,7 @@ ggplot(
   facet_grid(Samp_ID ~ ., scale = "free_y") +
   theme(axis.text.x = element_text(angle = 90, size = 6, hjust = 0)) +
   theme_updates 
-  
+
 
 theme_scatter <- theme(
   legend.position = "bottom",  
@@ -218,81 +239,65 @@ theme_scatter <- theme(
   strip.background = element_blank()
 )
 
-ggplot() +
-  geom_abline(alpha = 0.4, size = 0.2) +
-  geom_point(
-    data = scatter_data,
-    aes(x = log(`16s`), y = log(`metagenomic`), col = Diet_Interval),
-    size = 0.9, alpha = 0.5
-  ) +
-  geom_point(
-    data = genus_centroid,
-    aes(x = log(`16s`), y = log(`metagenomic`), fill = Diet_Interval),
-    size = 1.5, pch = 21, stroke = 0.2
-  ) +
-  geom_text_repel(
-    data = genus_centroid %>%
-      filter(
-        `16s` > 0,
-        metagenomic > 0,
-        abs(log(`16s`) - log(metagenomic)) > 2.5
-      ),
-    aes(x = log(`16s`), y = log(`metagenomic`), label = Genus),
-    size = 3,
-    force = 0.2
-  ) +
-  facet_wrap(~Subject) + theme_scatter
+
+plot_comparison <- function(scatter_data, genus_centroid,
+                            x = "16s", y = "metatranscriptomic", 
+                            color = "Diet_Interval", label = "Genus") {
+  
+  genus_centroid <- genus_centroid %>% as.data.frame() 
+  scatter_data <- scatter_data %>% as.data.frame()
+  
+  genus_centroid$x <- genus_centroid[[x]]
+  genus_centroid$y <- genus_centroid[[y]]
+  scatter_data$x <- scatter_data[[x]]
+  scatter_data$y <- scatter_data[[y]]
+  
+  genus_centroid <- genus_centroid %>%
+    filter(!is.na(x) & !is.na(y))
+  scatter_data <- scatter_data %>%
+    filter(!is.na(x) & !is.na(y))
+  
+  data_repel <-  genus_centroid %>%
+    filter(
+      x > 0, y > 0, 
+      abs(log(x)- log(y)) > 2.5
+    ) %>%
+    mutate(x = log(x), y = log(y) )
+  
+  genus_centroid[, c("x", "y")] <- log(genus_centroid[, c("x", "y")])
+  scatter_data[, c("x", "y")] <- log(scatter_data[, c("x", "y")])
+  
+  ggplot() +
+    geom_abline(alpha = 0.4, size = 0.2) +
+    geom_point(
+      data = scatter_data,
+      aes_string("x", "y", col = color),
+      size = 0.9, alpha = 0.5
+    ) +
+    geom_point(
+      data = genus_centroid,
+      aes_string(x = "x", y = "y", fill = color),
+      size = 1.5, pch = 21, stroke = 0.2
+    ) +
+    geom_text_repel(
+      data = data_repel,
+      aes_string(x = "x", y = "y", label = label),
+      size = 3,
+      force = 0.2
+    ) +
+    facet_wrap(~Subject) + theme_scatter + #xlim(log(-0.5), NA) +
+    xlab(paste0("log(", x, ")")) + ylab(paste0("log(", y, ")"))
+}
 
 
-ggplot() +
-  geom_abline(alpha = 0.4, size = 0.2) +
-  geom_point(
-    data = scatter_data,
-    aes(x = log(`16s`), y = log(`metatranscriptomic`), col = Diet_Interval),
-    size = 0.9, alpha = 0.5
-  ) +
-  geom_point(
-    data = genus_centroid,
-    aes(x = log(`16s`), y = log(`metatranscriptomic`), fill = Diet_Interval),
-    size = 1.5, pch = 21, stroke = 0.2
-  ) +
-  geom_text_repel(
-    data = genus_centroid %>%
-      filter(
-        `16s` > 0,
-        metagenomic > 0,
-        abs(log(`16s`) - log(metatranscriptomic)) > 2.5
-      ),
-    aes(x = log(`16s`), y = log(`metatranscriptomic`), label = Genus),
-    size = 3,
-    force = 0.2
-  ) +
-  facet_wrap(~Subject) +
-theme_scatter
-
-ggplot() +
-  geom_abline(alpha = 0.4, size = 0.2) +
-  geom_point(
-    data = scatter_data,
-    aes(x = log(`metagenomic`), y = log(`metatranscriptomic`), col = Diet_Interval),
-    size = 0.9, alpha = 0.5
-  ) +
-  geom_point(
-    data = genus_centroid,
-    aes(x = log(`metagenomic`), y = log(`metatranscriptomic`), fill = Diet_Interval),
-    size = 1.5, pch = 21, stroke = 0.2
-  ) +
-  geom_text_repel(
-    data = genus_centroid %>%
-      filter(
-        `16s` > 0,
-        metagenomic > 0,
-        abs(log(`16s`) - log(metatranscriptomic)) > 2.5
-      ),
-    aes(x = log(`16s`), y = log(`metatranscriptomic`), label = Genus),
-    size = 3,
-    force = 0.2
-  ) +
-  facet_wrap(~Subject) + theme_scatter
-
+pdf("figs/comparison_scatter.pdf", width = 8, height = 6)
+plot_comparison(scatter_data, genus_centroid,
+                x = "16s", y = "metatranscriptomic", 
+                color = "Diet_Interval", label = "Genus") 
+plot_comparison(scatter_data, genus_centroid,
+                x = "metagenomic", y = "metatranscriptomic", 
+                color = "Diet_Interval", label = "Genus") 
+plot_comparison(scatter_data, genus_centroid,
+                x = "16s", y = "metagenomic", 
+                color = "Diet_Interval", label = "Genus") 
 dev.off()

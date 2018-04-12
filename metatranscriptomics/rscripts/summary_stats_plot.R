@@ -91,9 +91,7 @@ ggplot(melt_preproc, aes(x = step, y=count)) +
   theme(axis.text.x = element_text(angle = 90))
 
 ann_cols <- 
-  c("input_fwd", "mRNA",
-    "kaiju_tax", "kaiju_genus",   
-    "dmnd_refseq", "dmnd_seed",
+  c("input_fwd", "mRNA","kaiju_tax", "kaiju_genus", "dmnd_refseq", "dmnd_seed",
     "unassembled", "bwa_mcds_unassembled_ann", "dmnd_nr_unassembled",
     "contigs", "bwa_mcds_contigs_ann", "dmnd_nr_contigs")
 

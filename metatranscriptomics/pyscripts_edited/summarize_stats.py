@@ -19,6 +19,7 @@ Usage:
 -P        processed data directory
 -O        output file path
 -N        number of threads for parallel processing. Default is 1.
+-S        (specific) subdirectory to consider
 """
 
 import sys
@@ -51,7 +52,11 @@ else:
     output = "count_matrix.csv"
     print("WARNING: output saved in " + output + " file.")
 
-stats = summary_stats(raw_dir, processed_dir, output, ncores)
+if "-S" in sys.argv:
+    subdir= string_find("-S")
+    stats = summary_stats(raw_dir, processed_dir, output, ncores, subdir)
+else:
+    stats = summary_stats(raw_dir, processed_dir, output, ncores)
 
 
 

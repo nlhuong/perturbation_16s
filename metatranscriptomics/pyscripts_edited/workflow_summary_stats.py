@@ -8,7 +8,7 @@ These functions look at the intermediate output from the metatranscriptomic
 workflow, and computes statistics describing the quality of the output at each
 stage.
 
-author: krissankaran@stanford.edu
+author: krissankaran@stanford.edu, lanhuong@stanford.edu
 date: 03/15/2018
 """
 
@@ -49,8 +49,8 @@ def file_len(fname):
     return res
 
 def fasta_count(fname):
-    """ 
-    Only used for counting reads in .fasta files.    
+    """
+    Only used for counting reads in .fasta files.
     """
     p = subprocess.Popen(
         ["grep -c '>' " +  fname],
@@ -68,10 +68,10 @@ def fasta_count(fname):
     return res
 
 def kaiju_count(fname):
-    """ 
-    The first column of kaiju output (files _tax_class.tsv) 
+    """
+    The first column of kaiju output (files _tax_class.tsv)
     are U/C letters for unclassified/classified respectively.
-    We count the number of classified reads.    
+    We count the number of classified reads.
     """
     p = subprocess.Popen(
         ["cut -f1 " +  fname + " | grep -c 'C'"],
@@ -101,13 +101,13 @@ def tail(fname, n):
     if p.returncode != 0:
         raise IOError(err)
     return result
-    
+
 def contig_reads(fname):
   num_reads_in_contigs = 0
   contig_file = open (fname, "r")
   for line in contig_file:
     splitline = line.split("\t")
-    num_reads_in_contigs += int(splitline[1]])
+    num_reads_in_contigs += int(splitline[1])
   return(num_reads_in_contigs)
 
 def bam_mapped(fname):
@@ -140,7 +140,7 @@ def bam_mapped(fname):
 def raw_input_stats(raw_dir, sub_dir, sample_id):
     """
     Raw input file read counts.
-    
+
     Example:
         raw_dir = "/scratch/PI/sph/resilience/metatranscriptomics/raw"
         sub_dir = "Relman_RNAseq_16"
@@ -170,7 +170,7 @@ def read_filter_stats(processed_dir, sub_dir, sample_id):
 
     Example:
         processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        sub_dir = "Relman_RNAseq_16" 
+        sub_dir = "Relman_RNAseq_16"
         sample_id = "M3303_DBUsw_2r"
         read_filter_stats(processed_dir, sub_dir, sample_id)
     """
@@ -211,7 +211,7 @@ def assembly_stats(processed_dir, sub_dir, sample_id):
 
     Example:
         processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        subj_dir = "Relman_RNAseq_16" 
+        subj_dir = "Relman_RNAseq_16"
         sample_id = "M3303_DBUsw_2r"
         assembly_stats(processed_dir, sub_dir, sample_id)
     """
@@ -223,7 +223,7 @@ def assembly_stats(processed_dir, sub_dir, sample_id):
 
     unassembled_file = make_path("assembled", "_unassembled.fq")
     contig_file = make_path("assembled", "_contigs.fasta")
-    stats["contigs"] = fasta_count(contig_file) 
+    stats["contigs"] = fasta_count(contig_file)
     stats["unassembled"] = file_len(unassembled_file) / 4
     return stats
 
@@ -233,7 +233,7 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
 
     Example:
         processed_dir = "/scratch/PI/sph/resilience/metatranscriptomics/processed"
-        sub_dir = "Relman_RNAseq_16" 
+        sub_dir = "Relman_RNAseq_16"
         sample_id = "M3303_DBUsw_2r"
         annotation_stats(processed_dir, sub_dir, sample_id)
     """
@@ -248,19 +248,19 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
 
     bwa_mcds_contigs_ann = make_path("assembled", "_contigs_bwa_aligned.fq")
     bwa_mcds_unassembled_ann = make_path("assembled", "_unassembled_bwa_aligned.fq")
-    
+
     dmnd_refseq = make_path("diamond", "_refseq.dmdout")
     dmnd_seed = make_path("diamond", "_seed.dmdout")
     dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
     dmnd_nr_contigs_reads= make_path("diamond", "_nr_contigs_reads.dmdout")
     dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
 
-    stats["kaiju_tax"] = kaiju_count(kaiju_tax_file) 
-    stats["kaiju_genus"] = kaiju_count(kaiju_genus_file) 
+    stats["kaiju_tax"] = kaiju_count(kaiju_tax_file)
+    stats["kaiju_genus"] = kaiju_count(kaiju_genus_file)
 
     stats["bwa_mcds_contigs"] = file_len(bwa_mcds_contigs_ann) / 4
     stats["bwa_mcds_unassembled"] = file_len(bwa_mcds_unassembled_ann) / 4
-    
+
     stats["dmnd_refseq"] = file_len(dmnd_refseq)
     stats["dmnd_seed"] = file_len(dmnd_seed)
     stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
@@ -280,9 +280,9 @@ def process_sample(raw_dir, processed_dir, sub_dir, sample_id):
     except:
 	smp_stats = "NA"
     return (sample_id, smp_stats)
-        
 
-def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
+
+def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1, subdir = None):
     """
     Summaries across all samples
 
@@ -295,7 +295,8 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
     stats = dict()
     for sub_dir in os.listdir(processed_dir):
         main_proc_files = os.path.join(processed_dir, sub_dir, "main")
-        if not os.path.isdir(main_proc_files) or 'DBU' not in main_proc_files:
+        if not os.path.isdir(main_proc_files) or \
+            (subdir is not None and not subdir in main_proc_files):
             print("MESSAGE: Skipping " + sub_dir + " subdirectory.")
             continue
         print("STARTING STATS SUMMARY FOR " + sub_dir + " subdirectory...")
@@ -308,8 +309,8 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
         for res in results:
             sid, sid_orddict = res
             stats[sid] = sid_orddict
-    
-    column_names = results[0][1].keys() 
+
+    column_names = results[0][1].keys()
     stats = pd.DataFrame(stats).T
     stats = stats[column_names]
     stats.index.name = "Meas_ID"
@@ -318,3 +319,29 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1):
         stats.to_csv(outfile, index=False)
     return stats
 
+###############################################################################
+## Run program
+###############################################################################
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=
+    'Summarize read coverage througout metatranscriptomics pipeline.')
+    parser.add_argument('rawdir', metavar='R', type=str, nargs=1,
+                        help='path to directory with raw read files')
+    parser.add_argument('procdir', metavar='P', type=str, nargs=1,
+                        help='path to directory with all processed files')
+    parser.add_argument('-outfile', dest='outfile', type=str,
+                        default='metat_pipeline_stats.csv',
+                        help='path to output file. If not specified, ' +
+                             ' metat_pipeline_stats.csv')
+    parser.add_argument('-subdir', dest='subdir', type=str, default=None,
+                        help='(optional) subdirectory of processed directory' +
+                             'to limit the summary to')
+    parser.add_argument('-ncores', dest='ncores', type=int, default=10,
+                        help='number of cores for multithreading')
+    args = parser.parse_args()
+    print(args)
+
+    stats = summary_stats(args.rawdir[0], args.procdir[0],
+                          args.outfile, args.ncores, args.subdir)
