@@ -38,8 +38,6 @@ REF_DIR=$DATA_DIR/databases
 KAIJUBD_DB=$REF_DIR/kaijudb
 # Python scripts directory
 PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
-# SAMSA2 directory
-SAMSA2=$APP_DIR/samsa2/python_scripts/
 
 ## PARAMETERS ----------
 n_threads=5
@@ -209,7 +207,6 @@ fi
 ###############################################################################
 
 base="$(echo $input_fwd | cut -d '_' -f1-3)"
-#base=${input_fwd%_1P.fq.gz}
 fwd=${input_fwd%.fq.gz}
 rev=${input_rev%.fq.gz}
 fwd=${fwd%_001.fastq}
@@ -293,6 +290,14 @@ if $index_db; then
     # diamond makedb -p $n_threads \
     #     --in $REF_DIR/uniref100.fasta \
     #     --db $REF_DIR/uniref100
+
+    python $PYSCRIPT_DIR/db_to_pydict.py \
+         $REF_DIR/RefSeq_bac.fa $REF_DIR/RefSeq_bac.tsv --prot-seq
+    python $PYSCRIPT_DIR/db_to_pydict.py \
+         $REF_DIR/nr $REF_DIR/nr.tsv --prot-seq
+    python $PYSCRIPT_DIR/db_to_pydict.py \
+         $REF_DIR/subsys_db.fa $REF_DIR/subsys_db.tsv --prot-seq
+
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Reference database indexing: $runtime min" >> \
@@ -839,23 +844,6 @@ if $PROT_ANN && [ ! -s $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
     echo "DIAMOND (NR) protein alignment: $runtime min" >> \
         $OUTPUT_DIR/time/${base}_time.log
 
-    # start=`date +%s`
-    # $PYSCRIPT_DIR/7_Diamond_Protein_Map.py \
-    #     $REF_DIR/nr \
-    #     $OUTPUT_DIR/assembled/${base}_contigs_map.tsv \
-    #     $OUTPUT_DIR/genome/${ibase}_genes_map.tsv \
-    #     $OUTPUT_DIR/proteins/${base}_proteins.fasta \
-    #     $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fasta \
-    #     $OUTPUT_DIR/diamond/${base}_contigs.dmdout \
-    #     $OUTPUT_DIR/proteins/${base}_contigs_unannotated.fasta \
-    #     $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fasta \
-    #     $OUTPUT_DIR/diamond/${base}_unassembled.dmdout \
-    #     $OUTPUT_DIR/proteins/${base}_unassembled_unannotated.fasta
-    # end=`date +%s`
-    # runtime=$(((end-start)/60))
-    # echo "Python aggregating protein annotation results: $runtime min" >> \
-    #     $OUTPUT_DIR/time/${base}_time.log
-
     echo ========================================== >> \
         $OUTPUT_DIR/time/${base}_time.log
 fi
@@ -925,78 +913,64 @@ fi
 if $DIAMOND_COUNT; then
     echo =======================================================================
     echo Aggregate DIAMOND results and count reads...
+    
+    mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
+    mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
+    mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
 
     start=`date +%s`
-    if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq.dm_function.tsv ] && \
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq_abund.csv ] && \
     [ -s $OUTPUT_DIR/diamond/${base}_refseq.dmdout ];
     then 
         echo Diamond RefSeq Results aggreggation ...
-        mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
-        python $PYSCRIPT_DIR/diamond_reads_counter.py \
+        python $PYSCRIPT_DIR/reads_counter.py \
             $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
-            $REF_DIR/RefSeq_bac.fa \
-            -outfile $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq
+            $REF_DIR/RefSeq_bac.tsv \
+            -outfile $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq_abund.csv
         echo Completed counting of the RefSeq anotated reads!
     fi
     
-    if [ ! -s $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs_reads.dm_organism.tsv ];
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs_abund.csv ];
     then 
         echo Diamond NR protein results aggreggation ...
-        mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
         contig_file=$OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout    
 	    unassembled_file=$OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout
-	    echo Counting reads for: $contig_file
-            if [[ ! -s $contig_file ]]; then
-	            echo $contig_file is empty.
-            else
-	        # Count number contigs mapped times multiplicity of corresponding reads 
-            python $PYSCRIPT_DIR/diamond_reads_counter.py \
-                $contig_file \
-                $REF_DIR/nr \
-                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contig_reads_nr \
-                -contig-map $OUTPUT_DIR/assembled/${base}_contigs_map.tsv
-            # Count number of contigs mapped.
-            python $PYSCRIPT_DIR/diamond_reads_counter.py \
-                $contig_file \
-                $REF_DIR/nr \
-                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_contigs_nr
+        if [[ ! -s $contig_file ]]; then
+	        echo $contig_file is empty.
+        else
+            python $PYSCRIPT_DIR/reads_counter.py \
+                $contig_file $REF_DIR/nr.tsv \
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_contigs_abund.csv 
         fi
         if [[ ! -s $unassembled_file ]]; then
-	    echo $unassembled_file is empty.
+	        echo $unassembled_file is empty.
         else
-            python $PYSCRIPT_DIR/diamond_reads_counter.py \
-                $unassembled_file \
-                $REF_DIR/nr \
-                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_unassembled_reads_nr
+            python $PYSCRIPT_DIR/reads_counter.py \
+                $unassembled_file $REF_DIR/nr.tsv \
+                -outfile $OUTPUT_DIR/counts/dmnd_NR/${base}_nr_unassembled_abund.csv
         fi 
         echo Completed counting of the RefSeq anotated reads!
     fi
 
-    if [ ! -s $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt ] && \
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed_abund.csv ] && \
     [ -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ];
     then
         echo Diamond SEED results aggregation ...
-        mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
-        python $SAMSA2/DIAMOND_subsystems_analysis_counter.py \
-            -I $OUTPUT_DIR/diamond/${base}_seed.dmdout \
-            -D $REF_DIR/subsys_db.fa \
-            -O $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.hierarchy \
-            -P $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.receipt
-        # This quick program reduces down identical hierarchy annotations
-        python $SAMSA2/subsys_reducer.py \
-            -I $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed.hierarchy
+        python $PYSCRIPT_DIR/reads_counter.py \
+            $OUTPUT_DIR/diamond/${base}_seed.dmdout \
+            $REF_DIR/subsys_db.tsv \
+            $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed_abund.csv
         echo Completed counting of the SEED  anotated reads!
     fi
     
     end=`date +%s`
     runtime=$(((end-start)/60))
-    echo "SAMSA2 python scripts summarise DIAMOND results: $runtime min" >> \
+    echo "Python scripts to summarise DIAMOND results: $runtime min" >> \
         $OUTPUT_DIR/time/${base}_time.log
     echo ========================================== >> \
         $OUTPUT_DIR/time/${base}_time.log
 
 fi
-
 
 
 end0=`date +%s`
@@ -1010,3 +984,4 @@ echo "  "
 echo =======================================================================
 echo "  "
 echo Completed the workflow!
+echo TIME: $runtime0 min

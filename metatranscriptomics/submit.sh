@@ -48,7 +48,7 @@ sbatch <<EOT
 
 # We are submitting to the dev partition, there are several on sherlock: normal, gpu, owners, hns, bigmem (jobs requiring >64Gigs RAM)
 # I DON"T HAVE ACCESS to hns ???
-#SBATCH -p normal,hns,owners
+#SBATCH -p normal,hns,stat,owners
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
 #SBATCH --nodes=1

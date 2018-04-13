@@ -14,12 +14,20 @@ parser.add_argument('--prot-seq', dest='protein_seq',
                      action="store_true", default=False,
                     help='Database contains canonical protein sequences not' + 
                          'nucleic acids. The gene lengths are multiplied by 3.')
+parser.add_argument('--seed', dest='seed',
+                    action="store_true", default=False,
+                    help='Database is the hierarchical seed db')
 
 args = parser.parse_args()
 
 db = open(args.dbfile[0], "r")
 outfile = open(args.outfile[0], "w")
-outfile.write("GeneID" + "\t" + "Length" + "\t" "Organism" + "\t" + "Function \n")
+
+if (args.seed):
+    outfile.write("GeneID" + "\t" + "Length" + "\t" "SEED1" + "\t" + \
+                  "SEED2" + "\t" "SEED3" + "\t" "SEED4" + "\t" + "SEED5 \n")
+else:
+    outfile.write("GeneID" + "\t" + "Length" + "\t" "Organism" + "\t" + "Function \n")
 
 t0 = time.clock()
 db_line_counter = 0
@@ -31,18 +39,29 @@ for line in db:
     else:
         all_genes_seq += line.rstrip()
         gene_sequence += line.rstrip()
- 	continue
+        continue
 
     gene_len = len(gene_sequence)
     if args.protein_seq or not bool(re.match('^[ATCG]+$', gene_sequence)):
         gene_len *= 3 
     if db_line_counter > 1: # this is the previous gene
-	outfile.write(db_id + "\t" + str(gene_len) + "\t" + 
-                      db_org + "\t" + db_entry  + "\n")
-	gene_sequence = ''
+        if(args.seed):
+             outfile.write(db_id + "\t" + str(gene_len) + "\t" + db_entry  + "\n")
+        else: 
+             outfile.write(db_id + "\t" + str(gene_len) + "\t" + 
+                           db_org + "\t" + db_entry  + "\n")
+        gene_sequence = ''
+    
+    
+    if(args.seed):
+        db_id = line.split()[0].strip('>')
+        db_entry = line.strip('>' + db_id + ' ')
+        continue
+
     # id, organism and function names [https://stackoverflow.com/questions/6109882/regex-match-all-characters-between-two-strings]
     db_id = re.search("(?<=>)[^ ]+", line)
     db_id = db_id.group()
+    
     line = line.split(']', 1)[0] + ']' # limit to the first match
     db_entry = re.search("(?<= )(.*)(?= \[)", line)
     if db_entry is None:
@@ -52,6 +71,7 @@ for line in db:
         db_entry = line.strip('>' + db_id + ' ')
     else:
         db_entry = db_entry.group()
+    
     db_org = re.search("(?<=\[)(.*)(?=\])", line)
     if db_org is None:
         # In case no labels inside "[Genus Species]"
@@ -68,7 +88,11 @@ for line in db:
 gene_len = len(gene_sequence)
 if args.protein_seq or not bool(re.match('^[ATCG]+$', gene_sequence)):
     gene_len *= 3 
-outfile.write(db_id + "\t" + str(gene_len)+ "\t" + db_org + "\t" + db_entry  + "\n")
+if(args.seed):
+    outfile.write(db_id + "\t" + str(gene_len) + "\t" + db_entry  + "\n")
+else: 
+    outfile.write(db_id + "\t" + str(gene_len) + "\t" + 
+                  db_org + "\t" + db_entry  + "\n")
 
 t2 = time.clock()
 print("\nSuccess!")
