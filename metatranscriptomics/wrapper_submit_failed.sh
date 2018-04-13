@@ -19,9 +19,9 @@ IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
 LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh2_failed}
 
-TIME=${3:-24:00:00}
+TIME=${3:-18:00:00}
 NCPUS=${4:-10}
-MEM=${5:-8G}
+MEM=${5:-4G}
 
 cd $IN
 mkdir -p $OUT

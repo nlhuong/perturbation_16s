@@ -12,10 +12,8 @@ author: krissankaran@stanford.edu, lanhuong@stanford.edu
 date: 03/15/2018
 """
 
+import argparse, glob, os, subprocess
 import pandas as pd
-import glob
-import os
-import subprocess
 import multiprocessing as mp
 from collections import OrderedDict
 from re import split
@@ -103,12 +101,12 @@ def tail(fname, n):
     return result
 
 def contig_reads(fname):
-  num_reads_in_contigs = 0
-  contig_file = open (fname, "r")
-  for line in contig_file:
-    splitline = line.split("\t")
-    num_reads_in_contigs += int(splitline[1])
-  return(num_reads_in_contigs)
+    num_reads_in_contigs = 0
+    contig_file = open (fname, "r")
+    for line in contig_file:
+        splitline = line.split("\t")
+        num_reads_in_contigs += int(splitline[1])
+    return(num_reads_in_contigs)
 
 def bam_mapped(fname):
     """
@@ -220,11 +218,13 @@ def assembly_stats(processed_dir, sub_dir, sample_id):
 
     def make_path(dir, suffix):
         return os.path.join(sub_dir, dir, sample_id + suffix)
-
+    
+    contig_map_file = make_path("assembled", "_contigs_map.tsv")
     unassembled_file = make_path("assembled", "_unassembled.fq")
     contig_file = make_path("assembled", "_contigs.fasta")
     stats["contigs"] = fasta_count(contig_file)
-    stats["unassembled"] = file_len(unassembled_file) / 4
+    stats["contig_reads"] = contig_reads(contig_map_file)
+    stats["unassembled_reads"] = file_len(unassembled_file) / 4
     return stats
 
 def annotation_stats(processed_dir, sub_dir, sample_id):
@@ -252,7 +252,6 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
     dmnd_refseq = make_path("diamond", "_refseq.dmdout")
     dmnd_seed = make_path("diamond", "_seed.dmdout")
     dmnd_nr_contigs = make_path("diamond", "_nr_contigs.dmdout")
-    dmnd_nr_contigs_reads= make_path("diamond", "_nr_contigs_reads.dmdout")
     dmnd_nr_unassembled = make_path("diamond", "_nr_unassembled.dmdout")
 
     stats["kaiju_tax"] = kaiju_count(kaiju_tax_file)
@@ -264,7 +263,6 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
     stats["dmnd_refseq"] = file_len(dmnd_refseq)
     stats["dmnd_seed"] = file_len(dmnd_seed)
     stats["dmnd_nr_contigs"] = file_len(dmnd_nr_contigs)
-    stats["dmnd_nr_contig_reads"] = contig_reads(dmnd_nr_contigs_reads)
     stats["dmnd_nr_unassembled"] = file_len(dmnd_nr_unassembled)
     return stats
 
@@ -272,17 +270,17 @@ def annotation_stats(processed_dir, sub_dir, sample_id):
 def process_sample(raw_dir, processed_dir, sub_dir, sample_id):
     print("Processing sample " + sample_id)
     try:
-	smp_stats = OrderedDict()
-     	smp_stats.update(raw_input_stats(raw_dir, sub_dir, sample_id))
- 	smp_stats.update(read_filter_stats(processed_dir, sub_dir, sample_id))
-	smp_stats.update(assembly_stats(processed_dir, sub_dir, sample_id))
-	smp_stats.update(annotation_stats(processed_dir, sub_dir, sample_id))
+        smp_stats = OrderedDict()
+        smp_stats.update(raw_input_stats(raw_dir, sub_dir, sample_id))
+        smp_stats.update(read_filter_stats(processed_dir, sub_dir, sample_id))
+        smp_stats.update(assembly_stats(processed_dir, sub_dir, sample_id))
+        smp_stats.update(annotation_stats(processed_dir, sub_dir, sample_id))
     except:
-	smp_stats = "NA"
-    return (sample_id, smp_stats)
+        smp_stats = "NA"
+    return smp_stats
 
 
-def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1, subdir = None):
+def summary_stats(raw_dir, processed_dir, outfile=None, sub_dir=None, num_cores=1):
     """
     Summaries across all samples
 
@@ -293,24 +291,27 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1, subdir = No
     """
     num_cores = min(num_cores, mp.cpu_count())
     stats = dict()
-    for sub_dir in os.listdir(processed_dir):
-        main_proc_files = os.path.join(processed_dir, sub_dir, "main")
+    for sdir in os.listdir(processed_dir):
+        main_proc_files = os.path.join(processed_dir, sdir, "main")
         if not os.path.isdir(main_proc_files) or \
-            (subdir is not None and not subdir in main_proc_files):
-            print("MESSAGE: Skipping " + sub_dir + " subdirectory.")
+            (sub_dir is not None and not sub_dir in main_proc_files):
+            print("MESSAGE: Skipping " + sdir + " subdirectory.")
             continue
-        print("STARTING STATS SUMMARY FOR " + sub_dir + " subdirectory...")
-        sample_ids = glob.glob(os.path.join(main_proc_files,"*_unique.fq"))
-        sample_ids = [os.path.basename(x.replace("_unique.fq", "")) for x in sample_ids]
-	pool = mp.Pool(processes=num_cores)
-	results = [pool.apply(process_sample, \
-		   args=(raw_dir, processed_dir, sub_dir, sid)) \
-                   for sid in sample_ids]
-        for res in results:
-            sid, sid_orddict = res
-            stats[sid] = sid_orddict
-
-    column_names = results[0][1].keys()
+        print("STARTING STATS SUMMARY FOR " + sdir + " subdirectory...")
+        sample_ids = glob.glob(os.path.join(main_proc_files,"*_mRNA.fq"))
+        sample_ids = [os.path.basename(x.replace("_mRNA.fq", "")) for x in sample_ids]
+        print(sample_ids)
+        pool = mp.Pool(processes=num_cores)
+        results = {}
+        for sid in sample_ids:
+            results[sid] = pool.apply_async(process_sample, args=(raw_dir, processed_dir, sdir, sid))
+        pool.close()
+        pool.join()
+        results = {sid: res.get() for sid, res in results.items()}
+        print(results[sample_ids[0]])
+        stats.update(results)    
+    
+    column_names = stats[sample_ids[0]].keys()
     stats = pd.DataFrame(stats).T
     stats = stats[column_names]
     stats.index.name = "Meas_ID"
@@ -325,23 +326,24 @@ def summary_stats(raw_dir, processed_dir, outfile=None, num_cores=1, subdir = No
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description=
-    'Summarize read coverage througout metatranscriptomics pipeline.')
-    parser.add_argument('rawdir', metavar='R', type=str, nargs=1,
-                        help='path to directory with raw read files')
-    parser.add_argument('procdir', metavar='P', type=str, nargs=1,
-                        help='path to directory with all processed files')
+    parser = argparse.ArgumentParser(
+        prog='summary_stats',
+        description='Summarize read coverage througout metatranscriptomics pipeline.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('rawdir', metavar='rdir', type=str, nargs=1,
+                        help='directory with raw read fastq files')
+    parser.add_argument('procdir', metavar='pdir', type=str, nargs=1,
+                        help='directory with all processed files')
     parser.add_argument('-outfile', dest='outfile', type=str,
                         default='metat_pipeline_stats.csv',
-                        help='path to output file. If not specified, ' +
-                             ' metat_pipeline_stats.csv')
+                        help='path to output file')
     parser.add_argument('-subdir', dest='subdir', type=str, default=None,
-                        help='(optional) subdirectory of processed directory' +
-                             'to limit the summary to')
+                        help='specific subdirectory of processed directory' +
+                             ' to limit the summary to')
     parser.add_argument('-ncores', dest='ncores', type=int, default=10,
                         help='number of cores for multithreading')
     args = parser.parse_args()
     print(args)
 
     stats = summary_stats(args.rawdir[0], args.procdir[0],
-                          args.outfile, args.ncores, args.subdir)
+                          args.outfile, args.subdir, args.ncores)

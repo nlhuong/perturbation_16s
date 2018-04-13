@@ -143,5 +143,16 @@ $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/s
 $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
 # $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
 
+
+# Generated a text file with gene info [id, length, function/organism]
+python $PYSCRIPT_DIR/db_to_pydict.py \
+     $REF_DIR/RefSeq_bac.fa $REF_DIR/RefSeq_bac.tsv --prot-seq
+python $PYSCRIPT_DIR/db_to_pydict.py \
+     $REF_DIR/nr $REF_DIR/nr.tsv --prot-seq
+python $PYSCRIPT_DIR/db_to_pydict.py \
+     $REF_DIR/subsys_db.fa $REF_DIR/subsys_db.tsv --prot-seq
+
+
+
 echo "Setup Completed!"
 exit
