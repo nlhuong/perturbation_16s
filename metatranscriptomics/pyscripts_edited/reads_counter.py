@@ -62,9 +62,13 @@ def sample_reads(infile, dbfile, outfile):
                           on='GeneID', how='left')
     
     sum_bp_aligned = np.sum(gene_abund['Length_Aligned'])
+    gene_abund['Length_Ratio'] = \
+        gene_abund['Length_Aligned'] / gene_abund['Length']
+    gene_abund['Log2_Length_Ratio'] = \
+        np.log2(gene_abund['Length_Aligned']) - np.log2(gene_abund['Length'])
     gene_abund['Log2_Normed_Length_Aligned'] = \
         np.log2(gene_abund['Length_Aligned']) - np.log2(sum_bp_aligned)
-    gene_abund['Log2_Coverage'] = \
+    gene_abund['Log2_Normed_Length_Ratio'] = \
         gene_abund['Log2_Normed_Length_Aligned'] - np.log2(gene_abund['Length'])
     
     gene_abund = pd.merge(gene_abund, db_map.drop(['Length'], axis = 1),

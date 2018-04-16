@@ -240,12 +240,9 @@ mkdir -p $OUTPUT_DIR/unique/
 mkdir -p $OUTPUT_DIR/dmnd_tmp/
 mkdir -p $OUTPUT_DIR/counts/
 
-if [ $GENOME_ANN ]; then mkdir -p $OUTPUT_DIR/genome/ ; fi
 if [ $PROT_ANN ] || [ $DIAMOND_REFSEQ ] || [ $DIAMOND_SEED ]; then
      mkdir -p $OUTPUT_DIR/diamond/
 fi
-if [ $PROT_ANN ]; then mkdir -p $OUTPUT_DIR/protein ; fi
-
 cd $OUTPUT_DIR
 
 ###############################################################################
@@ -296,7 +293,7 @@ if $index_db; then
     python $PYSCRIPT_DIR/db_to_pydict.py \
          $REF_DIR/nr $REF_DIR/nr.tsv --prot-seq
     python $PYSCRIPT_DIR/db_to_pydict.py \
-         $REF_DIR/subsys_db.fa $REF_DIR/subsys_db.tsv --prot-seq
+         $REF_DIR/subsys_db.fa $REF_DIR/subsys_db.tsv --prot-seq --seed
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -306,18 +303,18 @@ fi
 
 
 ## Remove adapter seqs and trim low-quality seqs  ------------
-if $TRIM && ! $paired && [ ! -s $OUTPUT_DIR/trimmed/${fwd}_trim.fastq ]; then
+if $TRIM && ! $paired && [ ! -s $OUTPUT_DIR/trimmed/${fwd}_trim.fq ]; then
    echo =======================================================================
    echo Trimming and removing adapters ...
    start=`date +%s`
    ln -fs $APP_DIR/Trimmomatic-0.36/adapters/TruSeq3-SE.fa Adapters
    java -jar $APP_DIR/Trimmomatic-0.36/trimmomatic-0.36.jar \
-       SE $INPUT_DIR/$input_fwd $OUTPUT_DIR/trimmed/${fwd}_trim.fastq \
+       SE $INPUT_DIR/$input_fwd $OUTPUT_DIR/trimmed/${base}_trim.fastq \
        ILLUMINACLIP:Adapters:2:30:10 LEADING:3 \
        TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
    # Check reads quality
    $APP_DIR/FastQC/fastqc $INPUT_DIR/$input_fwd
-   $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${fwd}_trim.fastq
+   $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${base}_trim.fastq
    mv $INPUT_DIR/*.html $OUTPUT_DIR/QC/
    mv $INPUT_DIR/*.zip $OUTPUT_DIR/QC/
    mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
@@ -331,7 +328,7 @@ fi
 
 
 ## Do the same for paired ends ------------
-if $TRIM && $paired && [ ! -s $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
+if $TRIM && $paired && [ ! -s $OUTPUT_DIR/trimmed/${base}_trim.fq ]; then
     echo =======================================================================
     echo Trimming and removing adapters ...
     start=`date +%s`
@@ -353,6 +350,7 @@ if $TRIM && $paired && [ ! -s $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq ]; then
     mv $INPUT_DIR/*_fastqc.zip $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/*.html $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/*.zip $OUTPUT_DIR/QC/
+    
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Trimming and QC: $runtime min" >> $OUTPUT_DIR/time/${base}_time.log
@@ -362,7 +360,7 @@ fi
 
 
 ## Merge pairs ------------
-if $MERGE_PAIRS && [ ! -s $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq ]; then
+if $MERGE_PAIRS && [ ! -s $OUTPUT_DIR/trimmed/${base}_trim.fq ]; then
     echo =======================================================================
     echo Merging paired reads ...
     start=`date +%s`
@@ -372,7 +370,13 @@ if $MERGE_PAIRS && [ ! -s $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq ]; th
         --fastqout $OUTPUT_DIR/trimmed/${base}_trim.fq \
         --fastqout_notmerged_fwd $OUTPUT_DIR/trimmed/${base}_unmerged_trim_fwd.fq \
         --fastqout_notmerged_rev $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq \
-
+    
+    rm $OUTPUT_DIR/trimmed/${fwd}_paired_trim.fq
+    rm $OUTPUT_DIR/trimmed/${rev}_paired_trim.fq
+    rm $OUTPUT_DIR/trimmed/${fwd}_unpaired_trim.fq
+    rm $OUTPUT_DIR/trimmed/${rev}_unpaired_trim.fq
+    rm $OUTPUT_DIR/trimmed/${base}_unmerged_trim_fwd.fq
+    rm $OUTPUT_DIR/trimmed/${base}_unmerged_trim_rev.fq
     $APP_DIR/FastQC/fastqc $OUTPUT_DIR/trimmed/${base}_trim.fq
     mv $OUTPUT_DIR/trimmed/${base}_trim_fastqc.html $OUTPUT_DIR/QC/
     mv $OUTPUT_DIR/trimmed/${base}_trim_fastqc.zip $OUTPUT_DIR/QC/
@@ -456,6 +460,11 @@ if $RM_VECTOR && [ ! -s $OUTPUT_DIR/unique/${base}_univec_blat.fq ]; then
         $OUTPUT_DIR/unique/${base}_univec_blat.fq \
         $OUTPUT_DIR/unique/${base}_univec_blat_contam.fq
 
+    rm $OUTPUT_DIR/unique/${base}_univec_bwa.bam
+    rm $OUTPUT_DIR/unique/${base}_univec_bwa.sam
+    rm $OUTPUT_DIR/unique/${base}_univec.blatout    
+    rm $OUTPUT_DIR/unique/${base}_univec_bwa.fasta
+
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Removing vectors: $runtime min" >> \
@@ -498,6 +507,11 @@ if $RM_HOST && [ ! -s $OUTPUT_DIR/unique/${base}_human_blat.fq ]; then
         $OUTPUT_DIR/unique/${base}_human.blatout \
         $OUTPUT_DIR/unique/${base}_human_blat.fq \
         $OUTPUT_DIR/unique/${base}_human_blat_contam.fq
+    
+    rm $OUTPUT_DIR/unique/${base}_human_bwa.bam
+    rm $OUTPUT_DIR/unique/${base}_human_bwa.sam
+    rm $OUTPUT_DIR/unique/${base}_human.blatout    
+    rm $OUTPUT_DIR/unique/${base}_human_bwa.fasta
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -553,6 +567,8 @@ if $RM_rRNA && ! $use_sortmerna && [ ! -s $OUTPUT_DIR/unique/${base}_unique_mRNA
         $OUTPUT_DIR/infernal/${base}_rRNA.infernalout \
         $OUTPUT_DIR/unique/${base}_unique_mRNA.fq \
         $OUTPUT_DIR/unique/${base}_unique_rRNA.fq
+
+    rm $OUTPUT_DIR/unique/${base}_human_blat.fasta
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -658,7 +674,7 @@ if $ASSEMBLE && [ ! -s $OUTPUT_DIR/assembled/${base}_contigs_map.tsv ]; then
             -s $infile \
             -o $OUTPUT_DIR/assembled/${base}_spades
     else
-        infile=$OUTPUT_DIR/assembled/${base}_spades
+        infile=$OUTPUT_DIR/assembled/${base}_fltr.fq
         $APP_DIR/SPAdes-3.11.1-Linux/bin/spades.py \
             -t $n_threads \
             -s $infile \
@@ -682,21 +698,6 @@ if $ASSEMBLE && [ ! -s $OUTPUT_DIR/assembled/${base}_contigs_map.tsv ]; then
     echo "Indexing contig and alingning reads: $runtime min" >> \
         $OUTPUT_DIR/time/${base}_time.log
     
-    #start=`date +%s`
-    #samtools view -bS \
-    #    $OUTPUT_DIR/assembled/${base}_contigs.sam > \
-    #    $OUTPUT_DIR/assembled/${base}_contigs.bam
-
-    #samtools fastq -n -f 4 -0 \
-    #    $OUTPUT_DIR/assembled/${base}_unassembled.fq \
-    #    $OUTPUT_DIR/assembled/${base}_contigs.bam
-    #end=`date +%s`
-    #runtime=$(((end-start)/60))
-    #echo "Samtools extract unassembled reads: $runtime min" >> \
-    #    $OUTPUT_DIR/time/${base}_time.log
-    #echo ========================================== >> \
-    #    $OUTPUT_DIR/time/${base}_time.log
-    
     # Make reads to contigs map
     start=`date +%s`
     $PYSCRIPT_DIR/5_Contig_Map.py \
@@ -704,6 +705,14 @@ if $ASSEMBLE && [ ! -s $OUTPUT_DIR/assembled/${base}_contigs_map.tsv ]; then
         $OUTPUT_DIR/assembled/${base}_contigs.sam \
         $OUTPUT_DIR/assembled/${base}_unassembled.fq \
         $OUTPUT_DIR/assembled/${base}_contigs_map.tsv
+
+    rm -rf $OUTPUT_DIR/assembled/${base}_spades
+    rm $OUTPUT_DIR/assembled/${base}_contigs.fasta.amb
+    rm $OUTPUT_DIR/assembled/${base}_contigs.fasta.ann
+    rm $OUTPUT_DIR/assembled/${base}_contigs.fasta.bwt
+    rm $OUTPUT_DIR/assembled/${base}_contigs.fasta.pac
+    rm $OUTPUT_DIR/assembled/${base}_contigs.fasta.sa
+
     end=`date +%s`
     runtime=$(((end-start)/60))
     echo "Python aggregate assembly result: $runtime min" >> \
@@ -768,6 +777,10 @@ if $GENOME_ANN && [ ! -s $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq ]
     # runtime=$(((end-start)/60))
     # echo "Python aggregate genome alignment results: $runtime min" >> \
     #     $OUTPUT_DIR/time/${base}_time.log
+    
+    rm $OUTPUT_DIR/assembled/${base}_contigs_annotation_bwa.bam
+    rm $OUTPUT_DIR/assembled/${base}_unassembled_annotation_bwa.bam
+
 
     # IS THE FOLLOWING EVEN USEFUL? HOW TO ADD TO 6_BWA_Gene_Map.py ???
     if $extra_blat; then
@@ -814,6 +827,7 @@ if $GENOME_ANN && [ ! -s $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq ]
         echo "Extra BLAT genome alignment: $runtime min" >> \
             $OUTPUT_DIR/time/${base}_time.log
     fi
+    
     echo ========================================== >> \
         $OUTPUT_DIR/time/${base}_time.log
 fi
@@ -959,7 +973,7 @@ if $DIAMOND_COUNT; then
         python $PYSCRIPT_DIR/reads_counter.py \
             $OUTPUT_DIR/diamond/${base}_seed.dmdout \
             $REF_DIR/subsys_db.tsv \
-            $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed_abund.csv
+            -outfile $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed_abund.csv
         echo Completed counting of the SEED  anotated reads!
     fi
     
