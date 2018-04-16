@@ -15,6 +15,11 @@ parser.add_argument('-outfile', dest='outfile', type=str, default=None,
 args = parser.parse_args()
 print(args)
 
+if args.outfile is None:
+    outdir, outfile = os.path.split(args.infile[0])
+    annotfile = os.path.join(outdir, "Annotated_" + outfile)
+    genelenfile = os.path.join(outdir, "gene_len_" + outfile.strip("abund_")) 
+
 cnt_mat = pd.read_csv(args.infile[0])
 print(cnt_mat.head())
 
@@ -22,18 +27,15 @@ db_map = pd.DataFrame()
 for chunk in pd.read_csv(args.dbfile[0], sep='\t', chunksize = 100000, low_memory = False):
     chunk_fltr = chunk[chunk['GeneID'].isin(cnt_mat['GeneID'])]
     db_map = pd.concat([db_map, chunk_fltr])
-
-#db_map = pd.read_csv(args.dbfile[0], sep='\t')
 print(db_map.head())
+db_map.to_csv(genelenfile, index=False)
 
-res = pd.merge(cnt_mat, db_map, on='GeneID', how='left')
-print(res.head())
 
-if args.outfile is None:
-    outdir, outfile = os.path.split(args.infile[0])
-    outfile = os.path.join(outdir, "Annotated_" + outfile)
 
-res.to_csv(outfile, index=False)
+#res = pd.merge(cnt_mat, db_map, on='GeneID', how='left')
+#print(res.head())
+#
+#res.to_csv(annotfile, index=False)
 
 
 

@@ -1,14 +1,13 @@
-export MEM=8G
-export NCPU=3
+export MEM=4G
+export NCPU=12
 
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 export PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited/
-export PROC_DIR=${1:-$PI_BASE_DIR/processed/}
-export OUT_DIR=${2:-$PI_BASE_DIR/processed/final_results/batches}
-export SUBDIR=${3:-Relman_RNAseq_21}
-export LOG_DIR=${4:-$PI_BASE_DIR/logs/final_results/batches}
-export JOB_NAME=abund-tab-${SUBDIR}
+export IN_DIR=${1:-$PI_BASE_DIR/processed/final_results/batches}
+export OUT_DIR=${2:-$PI_BASE_DIR/processed/final_results}
+export LOG_DIR=${3:-$PI_BASE_DIR/logs/final_results}
+export JOB_NAME=mege-batches
 
 mkdir -p $OUT_DIR
 mkdir -p $LOG_DIR
@@ -29,7 +28,7 @@ sbatch <<EOT
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=05:00:00
+#SBATCH --time=02:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -59,10 +58,8 @@ sbatch <<EOT
 
 # now run normal batch commands
 
-echo DIRECTORY: $SUBDIR
+echo Merging batches...
 
-echo Generate abundance tables ...
-srun python $PYSCRIPT_DIR/abundance_table.py \
-    $PROC_DIR -outfile ${OUT_DIR}/${SUBDIR} \
-    -subdir $SUBDIR
+srun python $PYSCRIPT_DIR/merge_batches.py \
+    $IN_DIR -outdir $OUT_DIR 
 EOT

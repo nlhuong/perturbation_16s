@@ -1,5 +1,5 @@
 # imports
-import argparse, time, pickle, re
+import argparse, time, pickle, re, pd
 import pandas as pd
 
 parser = argparse.ArgumentParser(description='Aggregate and count reads aligned with DIAMOND.')
@@ -25,7 +25,7 @@ outfile = open(args.outfile[0], "w")
 
 if (args.seed):
     outfile.write("GeneID" + "\t" + "Length" + "\t" "SEED1" + "\t" + \
-                  "SEED2" + "\t" "SEED3" + "\t" "SEED4" + "\t" + "SEED5 \n")
+                  "SEED2" + "\t" "SEED3" + "\t" "SEED4" + "\n")
 else:
     outfile.write("GeneID" + "\t" + "Length" + "\t" "Organism" + "\t" + "Function \n")
 
@@ -46,7 +46,7 @@ for line in db:
         gene_len *= 3 
     if db_line_counter > 1: # this is the previous gene
         if(args.seed):
-             outfile.write(db_id + "\t" + str(gene_len) + "\t" + db_entry  + "\n")
+             outfile.write(db_id + "\t" + str(gene_len) + db_entry + "\n")
         else: 
              outfile.write(db_id + "\t" + str(gene_len) + "\t" + 
                            db_org + "\t" + db_entry  + "\n")
@@ -55,7 +55,9 @@ for line in db:
     
     if(args.seed):
         db_id = line.split()[0].strip('>')
-        db_entry = line.strip('>' + db_id + ' ')
+        db_entry = line.strip(line.split()[0])
+        db_entry = db_entry.rsplit('\t', 1)[0]
+        #print(db_entry)
         continue
 
     # id, organism and function names [https://stackoverflow.com/questions/6109882/regex-match-all-characters-between-two-strings]
@@ -67,8 +69,8 @@ for line in db:
     if db_entry is None:
         db_entry = re.search("(?<= )(.*)(?=\[)", line) # some lines missing a space
     if db_entry is None:
-    # The NR database has entries without "[", "]"
-        db_entry = line.strip('>' + db_id + ' ')
+        # The NR database has entries without "[", "]"
+        db_entry = line.strip(line.split()[0])
     else:
         db_entry = db_entry.group()
     
@@ -89,15 +91,22 @@ gene_len = len(gene_sequence)
 if args.protein_seq or not bool(re.match('^[ATCG]+$', gene_sequence)):
     gene_len *= 3 
 if(args.seed):
-    outfile.write(db_id + "\t" + str(gene_len) + "\t" + db_entry  + "\n")
+    outfile.write(db_id + "\t" + str(gene_len) + db_entry  + "\n")
+    outfile.close()
+    out = pd.read_csv(args.outfile[0], sep = "\t")
+    out = out.drop_duplicates('GeneID')
+    out.to_csv(args.outfile[0], sep="\t", index = False)
 else: 
     outfile.write(db_id + "\t" + str(gene_len) + "\t" + 
                   db_org + "\t" + db_entry  + "\n")
+    outfile.close()
+
+db.close()
 
 t2 = time.clock()
+
+
 print("\nSuccess!")
 print("Time elapsed: " + str(t2-t0) + " seconds.")
 print("Number of genes: " + str(db_line_counter))
 
-db.close()
-outfile.close()

@@ -28,56 +28,63 @@
 ##########################################################################
 
 # imports
-import argparse, os
+import argparse, os, glob
 import numpy as np
 import pandas as pd
 import multiprocessing as mp 
 from functools import reduce
 
-def generate_table(sample_files, outfile, num_cores=10):
-    pool = mp.Pool(processes=num_cores)
-    results = {}
-         
-    for smp_file in sample_files:
-        indir, smp_name = os.path.split(smp_file)
-        results[smp_name] = pool.apply_async(pd.read_csv, args=(smp_file))
+def combine_samples(smp_dict, column, outfile):
+    print('Aggregating columns of the samples in a list')    
+    smp_lst = []
+    for sname in list(smp_dict.keys()):
+        res = smp_dict[sname]
+        sdf = res[['GeneID', column]]
+        sdf.columns = ['GeneID', sname]
+        smp_lst.append(sdf)
     
-    pool.close()
-    pool.join()
-    results = {sname: res.get() for sname, res in results.items()}
-    
-    raw = []
-    bp_aligned = []
-    log_coverage = []
-    
-    for sname in list(results.keys()):
-        res = results[sname]
-        sraw = res[['GeneID', 'Raw']]
-        sbp = res[['GeneID', "Length_Aligned"]]
-        slogcov = res[['GeneID', 'Log2_Normed_Length_Aligned']]
-        sraw.columns = ['GeneID', sname]
-        sbp.columns = ['GeneID', sname]
-        slogcov.columns = ['GeneID', sname]
-        
-        raw.append(sraw)
-        bp_aligned.append(sbp)
-        log_coverage.append(slogcov)
-        
-    raw_df = reduce(
-        lambda left, right: pd.merge(left, right, on='GeneID', how='outer'), 
-        raw)
-    bp_aligned_df = reduce(
-        lambda left, right: pd.merge(left, right, on='GeneID', how='outer'), 
-        bp_aligned)
-    log_coverage_df = reduce(
-        lambda left, right: pd.merge(left, right, on='GeneID', how='outer'), 
-        log_coverage)
+    print('Merging into a data frame from list of samples')
+    table_df = reduce(lambda x, y: pd.merge(x, y, on = 'GeneID', how='outer'), smp_lst)
+    return table_df
 
+def generate_table(sample_files, outfile):  
     outdir, outfile = os.path.split(outfile)
     outfile = outfile.split(".")[0]
-    raw_df.to_csv(os.path.join(outdir, outfile + "_raw.csv"), index = False)
-    bp_aligned_df.to_csv(os.path.join(outdir, outfile + "_bp_aligned.csv"), index = False)
-    log_coverage_df.to_csv(os.path.join(outdir, outfile + "_log2_cov.csv"), index = False)
+    outfiles = [os.path.join(outdir, outfile + suffix) for suffix in \
+        ["_raw.csv", "_bp_aligned.csv", "_len_ratio.csv"]]
+    
+    abund_meas = ['Raw', 'Length_Aligned', 'Length', 'Length_Ratio',
+                  'Log2_Length_Ratio', 'Log2_Normed_Length_Aligned', 
+                  "Log2_Normed_Length_Ratio"] 
+    #gene_dict = {}
+    smp_dict = {}    
+    gene_df = pd.DataFrame()
+    for smp_file in sample_files:
+        indir, smp_name = os.path.split(smp_file)
+        smp_name = smp_name.split(".")[0]
+        df = pd.read_csv(smp_file)
+        smp_dict[smp_name] = df.copy()[['GeneID'] + abund_meas]
+        annot = df.copy().drop(abund_meas, axis = 1)
+        gene_df = pd.concat([gene_df, annot]).drop_duplicates('GeneID').reset_index(drop=True)
+        #annot = annot.set_index('GeneID') 
+        #gene_dict.update(annot.T.to_dict())
+    
+    #gene_df = pd.DataFrame(gene_dict).T
+    #gene_df.index.name = 'GeneID'
+    #gene_df.reset_index(inplace=True)
+    
+    pool = mp.Pool(processes=len(outfiles))
+    results = {}
+    for i, column in enumerate(['Raw', "Length_Aligned", 'Length_Ratio']):
+        print("Joining samples for abundance measure: " + column)
+        results[outfiles[i]] = pool.apply_async(combine_samples, args=(smp_dict, column, outfiles[i]))
+    pool.close()
+    pool.join()
+   
+    for outfile, res in list(results.items()): 
+        df = res.get()
+        df = pd.merge(df, gene_df, on='GeneID', how='left')
+        df.to_csv(outfile, index = False)
     return
 
 
@@ -89,7 +96,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         prog='abundance_table',
-        description='Generate anundance table from sample abundance files.',
+        description='Generate abundance table from sample abundance files.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('procdir', metavar='pdir', type=str, nargs=1,
                         help='directory with all processed files')
@@ -99,27 +106,33 @@ if __name__ == "__main__":
     parser.add_argument('-subdir', dest='subdir', type=str, default=None,
                         help='specific subdirectory of processed directory' +
                              ' to limit the summary to')
-    parser.add_argument('-ncores', dest='ncores', type=int, default=10,
-                        help='number of cores for multithreading')
+    #parser.add_argument('-ncores', dest='ncores', type=int, default=10,
+    #                    help='number of cores for multithreading')
     args = parser.parse_args()
     print(args)
 
-    refseq_files = []
-    nr_files = []
-    seed_files = []
-    
-    for sdir in os.listdir(processed_dir):
-        if (args.subdir is not None and not args.subdir in sdir):
+    for sdir in os.listdir(args.procdir[0]):
+        count_dir = os.path.join(args.procdir[0], sdir, "counts")
+        if not os.path.isdir(count_dir) or \
+            (args.subdir is not None and not args.subdir in sdir):
             continue
-        refseq_dir = os.path.join(args.procdir[0], sdir, "counts", "dmnd_RefSeq") 
-        nr_dir = os.path.join(args.procdir[0], sdir, "counts", "dmnd_NR") 
-        seed_dir = os.path.join(args.procdir[0], sdir, "counts", "dmnd_SEED") 
-        refseq_files.append(os.listdir(refseq_dir)) 
-        nr_files.append(os.listdir(nr_dir)) 
-        seed_files.append(os.listdir(seed_dir)) 
-
-    generate_table(refseq_files, args.outfile, args.ncores)
-    generate_table(nr_files, args.outfile, args.ncores)
-    generate_table(seed_files, args.outfile, args.ncores)
+        print("MESSAGE: Adding files in " + sdir)
+        refseq_dir = os.path.join(count_dir, "dmnd_RefSeq") 
+        nr_dir = os.path.join(count_dir, "dmnd_NR") 
+        seed_dir = os.path.join(count_dir, "dmnd_SEED") 
+        refseq_files = glob.glob(refseq_dir + "/*") 
+        nr_contig_files = glob.glob(nr_dir + "/*_nr_contigs_abund.csv") 
+        nr_unassembled_files = glob.glob(nr_dir + "/*_nr_unassembled_abund.csv") 
+        seed_files = glob.glob(seed_dir + "/*") 
+    
+    outfile = args.outfile.split(".")[0]
+    print('Processing RefSeq aligned abundances...')
+    generate_table(refseq_files, outfile + "_refseq") 
+    print('Processing contigs NR aligned abundances...')
+    generate_table(nr_contig_files, outfile + "_nr_contigs") 
+    print('Processing unassembled NR aligned abundances...')
+    generate_table(nr_unassembled_files, outfile + "_nr_unassembled")
+    print('Processing SEED aligned abundances...')
+    generate_table(seed_files, outfile + "_seed")
 
 
