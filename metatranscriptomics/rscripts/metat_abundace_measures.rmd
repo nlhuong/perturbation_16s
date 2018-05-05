@@ -1,0 +1,771 @@
+---
+title: "Metatranscriptomics Abundance measures"
+output: 
+  html_notebook:
+    toc:true
+---
+
+In this notebook we examine the distributions of 
+the abundance measures obtained for metatranscriptomics
+reads aligned to RefSeq database.
+
+```{r}
+library("tidyverse")
+library("readxl")
+library("data.table")
+library("gridExtra")
+
+datadir <- "/scratch/PI/sph/resilience/metatranscriptomics/processed/"
+
+theme_set(theme_bw())
+theme_updates <- theme(text = element_text(size =20))
+```
+
+```{r, echo = FALSE}
+sum_skip_na <- function(x) {sum(x, na.rm = TRUE)}
+
+replace_na_with_zero <- function(x) {
+  x[is.na(x)] <- 0
+  return(x)
+}
+# metat <- metat[, (sample_cols) := lapply(.SD, replace_na_with_zero), .SDcols = sample_cols]
+
+
+plt_trend <- function(df, x, y, contour = FALSE, 
+                      max_npoints = 10^4, 
+                      log_x = TRUE, log_y = FALSE){
+  dfsub <- df
+  if(nrow(df) > max_npoints ) {
+    dfsub <- df[sample(1:nrow(df), max_npoints), ]
+  }
+  plt <- ggplot(df, aes_string(x, y)) 
+  
+  if(!contour) {
+    plt <- plt +
+      stat_density_2d(
+        aes(fill = ..density..), 
+        geom = "raster", contour = FALSE) +
+      scale_fill_distiller(palette= "Spectral", direction=-1) +
+      geom_point(data = dfsub, alpha = 0.1, size = 0.7)
+  } else {
+     plt <- plt +
+      geom_point(data = dfsub, alpha = 0.1, size = 0.7) +
+      geom_density_2d(aes(colour = ..level..)) +
+      scale_color_distiller(palette= "Spectral", direction=-1) 
+  }
+  
+  if (log_x){
+    plt <- plt + 
+      scale_x_continuous(expand = c(0, 0), trans = "log10")
+  }
+  if (log_y) {
+    plt <- plt + 
+      scale_y_continuous(expand = c(0, 0), trans = "log10")
+  } else {
+    plt <- plt + 
+      scale_y_continuous(
+        limits = c(NA, quantile(df[[y]], 0.95)),
+        expand = c(0, 0)) 
+  }
+  return(plt)
+}
+
+
+```
+
+
+# Loading data
+
+```{r}
+metat <- fread(file.path(datadir, "final_results/abund_refseq_len_ratio.csv"))
+gene_info <- fread(file.path(datadir, "final_results/gene_len_refseq_raw.csv"))
+
+dim(metat)
+dim(gene_info)
+
+gene_info2 <- metat[, .(GeneID, Organism, Function)]
+identical(gene_info2[order(GeneID)], 
+          gene_info[order(GeneID), !c("Length"), with = FALSE])
+rm(gene_info2)
+metat <- metat[, !c("Organism", "Function"), with = FALSE]
+```
+
+# Basic data summary
+
+The abundance measure for a gene $i$ in measurement (sample) $j$ - `metat[i, j]` -
+we have, is the total number (sum) of basepairs in all reads mapped to gene $i$,
+in measurement $j$ divided by the length of gene $i$. We will refer to
+this ratio as **abundance** from this point on.
+
+Note that for each read, the number of basepairs aligned to a reference sequence
+(gene) is usually much smaller than the length of that reference sequence.
+
+## Obtain statistics on features
+
+The gene lengths vary quite a bit:
+
+```{r}
+summary(gene_info$Length)
+```
+
+```{r}
+plt <- qplot(gene_info$Length, bins = 50) 
+grid.arrange(plt, plt+scale_x_log10())
+```
+
+
+In the summary below we see that even the sum of (the total number of) 
+basepairs over all reads aligned to a gene is still much smaller than 
+the length of the entire gene. The mean over samples for the ratio
+between the sum of all bp aligned and the length of the gene is
+usually smaller than 1.
+
+
+
+```{r}
+gene_info <- merge(
+  gene_info,
+  metat[,
+        .(GeneID, 
+          mean = rowMeans(.SD, na.rm = TRUE),
+          sum = rowSums(.SD, na.rm = TRUE),
+          prev = rowSums(.SD > 0, na.rm = TRUE)
+          ),
+        .SDcols = setdiff(colnames(metat), "GeneID")],
+  by = "GeneID"
+  )
+
+summary(gene_info)
+```
+
+
+```{r}
+sample_depth <- colSums(metat[, !c("GeneID"), with = FALSE], na.rm = TRUE)
+summary(sample_depth)
+```
+
+```{r}
+qplot(sample_depth, bins = 50)
+```
+
+
+## Data Filtering
+
+We discard all the samples for which the coverage was too small.
+
+```{r}
+sample_depth[sample_depth < 100]
+```
+
+```{r}
+metat <- metat[, c("GeneID", names(sample_depth)[sample_depth > 100]), with = FALSE]
+dim(metat)
+```
+
+Below we plot the prevalence and mean abundance of genes across all samples.
+
+```{r}
+plt1 <- qplot(gene_info$mean, bins = 50) +
+  scale_x_log10()
+plt2 <- qplot(gene_info$prev, bins = 50) 
+grid.arrange(plt1, plt2)
+```
+
+# Gene abundance trends and distributions
+
+The following shows that most of the genes
+are present only in a under 10 (out 380) different samples.
+
+
+```{r}
+quantile(gene_info$prev, seq(0, 1, 0.05))
+```
+
+
+```{r}
+sample_cols <- setdiff(colnames(metat), "GeneID")
+metat_fltr <- metat_fltr[
+  , (sample_cols) := lapply(.SD, replace_na_with_zero), 
+   .SDcols = sample_cols]
+
+# We filter out the genes which occur in less than 5 samples
+metat_fltr <- metat_fltr[
+  rowSums(metat_fltr[, !c("GeneID"), with = FALSE] > 0) > 5]
+dim(metat_fltr)
+```
+
+
+```{r}
+gene_stats <- metat_fltr[, 
+  .(GeneID,
+  Sum = rowSums(.SD),
+  Prev = rowSums(.SD > 0),
+  Mean  =  rowMeans(.SD),
+  Median = apply(.SD, 1, median),
+  Var = apply(.SD, 1, var),
+  SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+summary(gene_stats)
+
+
+```
+
+```{r}
+qplot(gene_stats$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("Distribution of gene abundance sums across all samples")
+```
+
+
+
+```{r}
+plt_trend(gene_stats, "Mean", "Var", max_npoints = 10^5,
+          contour = TRUE, log_y = TRUE) +
+  geom_abline(color = "red", slope = 1, intercept = 0) +
+  ggtitle("Gene abundance: Mean vs Variance") 
+
+```
+
+
+```{r}
+plt_trend(gene_stats, "Mean", "Prev", 
+          max_npoints = 10^5, contour = TRUE) +
+  ggtitle("Gene abundance: Mean vs Prevalence") +
+  scale_y_continuous(
+    limits = c(NA, quantile(gene_stats[["Prev"]], 0.99)),
+    expand = c(0, 0))
+```
+
+
+# Aggregated data 
+
+Now, we aggregate the gene abundance table into an organism
+and function abundance table and save it for later analysis.
+
+
+```{r}
+orgtab <- merge(metat, gene_info[, .(GeneID, Organism)], by=c("GeneID"))
+orgtab <- orgtab[, !c("GeneID")][, lapply(.SD, sum_skip_na), by=.(Organism)]
+dim(orgtab)
+```
+
+```{r, eval = FALSE}
+fwrite(orgtab, file.path(datadir, "final_results/organism_abundance_refseq.csv"))
+```
+
+
+It should be noted that genes from different organisms performing
+the same functions with be merged together in the following table.
+
+
+```{r}
+funtab <- merge(metat, gene_info[, .(GeneID, Function)], by=c("GeneID"))
+funtab <- funtab[, !c("GeneID")][, lapply(.SD, sum_skip_na), by=.(Function)]
+dim(funtab)
+```
+
+
+```{r, eval = FALSE}
+fwrite(funtab, file.path(datadir, "final_results/function_abundance_refseq.csv"))
+
+rm(orgtab, funtab)
+```
+
+
+We can inspect the number of distinct organisms and functions
+appearing in the study particinants data.
+
+```{r}
+gene_info$Organism <- gsub("\\[", "", gene_info$Organism)
+
+cat("Number of different genes: ", nrow(gene_info), "\n")
+cat("Number of unique Organisms: ", length(unique(gene_info$Organism)), "\n")
+cat("Number of unique Functions: ", length(unique(gene_info$Function)), "\n")
+
+```
+
+
+Top 10 organisms with most abundant genes:
+
+```{r}
+gene_info[, .(total_sum = sum(sum)), by = .(Organism)][order(-total_sum)][1:10]
+```
+
+Top 10 organisms with most prevalent genes:
+
+```{r}
+gene_info[, .(total_prev = sum(prev)), by = .(Organism)][order(-total_prev)][1:10]
+```
+
+Top 10 organisms with most abundant genes:
+
+```{r}
+gene_info[, .(total_sum = sum(sum)), by = .(Function)][order(-total_sum)][1:10]
+```
+
+
+Top 10 organisms with most prevalent genes:
+
+```{r}
+gene_info[, .(total_prev = sum(prev)), by = .(Function)][order(-total_prev)][1:10]
+```
+
+
+As expected the top functions are the ones with an uninformative 
+label "hypothetical protein".
+
+
+
+
+## Data aggregated by organism:
+
+
+```{r, include=FALSE}
+# Now you can restart an rsession and reload packages to clean up memory
+rm(metat, metat_fltr, sample_depth, gene_info)
+library("data.table")
+library("gridExtra")
+library("tidyverse")
+library("phyloseq")
+library("readxl")
+
+theme_set(theme_bw())
+theme_updates <- theme(text = element_text(size =20))
+```
+
+```{r}
+datadir <- "/scratch/PI/sph/resilience/metatranscriptomics/processed/"
+orgtab <- fread(file.path(datadir, "final_results/organism_abundance_refseq.csv"))
+```
+
+
+```{r}
+orgtab <- orgtab %>%
+  mutate(
+    Organism = gsub("'", "", Organism),
+    Organism = gsub("\\[", "", Organism),
+    Org = gsub("unclassified ", "", Organism),
+    Org = gsub("uncultured ", "", Org),
+    Org = gsub("unicellular ", "", Org)
+    ) %>%
+  separate(Org, c("Genus", "Species", "Strain"), 
+           remove = TRUE, extra = "merge") 
+```
+
+
+
+```{r}
+taxrank <- c("Organism", "Kingdom", "Phylum", "Class", 
+            "Order", "Family", "Genus", "Species", "Strain")
+sample_cols <- setdiff(colnames(orgtab), taxrank)
+nsamples <- length(sample_cols)
+
+orgtab <- data.table(orgtab)
+
+org_stats <- orgtab[, 
+  .(Organism,
+    Sum = rowSums(.SD),
+    Prev = rowSums(.SD > 0),
+    Mean  =  rowMeans(.SD),
+    Median = apply(.SD, 1, median),
+    Var = apply(.SD, 1, var),
+    SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+
+summary(org_stats)
+
+
+```
+
+```{r}
+qplot(org_stats$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("Organism sums across samples")
+```
+
+```{r}
+plt_trend(org_stats, "Mean", "Var", contour = TRUE, log_y = TRUE) +
+  ggtitle("Organism abundance: Mean vs Variance") +
+  geom_abline(slope = 1, color = "red")
+```
+
+
+```{r}
+plt_trend(org_stats, "Mean", "Prev", 
+          max_npoints = 10^5, contour = TRUE) +
+ ggtitle("Organism abundance: Mean vs Prevalence")
+```
+
+
+Now we are reading in 16s data for comparison and to obtain taxonomic
+classification.
+
+```{r}
+ps <- readRDS(file.path(datadir, "../../16s/perturb_physeq_22Jan18.rds"))
+```
+
+
+```{r}
+taxtab_16s <- data.table(as(ps@tax_table, "matrix"))[, 1:7]
+taxtab_16s <- unique( taxtab_16s )
+cat("Number of distinct species in 16s data:", nrow(taxtab_16s), "\n")
+cat("Number of distinct organisms in metatranscriptomics data:", nrow(orgtab), "\n")
+```
+
+```{r, echo = FALSE}
+add_ranks <- function(x, add_taxrank){
+  for (t in 5:2) {
+    ranktab <- add_taxrank[, 1:t]
+    ranktab <- unique(ranktab)
+    z <- data.table(
+      matrix(NA,  
+             nrow = nrow(ranktab),
+             ncol = ncol(add_taxrank) - ncol(ranktab)
+      )
+    )
+    ranktab <- cbind(ranktab, z)
+    colnames(ranktab) <- colnames(add_taxrank)
+    res <- merge(ranktab, x[, !c("Species"), with = FALSE],
+                 by.x=colnames(ranktab)[t], by.y = "Genus")
+    res <- res[, .(Organism, Kingdom, Phylum, Class, Order, Genus, Species)]
+    if(nrow(res) != 0){ return(res) }
+  }
+  res <- data.table(Organism = x[, 1], Kingdom = NA, Phylum = NA, 
+                      Class = NA, Order = NA, Genus = NA, Species = NA)
+  return(res)
+}
+
+merge_any_level <- function(taxtab, add_taxrank){
+  cols <- c("Organism", "Kingdom", "Phylum", "Class", 
+            "Order", "Family", "Genus", "Species", "Strain")
+  res <- merge(taxtab, add_taxrank, by = c("Genus", "Species"))
+  res <- res[, cols, with = FALSE]
+  remaining <- taxtab[!Organism %in% res$Organism]
+  
+  # 5:2 since we assigning from lowest rank "Genus" to "Phylum"
+  ranktabs <- lapply(6:2, function(t){
+    ranktab <- add_taxrank[, 1:t]
+    ranktab <- unique(ranktab)
+    ranktab <- ranktab[!is.na(ranktab[[t]])]
+    z <- data.table(
+      matrix(NA,  
+             nrow = nrow(ranktab),
+             ncol = ncol(add_taxrank) - ncol(ranktab) 
+      )
+    )
+    ranktab <- cbind(ranktab, z)
+    colnames(ranktab) <- colnames(add_taxrank)
+    return(ranktab)
+  })
+  names(ranktabs) <- colnames(add_taxrank)[6:2]
+  
+  for (i in 1:length(ranktabs)) {
+    rres <- merge(ranktabs[[i]],
+                  remaining[, !c("Species"), with = FALSE], 
+                  by.x = names(ranktabs)[i],
+                  by.y = "Genus")
+    rres <- rres[, cols, with = FALSE]
+    res <- rbind(res, rres)
+    remaining <- remaining[!Organism %in% res$Organism]
+  }
+  
+  z <- data.table(
+    matrix(NA, nrow(remaining), ncol(res) - ncol(remaining)))
+  colnames(z) <- setdiff(colnames(res), colnames(remaining))
+  remaining <- cbind(remaining, z)
+  remaining <- remaining[, cols, with = FALSE]
+  res <- rbind(res, remaining)
+  res <- res[order(Organism)]
+  return(res)
+}
+```
+
+```{r}
+orgnames <- c("Organism", "Genus", "Species", "Strain")
+taxtab_metat <- data.table(orgtab)[, orgnames, with = FALSE]
+taxtab_metat <- merge_any_level(taxtab_metat, taxtab_16s) 
+
+```
+
+
+```{r}
+orgtab <- merge(taxtab_metat,
+  data.table(orgtab)[, !c("Genus", "Species", "Strain"), with = FALSE],
+  by = "Organism")
+
+```
+
+
+```{r}
+genustab <- orgtab[,
+   lapply(.SD, sum), 
+   by = .(Kingdom, Phylum, Class, Order, Family, Genus), 
+  .SDcols = sample_cols]
+dim(genustab)
+```
+
+```{r}
+taxranks <- c("Kingdom","Phylum", "Class", "Order", "Family",  "Genus")
+metat_samples <- setdiff(colnames(genustab), taxranks)
+genus_stat <- genustab[, .(Phylum, Class, Order, Family, Genus, sum = rowSums(.SD)), 
+         .SDcols = metat_samples][order(-sum)]
+genus_stat[1:10]
+```
+
+```{r}
+example_genera <- genustab[
+  , .(Phylum, Class, Order, Family, Genus, sum = rowSums(.SD)), 
+  .SDcols = sample_cols][order(-sum)][!is.na(Genus)]
+
+interval <- floor(seq(1, nrow(example_genera), length.out = 6))
+keep_idx <- c(sample(1:interval[2], 10), 
+              sample(interval[3]:interval[4], 10),
+              sample(interval[5]:nrow(example_genera), 10))
+example_genera <- example_genera[keep_idx, Genus]
+
+
+melt_example_genus <- genustab[Genus %in% example_genera] %>%
+  gather(Meas_ID, abundance, -(Kingdom:Genus)) %>%
+  mutate(Genus = factor(Genus, levels = example_genera))
+```
+
+```{r, fig.width=12, fig.height=10}
+ggplot(melt_example_genus) +
+  geom_histogram(
+    aes(x = abundance, fill = Family),
+    bins = 30) +
+  facet_wrap(~ Genus, scale = "free", ncol = 5)
+```
+
+
+Now we will compare the metatranscriptomics abundance measures with 16s 
+counts on a genus level.
+
+
+First, we need to load the sample information file.
+
+```{r}
+meas <- read_xlsx(
+  file.path(datadir, "../../sample_info/Mapping_Files_26March2018.xlsx"),
+  "Meas", range = cell_cols(1:7))
+names(meas) <- meas[1, ]
+meas <- meas[-1, ] %>%
+  rename(Samp_ID = SampID)
+
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", 
+                 "PreCC", "MidCC","PostCC", "PreAbx", "MidAbx", "PostAbx")
+samp <- read_xlsx(
+  file.path(datadir, "../../sample_info/Mapping_Files_26March2018.xlsx"),
+  "Samp", skip = 1) %>%
+  mutate(
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
+
+meas <- meas %>% select(Meas_ID, Samp_ID) %>%
+  left_join(samp)
+rm(samp)
+```
+
+We convert the metatranscriptomics Genus abundance table
+to long format.
+
+```{r}
+taxranks <- c("Kingdom","Phylum", "Class", "Order", "Family",  "Genus")
+rel_total <- function(x) {x/sum(x)}
+
+melt_genus_metat <- genustab[
+  , (metat_samples) := lapply(.SD, rel_total), 
+  .SDcols = metat_samples] %>%
+  gather(Filename, rel_total, -(Kingdom:Genus)) %>%
+  separate(Filename, c("Meas_ID", "Subject"), 
+           remove = TRUE, extra = "drop") %>%
+  left_join(meas %>% select("Meas_ID", "Samp_ID")) %>%
+  mutate(Subject = gsub("sw", "", Subject)) %>%
+  select(Kingdom:Genus, Meas_ID, Samp_ID, Subject, rel_total)
+
+head(melt_genus_metat)
+```
+
+
+Then, we aggregate 16s data on Genus field:
+
+```{r}
+count16s <- as(ps@otu_table, "matrix") %>%
+  data.frame() %>%
+  rownames_to_column("Seq_id") %>%
+  left_join(data.frame(ps@tax_table)[, 1:7] %>%
+              rownames_to_column("Seq_id")) %>%
+  data.table()
+
+sample_cols <- colnames(count16s)[grepl("M", colnames(count16s))]
+genus16s <- count16s[
+  , lapply(.SD, sum), 
+  by = .(Kingdom, Phylum, Class, Order, Family, Genus),
+  .SDcols = sample_cols
+][
+  , (sample_cols) := lapply(.SD, rel_total), 
+  .SDcols = sample_cols
+]
+
+
+melt_genus_16s <- genus16s %>%
+  gather(Meas_ID, rel_total, -(Kingdom:Genus)) %>%
+  left_join(meas %>% select("Meas_ID", "Samp_ID", "Subject")) %>%
+  select(Kingdom:Genus, Meas_ID, Samp_ID, Subject, rel_total) 
+head(melt_genus_16s)
+```
+
+
+```{r}
+
+intersect_samples <- intersect(
+  unique(melt_genus_metat$Samp_ID),
+  unique(melt_genus_16s$Samp_ID))
+
+length(intersect_samples) #375
+
+melt_genus <- bind_rows(
+  melt_genus_16s %>% 
+    filter(Samp_ID %in% intersect_samples) %>%
+    mutate(source = "16s"), 
+  melt_genus_metat %>% 
+    filter(Samp_ID %in% intersect_samples) %>%
+    mutate(source = "metat")) 
+
+## scatterplot of abundances from the two sources, per sample
+genus_levels <- melt_genus %>%
+  group_by(Genus) %>%
+  summarise(mean = mean(rel_total)) %>%
+  arrange(desc(mean))
+
+melt_genus <- melt_genus  %>%
+  mutate(Genus = factor(Genus, genus_levels$Genus))
+
+subjects <- intersect(
+  unique(melt_genus_16s$Subject),
+  unique(melt_genus_metat$Subject))                    
+
+scatter_data <- melt_genus %>%
+  filter(Subject %in% subjects) %>%
+  select(-Meas_ID) %>%
+  spread(source, rel_total)
+
+head(scatter_data)
+```
+
+
+```{r}
+genus_subject_centroid <- scatter_data %>%
+  group_by(Order, Family, Genus, Subject) %>%
+  summarise(
+    "16s" = median(`16s`),
+    metat = median(metat, na.rm = TRUE)
+  ) 
+
+```
+
+
+```{r, echo = FALSE}
+library(ggrepel)
+plot_comparison <- function(scatter_data, genus_centroid,
+                            x = "16s", y = "metatranscriptomic", 
+                            color = "Diet_Interval", label = "Genus") {
+  
+  theme_scatter <- theme(
+    legend.position = "bottom",  
+    text = element_text(size = 12),
+    strip.text = element_text(size = 12),
+    strip.background = element_blank()
+  )
+
+  genus_centroid <- genus_centroid %>% as.data.frame() 
+  scatter_data <- scatter_data %>% as.data.frame()
+  
+  genus_centroid$x <- genus_centroid[[x]]
+  genus_centroid$y <- genus_centroid[[y]]
+  scatter_data$x <- scatter_data[[x]]
+  scatter_data$y <- scatter_data[[y]]
+  
+  genus_centroid <- genus_centroid %>%
+    filter(!is.na(x) & !is.na(y))
+  scatter_data <- scatter_data %>%
+    filter(!is.na(x) & !is.na(y))
+  
+  data_repel <-  genus_centroid %>%
+    filter(
+      x > 0, y > 0, 
+      abs(log(x)- log(y)) > 2.5
+    ) %>%
+    mutate(x = log(x), y = log(y) )
+  
+  genus_centroid[, c("x", "y")] <- log(genus_centroid[, c("x", "y")])
+  scatter_data[, c("x", "y")] <- log(scatter_data[, c("x", "y")])
+  
+  ggplot() +
+    geom_abline(alpha = 0.4, size = 0.2) +
+    geom_point(
+      data = scatter_data,
+      aes_string("x", "y", col = color),
+      size = 0.9, alpha = 0.5
+    ) +
+    geom_point(
+      data = genus_centroid,
+      aes_string(x = "x", y = "y", fill = color),
+      size = 3, pch = 21, stroke = 0.2
+    ) +
+    geom_text_repel(
+      data = data_repel,
+      aes_string(x = "x", y = "y", label = label),
+      size = 5,
+      force = 0.2
+    ) +
+    facet_wrap(~Subject) + theme_scatter + #xlim(log(-0.5), NA) +
+    xlab(paste0("log(", x, ")")) + ylab(paste0("log(", y, ")"))
+}
+```
+
+
+```{r, fig.width=10, fig.height=10}
+subjects <- unique(scatter_data$Subject)
+for (sub in subjects) {
+  plt <- plot_comparison(
+    scatter_data %>% filter(Subject == sub), 
+    genus_subject_centroid %>% filter(Subject == sub),
+    x = "16s", y = "metat",  
+    color = "Family", label = "Genus") 
+  print(plt)
+}
+
+```
+
+
+
+
+## Data aggregated by function
+
+
+
+```{r, include = FALSE}
+funtab <- fread(file.path(datadir, "final_results/function_abundance_refseq.csv"))
+```
+
+
+
+
+
+
+
+
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
