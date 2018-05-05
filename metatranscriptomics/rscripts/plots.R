@@ -5,7 +5,7 @@
 ## Plotting counts. 
 ##
 ## author: nlhuong90@gmail.com
-## date: 03/15/2018
+## data 3/15/201
 
 ###############################################################################
 ## Libraries and setup
