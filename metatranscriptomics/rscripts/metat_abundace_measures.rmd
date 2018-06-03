@@ -1,9 +1,31 @@
 ---
-title: "Metatranscriptomics Abundance measures"
+title: "Metatranscriptomics abundance distributions"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
 output: 
-  html_notebook:
-    toc:true
+  BiocStyle::html_document2:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
 ---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+rm(list = ls())
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE,
+  warning = FALSE, fig.width = 10, fig.height = 7,
+  fig.path = "figs/", dev='png') 
+```
+
 
 In this notebook we examine the distributions of 
 the abundance measures obtained for metatranscriptomics
@@ -69,8 +91,6 @@ plt_trend <- function(df, x, y, contour = FALSE,
   }
   return(plt)
 }
-
-
 ```
 
 
@@ -90,6 +110,8 @@ rm(gene_info2)
 metat <- metat[, !c("Organism", "Function"), with = FALSE]
 ```
 
+
+
 # Basic data summary
 
 The abundance measure for a gene $i$ in measurement (sample) $j$ - `metat[i, j]` -
@@ -99,6 +121,19 @@ this ratio as **abundance** from this point on.
 
 Note that for each read, the number of basepairs aligned to a reference sequence
 (gene) is usually much smaller than the length of that reference sequence.
+
+## Sample depths
+
+```{r}
+sample_depth <- colSums(metat[, !c("GeneID"), with = FALSE], na.rm = TRUE)
+summary(sample_depth)
+```
+
+
+```{r raw-sample-depths}
+qplot(sample_depth, bins = 50)
+```
+
 
 ## Obtain statistics on features
 
@@ -139,26 +174,16 @@ summary(gene_info)
 ```
 
 
-```{r}
-sample_depth <- colSums(metat[, !c("GeneID"), with = FALSE], na.rm = TRUE)
-summary(sample_depth)
-```
-
-```{r}
-qplot(sample_depth, bins = 50)
-```
-
-
 ## Data Filtering
 
 We discard all the samples for which the coverage was too small.
 
 ```{r}
-sample_depth[sample_depth < 100]
+sample_depth[sample_depth < 500]
 ```
 
 ```{r}
-metat <- metat[, c("GeneID", names(sample_depth)[sample_depth > 100]), with = FALSE]
+metat <- metat[, c("GeneID", names(sample_depth)[sample_depth > 500]), with = FALSE]
 dim(metat)
 ```
 
@@ -184,14 +209,64 @@ quantile(gene_info$prev, seq(0, 1, 0.05))
 
 ```{r}
 sample_cols <- setdiff(colnames(metat), "GeneID")
-metat_fltr <- metat_fltr[
+metat_fltr <- metat[
   , (sample_cols) := lapply(.SD, replace_na_with_zero), 
    .SDcols = sample_cols]
 
-# We filter out the genes which occur in less than 5 samples
+# We filter out the genes which occur in less than 5% samples
+frac <- 0.05
 metat_fltr <- metat_fltr[
-  rowSums(metat_fltr[, !c("GeneID"), with = FALSE] > 0) > 5]
+  rowSums(metat_fltr[, !c("GeneID"), with = FALSE] > 0) > frac*length(sample_cols)]
 dim(metat_fltr)
+```
+
+Sample depth before filtering
+
+```{r}
+sample_depth <- colSums(metat[, !c("GeneID"), with = FALSE], na.rm = TRUE)
+summary(sample_depth)
+```
+Sample depth after filtering
+
+```{r}
+sample_depth_fltr <- colSums(metat_fltr[, !c("GeneID"), with = FALSE], na.rm = TRUE)
+summary(sample_depth_fltr)
+```
+
+```{r}
+smp_data <- data.frame(
+  File_Name = as.character(colnames(metat_fltr[, !c("GeneID")])),
+  stringsAsFactors = FALSE
+  ) %>%
+  mutate(
+    Meas_ID = sapply(File_Name, function(x) strsplit(x,  "_")[[1]][1]),
+    Subject = sapply(File_Name, function(x) strsplit(x,  "_")[[1]][2]),
+    Subject = gsub("sw", "", Subject)
+  ) %>%
+  tibble::column_to_rownames("File_Name")
+```
+
+
+```{r}
+dds <- DESeq2::DESeqDataSetFromMatrix(
+  floor(metat_fltr[, !c("GeneID")]), colData = smp_data, design = ~1)
+dds <- DESeq2::estimateSizeFactors(dds, type = "poscounts")
+```
+
+
+```{r}
+qplot(sample_depth_fltr, DESeq2::sizeFactors(dds))
+```
+
+```{r}
+sample_cols <- setdiff(colnames(metat_fltr), "GeneID")
+metat_fltr_asinh <- copy(metat_fltr)[
+  , (sample_cols) := lapply(.SD, asinh), 
+   .SDcols = sample_cols]
+
+metat_fltr_log <- copy(metat_fltr)[
+  , (sample_cols) := lapply(.SD, log1p),
+   .SDcols = sample_cols]
 ```
 
 
@@ -207,35 +282,103 @@ gene_stats <- metat_fltr[,
   .SDcols = sample_cols
 ]
 summary(gene_stats)
-
-
 ```
 
 ```{r}
+gene_stats_asinh<- metat_fltr_asinh[, 
+  .(GeneID,
+  Sum = rowSums(.SD),
+  Prev = rowSums(.SD > 0),
+  Mean  =  rowMeans(.SD),
+  Median = apply(.SD, 1, median),
+  Var = apply(.SD, 1, var),
+  SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+summary(gene_stats_asinh)
+```
+
+```{r}
+gene_stats_log <- metat_fltr_log[,
+  .(GeneID,
+  Sum = rowSums(.SD),
+  Prev = rowSums(.SD > 0),
+  Mean  =  rowMeans(.SD),
+  Median = apply(.SD, 1, median),
+  Var = apply(.SD, 1, var),
+  SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+summary(gene_stats_log)
+```
+
+
+```{r gene-sums-raw}
 qplot(gene_stats$Sum, bins = 50) + scale_x_log10() +
   ggtitle("Distribution of gene abundance sums across all samples")
 ```
 
+```{r gene-sums-asinh}
+qplot(gene_stats_asinh$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("Distribution of asinh transformed gene abundance sums across all samples")
+```
+
+```{r gene-sums-log1p}
+qplot(gene_stats_log$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("Distribution of log1p transformed gene abundance sums across all samples")
+```
 
 
-```{r}
+```{r mean-var-raw}
 plt_trend(gene_stats, "Mean", "Var", max_npoints = 10^5,
           contour = TRUE, log_y = TRUE) +
   geom_abline(color = "red", slope = 1, intercept = 0) +
   ggtitle("Gene abundance: Mean vs Variance") 
+```
+
+```{r mean-var-log}
+plt_trend(gene_stats_log, "Mean", "Var", max_npoints = 10^5,
+          contour = TRUE, log_y = TRUE) +
+  geom_abline(color = "red", slope = 1, intercept = 0) +
+  ggtitle("Log1p gene abundance: Mean vs Variance") 
 
 ```
 
 
-```{r}
+```{r mean-var-asinh}
+plt_trend(gene_stats_asinh, "Mean", "Var", max_npoints = 10^5,
+          contour = TRUE, log_y = TRUE) +
+  geom_abline(color = "red", slope = 1, intercept = 0) +
+  ggtitle("Asinh gene abundance: Mean vs Variance") 
+
+```
+
+```{r mean-var-asinh-no-log}
+plt_trend(gene_stats_asinh, "Mean", "Var", max_npoints = 10^5,
+          contour = TRUE, log_y = TRUE, log_x = FALSE) +
+  ggtitle("Asinh gene abundance: Mean vs Variance") + xlim(NA, 1.5)
+
+```
+
+```{r mean-prev-raw}
 plt_trend(gene_stats, "Mean", "Prev", 
-          max_npoints = 10^5, contour = TRUE) +
+          max_npoints = 10^5, contour = TRUE, log_y = FALSE) +
   ggtitle("Gene abundance: Mean vs Prevalence") +
   scale_y_continuous(
     limits = c(NA, quantile(gene_stats[["Prev"]], 0.99)),
     expand = c(0, 0))
 ```
 
+```{r mean-prev-asinh}
+plt_trend(gene_stats_asinh, "Mean", "Prev", 
+          max_npoints = 10^5, contour = TRUE, 
+          log_x = FALSE) +
+  ggtitle("Asinh gene abundance: Mean vs Prevalence") +
+  xlim(NA, 1.5) +
+  scale_y_continuous(
+    limits = c(NA, quantile(gene_stats[["Prev"]], 0.99)),
+    expand = c(0, 0)) 
+```
 
 # Aggregated data 
 
@@ -297,24 +440,10 @@ Top 10 organisms with most prevalent genes:
 gene_info[, .(total_prev = sum(prev)), by = .(Organism)][order(-total_prev)][1:10]
 ```
 
-Top 10 organisms with most abundant genes:
-
-```{r}
-gene_info[, .(total_sum = sum(sum)), by = .(Function)][order(-total_sum)][1:10]
-```
-
-
-Top 10 organisms with most prevalent genes:
-
-```{r}
-gene_info[, .(total_prev = sum(prev)), by = .(Function)][order(-total_prev)][1:10]
-```
 
 
 As expected the top functions are the ones with an uninformative 
 label "hypothetical protein".
-
-
 
 
 ## Data aggregated by organism:
@@ -322,7 +451,7 @@ label "hypothetical protein".
 
 ```{r, include=FALSE}
 # Now you can restart an rsession and reload packages to clean up memory
-rm(metat, metat_fltr, sample_depth, gene_info)
+rm(metat, sample_depth, gene_info)
 library("data.table")
 library("gridExtra")
 library("tidyverse")
@@ -336,6 +465,7 @@ theme_updates <- theme(text = element_text(size =20))
 ```{r}
 datadir <- "/scratch/PI/sph/resilience/metatranscriptomics/processed/"
 orgtab <- fread(file.path(datadir, "final_results/organism_abundance_refseq.csv"))
+
 ```
 
 
@@ -347,7 +477,9 @@ orgtab <- orgtab %>%
     Org = gsub("unclassified ", "", Organism),
     Org = gsub("uncultured ", "", Org),
     Org = gsub("unicellular ", "", Org)
-    ) %>%
+    ) 
+
+orgtab <- orgtab %>%
   separate(Org, c("Genus", "Species", "Strain"), 
            remove = TRUE, extra = "merge") 
 ```
@@ -361,6 +493,9 @@ sample_cols <- setdiff(colnames(orgtab), taxrank)
 nsamples <- length(sample_cols)
 
 orgtab <- data.table(orgtab)
+orgtab_asinh <- copy(orgtab)[
+  , (sample_cols) := lapply(.SD, asinh), 
+   .SDcols = sample_cols]
 
 org_stats <- orgtab[, 
   .(Organism,
@@ -374,28 +509,66 @@ org_stats <- orgtab[,
 ]
 
 summary(org_stats)
-
-
 ```
 
 ```{r}
+org_stats_asinh <- orgtab_asinh[, 
+  .(Organism,
+    Sum = rowSums(.SD),
+    Prev = rowSums(.SD > 0),
+    Mean  =  rowMeans(.SD),
+    Median = apply(.SD, 1, median),
+    Var = apply(.SD, 1, var),
+    SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+
+summary(org_stats)
+```
+
+
+```{r org-sum}
 qplot(org_stats$Sum, bins = 50) + scale_x_log10() +
   ggtitle("Organism sums across samples")
 ```
 
-```{r}
+```{r org-sum}
+qplot(org_stats_asinh$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("Asinh organism sums across samples")
+```
+
+```{r org-mean-var-raw}
 plt_trend(org_stats, "Mean", "Var", contour = TRUE, log_y = TRUE) +
   ggtitle("Organism abundance: Mean vs Variance") +
   geom_abline(slope = 1, color = "red")
 ```
 
+```{r org-mean-var-asinh}
+plt_trend(org_stats_asinh, "Mean", "Var", contour = TRUE, log_y = TRUE) +
+  geom_abline(slope = 1, color = "red") +
+  ggtitle("Asinh organism abundance: Mean vs Variance") 
+```
 
-```{r}
+
+```{r org-mean-var-asinh-no-log}
+plt_trend(org_stats_asinh, "Mean", "Var", contour = TRUE, 
+          log_x = FALSE, log_y = TRUE) +
+  ggtitle("Asinh organism abundance: Mean vs Variance") +
+  xlim(NA, 1.5)
+```
+
+```{r org-mean-prev-raw}
 plt_trend(org_stats, "Mean", "Prev", 
           max_npoints = 10^5, contour = TRUE) +
  ggtitle("Organism abundance: Mean vs Prevalence")
 ```
 
+```{r org-mean-prev-asinh}
+plt_trend(org_stats_asinh, "Mean", "Prev", 
+          max_npoints = 10^5, contour = TRUE, log_x = FALSE) +
+  ggtitle("Asinh organism abundance: Mean vs Prevalence") +
+  xlim(NA, 1.5)
+```
 
 Now we are reading in 16s data for comparison and to obtain taxonomic
 classification.
@@ -513,15 +686,16 @@ genus_stat[1:10]
 ```
 
 ```{r}
-example_genera <- genustab[
+set.seed(123456)
+genera_ord <- genustab[
   , .(Phylum, Class, Order, Family, Genus, sum = rowSums(.SD)), 
   .SDcols = sample_cols][order(-sum)][!is.na(Genus)]
 
-interval <- floor(seq(1, nrow(example_genera), length.out = 6))
+interval <- floor(seq(1, nrow(genera_ord), length.out = 6))
 keep_idx <- c(sample(1:interval[2], 10), 
               sample(interval[3]:interval[4], 10),
-              sample(interval[5]:nrow(example_genera), 10))
-example_genera <- example_genera[keep_idx, Genus]
+              sample(interval[5]:nrow(genera_ord), 10))
+example_genera <- genera_ord[keep_idx, Genus]
 
 
 melt_example_genus <- genustab[Genus %in% example_genera] %>%
@@ -529,7 +703,10 @@ melt_example_genus <- genustab[Genus %in% example_genera] %>%
   mutate(Genus = factor(Genus, levels = example_genera))
 ```
 
-```{r, fig.width=12, fig.height=10}
+
+
+
+```{r genera-hist-raw, fig.width=12, fig.height=10}
 ggplot(melt_example_genus) +
   geom_histogram(
     aes(x = abundance, fill = Family),
@@ -537,6 +714,23 @@ ggplot(melt_example_genus) +
   facet_wrap(~ Genus, scale = "free", ncol = 5)
 ```
 
+
+```{r genera-hist-asinh, fig.width=20, fig.height=12}
+genustab_asinh <- copy(genustab)[
+  , (sample_cols) := lapply(.SD, asinh), 
+   .SDcols = sample_cols]
+
+melt_example_genus_asinh <- genustab_asinh[Genus %in% genera_ord$Genus[1:20]] %>%
+  gather(Meas_ID, abundance, -(Kingdom:Genus)) %>%
+  mutate(Genus = factor(Genus, levels = genera_ord$Genus[1:20]))
+
+ggplot(melt_example_genus_asinh) +
+  geom_histogram(
+    aes(x = abundance, fill = Family),
+    bins = 30) +
+  facet_wrap(~ Genus, scale = "free", ncol = 7) +
+  theme(text = element_text(size = 20))
+```
 
 Now we will compare the metatranscriptomics abundance measures with 16s 
 counts on a genus level.
@@ -666,7 +860,8 @@ genus_subject_centroid <- scatter_data %>%
   summarise(
     "16s" = median(`16s`),
     metat = median(metat, na.rm = TRUE)
-  ) 
+  ) %>%
+  as.data.frame()
 
 ```
 
@@ -679,8 +874,8 @@ plot_comparison <- function(scatter_data, genus_centroid,
   
   theme_scatter <- theme(
     legend.position = "bottom",  
-    text = element_text(size = 12),
-    strip.text = element_text(size = 12),
+    text = element_text(size = 15),
+    strip.text = element_text(size = 15),
     strip.background = element_blank()
   )
 
@@ -700,12 +895,11 @@ plot_comparison <- function(scatter_data, genus_centroid,
   data_repel <-  genus_centroid %>%
     filter(
       x > 0, y > 0, 
-      abs(log(x)- log(y)) > 2.5
-    ) %>%
-    mutate(x = log(x), y = log(y) )
+      abs(log10(x)- log10(y)) > 1.5
+    )# %>% mutate(x = log10(x), y = log10(y) )
   
-  genus_centroid[, c("x", "y")] <- log(genus_centroid[, c("x", "y")])
-  scatter_data[, c("x", "y")] <- log(scatter_data[, c("x", "y")])
+ #  genus_centroid[, c("x", "y")] <- log10(genus_centroid[, c("x", "y")])
+ #  scatter_data[, c("x", "y")] <- log10(scatter_data[, c("x", "y")])
   
   ggplot() +
     geom_abline(alpha = 0.4, size = 0.2) +
@@ -725,20 +919,42 @@ plot_comparison <- function(scatter_data, genus_centroid,
       size = 5,
       force = 0.2
     ) +
-    facet_wrap(~Subject) + theme_scatter + #xlim(log(-0.5), NA) +
-    xlab(paste0("log(", x, ")")) + ylab(paste0("log(", y, ")"))
+    facet_wrap(~Subject) + theme_scatter +
+    scale_x_log10() + scale_y_log10() + 
+    guides(color = "none") +
+    xlab(x) + ylab(y) #xlim(log(-0.5), NA) 
 }
 ```
 
 
-```{r, fig.width=10, fig.height=10}
+```{r}
+family_stat <- genus_stat %>%
+  group_by(Phylum, Class, Order, Family) %>%
+  summarise(sum = sum(sum)) %>%
+  arrange(desc(sum))
+
+tbl_df(family_stat)
+
+top20_family <- family_stat %>% 
+  filter(!is.na(Family)) 
+
+top20_family <- top20_family[1:20, ] %>% .[["Family"]]
+
+```
+
+
+```{r metat-vs-16s, fig.width=10, fig.height=10}
 subjects <- unique(scatter_data$Subject)
 for (sub in subjects) {
   plt <- plot_comparison(
-    scatter_data %>% filter(Subject == sub), 
-    genus_subject_centroid %>% filter(Subject == sub),
+    scatter_data %>% 
+      filter(Subject == sub) %>%
+      mutate(Family = factor(Family, levels = top10_family)), 
+    genus_subject_centroid %>% 
+      filter(Subject == sub) %>%
+      mutate(Family = factor(Family, levels = top10_family)),
     x = "16s", y = "metat",  
-    color = "Family", label = "Genus") 
+    color = "Family", label = "Genus")  
   print(plt)
 }
 
@@ -757,9 +973,650 @@ funtab <- fread(file.path(datadir, "final_results/function_abundance_refseq.csv"
 
 
 
+```{r}
+cat("Number of unique Functions: ", length(unique(gene_info$Function)), "\n")
+```
+
+
+Top 10 function with most abundant genes:
+
+```{r}
+gene_info[, .(total_sum = sum(sum)), by = .(Function)][order(-total_sum)][1:10]
+
+
+```
+
+
+Top 10 functions with most prevalent genes:
+
+```{r}
+gene_info[, .(total_prev = sum(prev)), by = .(Function)][order(-total_prev)][1:10]
+```
+
+
+```{r}
+fun_stats <- funtab[, 
+  .(Function,
+    Sum = rowSums(.SD),
+    Prev = rowSums(.SD > 0),
+    Mean  =  rowMeans(.SD),
+    Median = apply(.SD, 1, median),
+    Var = apply(.SD, 1, var),
+    SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+
+summary(fun_stats)
+```
+
+```{r}
+sample_cols <- setdiff(colnames(funtab), "Function")
+funtab_asinh <- copy(funtab)[
+  , (sample_cols) := lapply(.SD, asinh), 
+   .SDcols = sample_cols]
+
+fun_stats_asinh <- funtab_asinh[, 
+  .(Function,
+    Sum = rowSums(.SD),
+    Prev = rowSums(.SD > 0),
+    Mean  =  rowMeans(.SD),
+    Median = apply(.SD, 1, median),
+    Var = apply(.SD, 1, var),
+    SD = apply(.SD, 1, sd)),
+  .SDcols = sample_cols
+]
+
+summary(fun_stats)
+```
+
+
+```{r fun-sum}
+qplot(fun_stats$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("function sums across samples")
+```
+
+```{r fun-sum}
+qplot(fun_stats_asinh$Sum, bins = 50) + scale_x_log10() +
+  ggtitle("Asinh function sums across samples")
+```
+
+```{r fun-mean-var-raw}
+plt_trend(fun_stats, "Mean", "Var", contour = TRUE, log_y = TRUE) +
+  ggtitle("function abundance: Mean vs Variance") +
+  geom_abline(slope = 1, color = "red")
+```
+
+```{r fun-mean-var-asinh}
+plt_trend(fun_stats_asinh, "Mean", "Var", contour = TRUE, log_y = TRUE) +
+  geom_abline(slope = 1, color = "red") +
+  ggtitle("Asinh function abundance: Mean vs Variance") 
+```
+
+
+```{r fun-mean-var-asinh-no-log}
+plt_trend(fun_stats_asinh, "Mean", "Var", contour = TRUE, 
+          log_x = FALSE, log_y = TRUE) +
+  ggtitle("Asinh function abundance: Mean vs Variance") +
+  xlim(NA, 1.5)
+```
+
+```{r fun-mean-prev-raw}
+plt_trend(fun_stats, "Mean", "Prev", 
+          max_npoints = 10^5, contour = TRUE) +
+ ggtitle("function abundance: Mean vs Prevalence")
+```
+
+```{r fun-mean-prev-asinh}
+plt_trend(fun_stats_asinh, "Mean", "Prev", 
+          max_npoints = 10^5, contour = TRUE, log_x = FALSE) +
+  ggtitle("Asinh function abundance: Mean vs Prevalence") +
+  xlim(NA, 1.5)
+```
+
+```{r}
+head(funtab)
+```
+
+```{r}
+top_functions
+```
+
+
+```{r}
+top_20_function <- gene_info[, .(total_sum = sum(sum)), by = .(Function)][order(-total_sum)][1:20][["Function"]]
+melt_example_function_asinh <- funtab_asinh[Function %in% top_20_function] %>%
+  gather(Meas_ID, abundance, -Function) %>%
+  mutate(Function = factor(Function, levels = top_20_function))
+```
 
 
 
+```{r function-hist-asinh, fig.width=30, fig.height=20}
+ggplot(melt_example_function_asinh) +
+  geom_histogram(
+    aes(x = abundance),
+    bins = 30) +
+  facet_wrap(~ Function, scale = "free", ncol = 5) +
+  theme(text = element_text(size = 25))
+```
+
+```{r}
+top_20_function <- gene_info[, .(total_sum = sum(sum)), by = .(Function)]
+top_20_function <- top_20_function[
+  sapply(top_20_function$Function, function(x) !grepl("hypothetical", x))
+]
+top_20_function <- top_20_function[
+  sapply(top_20_function$Function, function(x) !grepl("ribosomal", x))
+]
+
+top_20_function <- top_20_function[order(-total_sum)][1:20][["Function"]]
+melt_example_function_asinh <- funtab_asinh[Function %in% top_20_function] %>%
+  gather(Meas_ID, abundance, -Function) %>%
+  mutate(Function = factor(Function, levels = top_20_function))
+```
+
+
+
+```{r function-hist-asinh-fltr, fig.width=30, fig.height=20}
+ggplot(melt_example_function_asinh) +
+  geom_histogram(
+    aes(x = abundance),
+    bins = 30) +
+  facet_wrap(~ Function, scale = "free", ncol = 5) +
+  theme(text = element_text(size = 25))
+```
+
+```{r}
+data.frame(top20 = top_20_function)
+```
+
+# Ordinations
+
+
+## Organism abundaces
+
+```{r}
+X <- t(as(orgtab[, !taxrank, with = FALSE], "matrix"))
+smp_data <- meas %>%
+  filter(Meas_ID %in% gsub("\\_(.*)", "", rownames(X))) %>%
+  select(-contains("Date"), -Full_Code) %>%
+  left_join(
+    ps@sam_data %>% 
+      select(Group:BirthYear, -contains("RelDay"), -contains("Interval")) %>%
+      rename("Samp_ID" = SampID)
+  )
+```
+
+```{r}
+bray_dist <- vegan::vegdist(X, "bray")
+```
+
+
+```{r}
+set.seed(123456)
+tsne_bray <- Rtsne::Rtsne(
+  bray_dist, dims = 2, 
+  theta = 0.0,
+  is_distance = TRUE, pca = FALSE,
+  perplexity = 20, #min(30, floor((nrow(X) - 1)/3)),
+  eta = 10, exaggeration_factor = 20)
+  #eta = 10, exaggeration_factor = 12)
+scores <- as.data.frame(tsne_bray$Y)
+rownames(scores) <- rownames(X)
+```
+
+
+```{r}
+colnames(scores) <- paste0("Axis", 1:ncol(scores))
+scores_df <- scores %>%
+  rownames_to_column("Meas_ID") %>%
+  mutate(Meas_ID = gsub("\\_(.*)", "", Meas_ID)) %>%
+  left_join(smp_data) %>%
+  arrange(Group, Subject, Samp_Date)
+```
+
+```{r tsne-subj-org-metat, fig.width=10, fig.height=8}
+(plt <- ggplot(scores_df, aes(Axis1, Axis2)) +
+  geom_text(
+    aes(label = Subject, color = Subject), size = 5) +
+   scale_color_brewer(palette = "Set1") +
+   ggtitle("tSNE plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))
+)
+```
+
+
+```{r tsne-subj-org-metat-abx, fig.width=10, fig.height=8}
+library(viridis)
+(plt <- ggplot(
+  scores_df %>%
+    mutate(Abx_RelDay = as.numeric(Abx_RelDay)),
+  aes(Axis1, Axis2)
+  ) +
+  geom_text(
+    aes(label = Subject, color = Abx_RelDay), size = 5) +
+   scale_color_viridis(option = "inferno") +
+   ggtitle("tSNE plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20), legend.position = "bottom"))
+```
+
+
+```{r tsne-subj-org-metat-time-diet, fig.width=10, fig.height=8}
+(plt <- ggplot(
+  scores_df %>%
+    mutate(Diet_RelDay = as.numeric(Diet_RelDay)),
+  aes(Axis1, Axis2)
+  ) +
+  geom_text(
+    aes(label = Subject, color = Diet_RelDay), size = 5) +
+   scale_color_viridis() +
+   ggtitle("tSNE plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20), legend.position = "bottom")) 
+```
+
+```{r}
+X_asinh <- t(as(orgtab_asinh[, !taxrank, with = FALSE], "matrix"))
+
+pca_res <- prcomp(scale(X_asinh, scale = FALSE))
+scores_pca <- as.data.frame(pca_res$x)
+loadings_pca <- as.data.frame(pca_res$rotation)
+eigs_pca <- data.frame(
+  eig_idx = 1:length(pca_res$sdev), 
+  eig = pca_res$sdev^2) %>%
+  mutate(var_exp = 100*eig/sum(eig))
+```
+
+
+```{r}
+colnames(scores_pca) <- paste0("Axis", 1:ncol(scores_pca))
+scores_pca_df <- scores_pca %>%
+  rownames_to_column("Meas_ID") %>%
+  mutate(Meas_ID = gsub("\\_(.*)", "", Meas_ID)) %>%
+  left_join(smp_data) %>%
+  arrange(Group, Subject, Samp_Date)
+```
+
+```{r pca-subj-org-metat, fig.width=10, fig.height=8}
+var.explained <- round(eigs_pca$var_exp, 2)
+(plt <- ggplot(scores_pca_df, aes(Axis1, Axis2)) +
+   geom_text(
+    aes(label = Subject, color = Subject), 
+    size = 5) +
+   scale_color_brewer(palette = "Set2") +
+   ggtitle("PCA plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))  + 
+  labs(
+    x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+    y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+  ) +
+  coord_fixed(max(1, sqrt(var.explained[2] / var.explained[1])))
+)
+```
+
+```{r pca-subj-org-metat-diet, fig.width=10, fig.height=8}
+var.explained <- round(eigs_pca$var_exp, 2)
+(plt <- ggplot(
+  scores_pca_df %>%
+    mutate(Diet_RelDay = as.numeric(Diet_RelDay)), aes(Axis1, Axis2)) +
+   geom_text(
+    aes(label = Subject, color = Diet_RelDay), 
+    size = 5) +
+   scale_color_viridis() +
+   ggtitle("PCA plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))  + 
+  labs(
+    x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+    y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+  ) +
+  coord_fixed(max(1, sqrt(var.explained[2] / var.explained[1])))
+)
+```
+
+```{r pca-subj-org-metat-abx, fig.width=10, fig.height=8}
+var.explained <- round(eigs_pca$var_exp, 2)
+(plt <- ggplot(
+  scores_pca_df %>%
+    mutate(Abx_RelDay = as.numeric(Abx_RelDay)), aes(Axis1, Axis2)) +
+   geom_text(
+    aes(label = Subject, color = Abx_RelDay), 
+    size = 5) +
+   scale_color_viridis(option = "magma") +
+   ggtitle("PCA plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))  + 
+  labs(
+    x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+    y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+  ) +
+  coord_fixed(max(1, sqrt(var.explained[2] / var.explained[1])))
+)
+```
+
+```{r}
+plot_scores_time <- function(scores, size = 3, text = FALSE, 
+                             eigs = NULL, path = FALSE){
+  scores <- scores %>% 
+    arrange(Subject, DayFromStart)
+  plt <- ggplot(
+    scores %>% filter(Subject != "NA_QC"), 
+    aes_string(x = "Axis1", y = "Axis2")
+  ) 
+  if(path) {
+    plt <- plt + 
+      geom_path(
+        aes(group = Subject, color = DayFromStart), 
+        alpha = 0.8, lwd = 1) 
+  }
+  if(text){
+    plt <- plt + 
+      geom_text(aes(color = DayFromStart, label = Subject))
+    
+  } else {
+    plt <- plt +
+      geom_point(aes(color = DayFromStart), size = size)  
+  }
+  plt <- plt +
+    geom_point(
+      data = scores %>% filter(Timeline != "typical"), 
+      aes(fill = Timeline, shape = Timeline),
+      size = 2*size, lwd=10
+    ) +
+    scale_color_viridis() + 
+    scale_shape_manual(values = c(23:25, 21, 22)) 
+
+  if(!is.null(eigs)){
+    var.explained <- round(100 * eigs/sum(eigs), 2)
+    plt <- plt + 
+      labs(
+        x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+        y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+      ) +
+      coord_fixed(sqrt(var.explained[2] / var.explained[1])) 
+  }
+  return(plt + theme(text = element_text(size = 20))) 
+} 
+```
+
+
+```{r fig.width=15, fig.height=8}
+plot_scores_time(scores_df , path = TRUE) +
+  facet_wrap(~Subject, scales = "free")
+```
+
+
+
+## Function
+
+## Organism abundaces
+
+```{r}
+X <- t(as(funtab[, !c("Function"), with = FALSE], "matrix"))
+X_asinh <- t(as(funtab_asinh[, !c("Function"), with = FALSE], "matrix"))
+
+bray_dist <- vegan::vegdist(X, "bray")
+```
+
+```{r}
+set.seed(123456)
+tsne_bray <- Rtsne::Rtsne(
+  bray_dist, dims = 2, 
+  theta = 0.0,
+  is_distance = TRUE, pca = FALSE,
+  perplexity = 30, #min(30, floor((nrow(X) - 1)/3)),
+  eta = 100, exaggeration_factor = 12)
+  #eta = 10, exaggeration_factor = 12)
+scores <- as.data.frame(tsne_bray$Y)
+rownames(scores) <- rownames(X)
+```
+
+
+```{r}
+set.seed(123456)
+tsne_asinh <- Rtsne::Rtsne(
+  X_asinh, dims = 2, 
+  theta = 0.0,
+  is_distance = FALSE, pca = TRUE,
+  perplexity = 30)
+# , #min(30, floor((nrow(X) - 1)/3)),
+#   eta = 100, exaggeration_factor = 12)
+#   #eta = 10, exaggeration_factor = 12)
+scores <- as.data.frame(tsne_asinh$Y)
+rownames(scores) <- rownames(X)
+```
+
+
+
+```{r}
+colnames(scores) <- paste0("Axis", 1:ncol(scores))
+scores_df <- scores %>%
+  rownames_to_column("Meas_ID") %>%
+  mutate(Meas_ID = gsub("\\_(.*)", "", Meas_ID)) %>%
+  left_join(smp_data) %>%
+  arrange(Group, Subject, Samp_Date)
+```
+
+```{r tsne-subj-fun-metat, fig.width=10, fig.height=8}
+(plt <- ggplot(scores_df, aes(Axis1, Axis2)) +
+  geom_text(
+    aes(label = Subject, color = Subject), size = 5) +
+   scale_color_brewer(palette = "Set1") +
+   ggtitle("tSNE plot on function aggragated abundances") +
+   theme(text = element_text(size = 20))
+)
+```
+
+
+```{r tsne-subj-fun-metat-abx, fig.width=10, fig.height=8}
+library(viridis)
+(plt <- ggplot(
+  scores_df %>%
+    mutate(Abx_RelDay = as.numeric(Abx_RelDay)),
+  aes(Axis1, Axis2)
+  ) +
+  geom_text(
+    aes(label = Subject, color = Abx_RelDay), size = 5) +
+   scale_color_viridis(option = "inferno") +
+   ggtitle("tSNE plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20), legend.position = "bottom"))
+```
+
+
+```{r tsne-subj-org-metat-time-diet, fig.width=10, fig.height=8}
+(plt <- ggplot(
+  scores_df %>%
+    mutate(Diet_RelDay = as.numeric(Diet_RelDay)),
+  aes(Axis1, Axis2)
+  ) +
+  geom_text(
+    aes(label = Subject, color = Diet_RelDay), size = 5) +
+   scale_color_viridis() +
+   ggtitle("tSNE plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20), legend.position = "bottom")) 
+```
+
+
+```{r fig.width=15, fig.height=8}
+plot_scores_time(scores_df , path = TRUE) +
+  facet_wrap(~Subject, scales = "free")
+```
+
+```{r}
+
+pca_res <- prcomp(scale(X_asinh, scale = FALSE))
+scores_pca <- as.data.frame(pca_res$x)
+loadings_pca <- as.data.frame(pca_res$rotation)
+eigs_pca <- data.frame(
+  eig_idx = 1:length(pca_res$sdev), 
+  eig = pca_res$sdev^2) %>%
+  mutate(var_exp = 100*eig/sum(eig))
+```
+
+
+```{r}
+colnames(scores_pca) <- paste0("Axis", 1:ncol(scores_pca))
+scores_pca_df <- scores_pca %>%
+  rownames_to_column("Meas_ID") %>%
+  mutate(Meas_ID = gsub("\\_(.*)", "", Meas_ID)) %>%
+  left_join(smp_data) %>%
+  arrange(Group, Subject, Samp_Date)
+```
+
+```{r pca-subj-fun-metat, fig.width=10, fig.height=8}
+var.explained <- round(eigs_pca$var_exp, 2)
+(plt <- ggplot(scores_pca_df, aes(Axis1, Axis2)) +
+   geom_text(
+    aes(label = Subject, color = Subject), 
+    size = 5) +
+   scale_color_brewer(palette = "Set1") +
+   ggtitle("PCA plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))  + 
+  labs(
+    x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+    y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+  ) +
+  coord_fixed(max(1, sqrt(var.explained[2] / var.explained[1])))
+)
+```
+
+```{r pca-subj-fun-metat-diet, fig.width=10, fig.height=8}
+var.explained <- round(eigs_pca$var_exp, 2)
+(plt <- ggplot(
+  scores_pca_df %>%
+    mutate(Diet_RelDay = as.numeric(Diet_RelDay)), aes(Axis1, Axis2)) +
+   geom_text(
+    aes(label = Subject, color = Diet_RelDay), 
+    size = 5) +
+   scale_color_viridis() +
+   ggtitle("PCA plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))  + 
+  labs(
+    x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+    y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+  ) +
+  coord_fixed(max(1, sqrt(var.explained[2] / var.explained[1])))
+)
+```
+
+```{r pca-subj-fun-metat-abx, fig.width=10, fig.height=8}
+var.explained <- round(eigs_pca$var_exp, 2)
+(plt <- ggplot(
+  scores_pca_df %>%
+    mutate(Abx_RelDay = as.numeric(Abx_RelDay)), aes(Axis1, Axis2)) +
+   geom_text(
+    aes(label = Subject, color = Abx_RelDay), 
+    size = 5) +
+   scale_color_viridis(option = "magma") +
+   ggtitle("PCA plot on organism aggragated abundances") +
+   theme(text = element_text(size = 20))  + 
+  labs(
+    x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+    y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+  ) +
+  coord_fixed(max(1, sqrt(var.explained[2] / var.explained[1])))
+)
+```
+
+
+
+
+# Read coverage 
+
+
+```{r}
+stats <- read.csv("/scratch/PI/sph/resilience/metatranscriptomics/stats/metat_workflow_stats.csv")
+head(stats)
+```
+
+```{r}
+stats <- stats %>%
+  mutate(
+    Filename = as.character(Meas_ID),
+    Subject = sapply(Filename, function(x) strsplit(x, "_")[[1]][2]), 
+    Meas_ID = sapply(Filename, function(x) strsplit(x, "_")[[1]][1]),
+    Subject = sapply(Subject, function(x) gsub("sw", "", x)) 
+  )
+dim(stats)
+```
+
+```{r}
+stats <- stats %>%
+  filter(!is.na(input_fwd))
+dim(stats)
+head(stats)
+```
+
+
+```{r fig.width=12, fig.height=8}
+preproc_cols <- 
+  c("input_fwd", "trimmed", "qual_fltr", 
+    "mRNA", "dmnd_refseq", "dmnd_seed")
+
+melt_preproc <- stats[, c("Meas_ID", "Subject", preproc_cols)] %>%
+  gather(step, count, input_fwd:dmnd_seed) %>%
+  mutate(step = factor(step, levels = preproc_cols))
+
+
+ggplot(melt_preproc, aes(x = step, y=count)) +
+  geom_violin() + 
+  geom_jitter(
+    aes(color=Subject),
+    alpha = 0.5, height = 0, width = 0.1, size = 1)  +
+  theme(
+    text = element_text(size = 20),
+    axis.text.x = element_text(angle = 90, size = 20))
+```
+
+```{r}
+summary(stats[, preproc_cols]/1e6)
+```
+
+
+```{r}
+sum_stats <- melt_preproc %>%
+  group_by(step) %>%
+  summarise(
+    min = min(count),
+    Q1 = quantile(count, 0.25),
+    mean = mean(count),
+    median = median(count),
+    Q3 = quantile(count, 0.75),
+    max = max(count)
+    ) %>%
+  mutate_at(.funs = function(x) {round(x/1e6, 2)}, 
+            .vars = c("min", "Q1", "mean", "median","Q3", "max")) %>%
+  gather(stat, value, -step) %>% 
+  spread(step, value)   
+
+sum_stats <- sum_stats %>% 
+  slice(match(c("min", "Q1", "mean", "median","Q3", "max"), stat))
+sum_stats
+```
+
+```{r}
+sum_stats_frac <- sum_stats %>% 
+   mutate_at(.funs = function(x) {round(x/sum_stats$input_fwd, 2)}, 
+            .vars = setdiff(colnames(sum_stats), "stat"))
+sum_stats_frac
+```
+
+
+```{r}
+
+unique_cols <- 
+  c("unique", "vector_bwa", "vector_blat", "human_bwa", 
+    "human_blat", "mRNA_unique", "contigs")
+
+melt_preproc <- stats[, c("Meas_ID", "Subject", preproc_cols)] %>%
+  gather(step, count, input_fwd:unassembled_reads) %>%
+  mutate(step = factor(step, levels = preproc_cols))
+
+
+ggplot(melt_preproc, aes(x = step, y=count)) +
+  geom_violin() + 
+  geom_jitter(
+    aes(color=Subject),
+    alpha = 0.5, height = 0, width = 0.1, size = 1)  +
+  theme(axis.text.x = element_text(angle = 90, size = 20))
+```
 
 
 

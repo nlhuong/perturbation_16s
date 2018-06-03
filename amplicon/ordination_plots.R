@@ -145,38 +145,6 @@ get_ordinations <- function(physeq, group = NULL, method = "pca", ncores = 2) {
 }
 
 
-plot_projection <- function(data, xname, yname, labname = NULL, size = 3,
-                            color = NULL, eigs = NULL, ...){
-  if(all(!is.null(color), color %in% colnames(data))){
-    plt <- ggplot(data, aes_string(x = xname, y = yname, color = color)) 
-  } else {
-    plt <- ggplot(data, aes_string(x = xname, y = yname)) 
-  }
-  if(all(!is.null(labname), labname %in% colnames(data))) {
-    if(size %in% colnames(data)) {
-      plt <- plt + geom_text(aes_string(label = labname, size = size), ...)
-    } else {
-      stop("method not supported")
-    }
-    if(!is.null(loadings)){
-      colnames(loadings) <- paste0("Axis", 1:ncol(loadings))
-      loadings <- loadings %>%
-        rownames_to_column("Seq_ID") %>%
-        left_join(g_taxtab)
-    }
-    colnames(scores) <- paste0("Axis", 1:ncol(scores))
-    scores <- scores %>%
-      rownames_to_column("Meas_ID") %>%
-      left_join(g_physeq@sam_data %>% as.data.frame())%>%
-      arrange(Group, Subject, Samp_Date, DayFromStart, Timeline)
-
-    return(list(eigs = eigs, scores = scores, loadings = loadings))
-  }
-  names(res) <- groups
-  return(res)
-}
-
-
 plot_projection <- function(data, xname, yname, eigs = NULL, labname = NULL,
                             color = NULL,  fill = NULL,
                             size = 3,...){
@@ -208,7 +176,6 @@ plot_projection <- function(data, xname, yname, eigs = NULL, labname = NULL,
 
 plot_loadings <- function(loadings, size = 3, eigs = NULL, 
                           color = "Class", label = "Genus"){
-  
   loadings_fltr <- loadings %>%
     mutate(r2 = (Axis1^2 + Axis2^2)) %>%
     filter(

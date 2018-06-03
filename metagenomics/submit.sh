@@ -1,3 +1,6 @@
+export PI_BASE_DIR=$PI_SCRATCH/resilience/metagenomics
+export LOG_DIR=$PI_BASE_DIR/logs
+mkdir -p $LOG_DIR
 #!/bin/bash
 sbatch <<EOT
 #!/bin/bash
@@ -8,14 +11,14 @@ sbatch <<EOT
 #SBATCH --job-name=midas_profiling
 #################
 #a file for job output, you can check job progress, append the job ID with %j to make it unique
-#SBATCH --output=../logs/pipeline%j.out
+#SBATCH --output=${LOG_DIR}/pipeline%j.out
 #################
 # a file for errors from the job
-#SBATCH --error=../logs/pipeline%j.err
+#SBATCH --error=${LOG_DIR}/pipeline%j.err
 #################
 #time you think you need; default is 2 hours
 #format could be dd-hh:mm:ss, hh:mm:ss, mm:ss, or mm
-#SBATCH --time=15:00:00
+#SBATCH --time=23:00:00
 #################
 #Quality of Service (QOS); think of it as job priority, there is also --qos=long for with a max job length of 7 days, qos normal is 48 hours.
 # REMOVE "normal" and set to "long" if you want your job to run longer than 48 hours,
@@ -25,7 +28,7 @@ sbatch <<EOT
 
 # We are submitting to the dev partition, there are several on sherlock: normal, gpu, owners, hns, bigmem (jobs requiring >64Gigs RAM)
 #
-#SBATCH -p normal,hns
+#SBATCH -p normal,hns,owners
 #################
 #number of nodes you are requesting, the more you ask for the longer you wait
 #SBATCH --mem-per-cpu=16G
@@ -37,14 +40,14 @@ sbatch <<EOT
 
 #SBATCH --mail-type=END,FAIL # notifications for job done & fail
 # Remember to change this to your email
-#SBATCH --mail-user=kriss1@stanford.edu
+#SBATCH --mail-user=$USER@stanford.edu
 
 module load R/3.4.0
 module load biology
 module load samtools/1.6
 
 #now run normal batch commands
-#cd /scratch/users/lanhuong/Projects/PerturbationStudy/perturbation_16s/metagenomics
-cd /scratch/users/kriss1/Projects/PerturbationStudy/perturbation_16s/metagenomics
+cd $SCRATCH
+cd ./Projects/perturbation_16s/metagenomics
 Rscript midas_profile.R -s $1 -e $2 -i $3
 EOT
