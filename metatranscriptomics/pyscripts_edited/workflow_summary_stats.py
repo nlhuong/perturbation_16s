@@ -271,6 +271,7 @@ def process_sample(raw_dir, processed_dir, sub_dir, sample_id):
     print("Processing sample " + sample_id)
     try:
         smp_stats = OrderedDict()
+        smp_stats['batch'] = sub_dir
         smp_stats.update(raw_input_stats(raw_dir, sub_dir, sample_id))
         smp_stats.update(read_filter_stats(processed_dir, sub_dir, sample_id))
         smp_stats.update(assembly_stats(processed_dir, sub_dir, sample_id))

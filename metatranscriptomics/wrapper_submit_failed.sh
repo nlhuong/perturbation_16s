@@ -18,10 +18,10 @@ SUBDIR=Arati_R_plate_11
 
 IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
-LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh2_rerun_2}
+LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh_failed}
 
-TIME=${3:-18:00:00}
-NCPUS=${4:-10}
+TIME=${3:-23:00:00}
+NCPUS=${4:-8}
 MEM=${5:-8G}
 
 cd $IN

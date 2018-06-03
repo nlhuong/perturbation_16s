@@ -36,8 +36,8 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 outdir <- file.path(argv$indir, "..", "processed")
 dir.create(outdir)
 
-input_files <- list.files(argv$indir, "*.fq*", recursive = TRUE, full.names = TRUE)
-input_files <- unique(gsub("_1P||_2P", "", input_files))
+input_files <- list.files(argv$indir, "*.fastq*", recursive = TRUE, full.names = TRUE)
+input_files <- unique(gsub("_R1_001||_R2_001", "", input_files))
 
 ## Identify and filter away procesed samples
 processed_files <- list.files(outdir, full.names = TRUE)
@@ -54,9 +54,12 @@ input_files <- input_files[argv$start_ix:argv$end_ix]
 ## Loop over input, performing profiling one file at a time
 ###############################################################################
 for (f in input_files) {
-  f1 <- gsub(".fq", "_1P.fq", f)
-  f2 <- gsub(".fq", "_2P.fq", f)
+  f1 <- gsub(".fastq", "_R1_001.fastq", f)
+  f2 <- gsub(".fastq", "_R2_001.fastq", f)
   meas <- str_extract(f1, "M[0-9]+")
+  if (any(is.na(meas), meas == "NA")){
+    meas <- f
+  }
 
   ## species profiling
   cmd <- sprintf(

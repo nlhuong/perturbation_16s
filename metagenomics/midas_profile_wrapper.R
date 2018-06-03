@@ -19,8 +19,8 @@ message(argv$workdir)
 setwd(argv$workdir)
 dir.create(argv$logdir)
 
-input_files <- list.files(argv$subdir, "*.fq*", full.names = TRUE, recursive = TRUE)
-input_files <- unique(gsub("_1P||_2P", "", input_files))
+input_files <- list.files(argv$subdir, "*.fastq*", full.names = TRUE, recursive = TRUE)
+input_files <- unique(gsub("_R1_001||_R2_001", "", input_files))
 
 ## Identify and filter away procesed samples
 processed_files <- list.files(file.path(argv$subdir, "..", "processed"), full.names = TRUE)
@@ -32,7 +32,7 @@ for (f in processed_files) {
 }
 
 n_files <- length(input_files)
-n_per_batch <- 4
+n_per_batch <- 8
 
 for (i in seq(1, n_files, n_per_batch)) {
   cmd <- sprintf("bash submit.sh %s %s %s", i, min(n_files, i + n_per_batch - 1), argv$subdir)
