@@ -1,0 +1,72 @@
+---
+title: "Presentation Plots"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document2:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+rm(list = ls())
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE,
+  warning = FALSE, fig.width = 10, fig.height = 7,
+  fig.path = "figs/", dev='png') 
+```
+
+```{r setup}
+library("tidyverse")
+library("readxl")
+library("data.table")
+library("gridExtra")
+
+datadir <- "/scratch/PI/sph/resilience/metatranscriptomics/processed/"
+
+theme_set(theme_bw())
+theme_updates <- theme(text = element_text(size =20))
+```
+
+
+Read Coverage {#read-coverage .unnumbered}
+========================================
+
+Here we summarize the read coverage statistics for all data modalities.
+
+16S {#read-coverage-16S .unnumbered}
+------------------------------------
+
+```{r}
+ps <- readRDS(file.path(datadir, "../../16s/perturb_physeq_22Jan18.rds"))
+```
+
+
+MetaGenomics {#read-coverage-metag .unnumbered}
+------------------------------------
+
+```{r}
+
+```
+
+MetaTranscriptomics {#read-coverage-metat .unnumbered}
+------------------------------------
+
+```{r}
+
+```
+
+
+```{r}
+sessionInfo()
+```
+

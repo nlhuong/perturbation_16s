@@ -16,7 +16,7 @@ library("feather")
 library("argparser")
 
 parser <- arg_parser("Merge MIDAS species and gene results across samples")
-parser <- add_argument(parser, "--subdir", help = "The directory containing the processed data", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics")
+parser <- add_argument(parser, "--subdir", help = "The directory containing the processed data", default = file.path(Sys.getenv("PI_SCRATCH"), "resilience", "metagenomics"))
 argv <- parse_args(parser)
 
 bind_wrapper <- function(x) {
