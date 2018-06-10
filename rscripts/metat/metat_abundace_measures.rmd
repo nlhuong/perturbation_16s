@@ -574,7 +574,7 @@ Now we are reading in 16s data for comparison and to obtain taxonomic
 classification.
 
 ```{r}
-ps <- readRDS(file.path(datadir, "../../16s/perturb_physeq_22Jan18.rds"))
+ps <- readRDS("/scratch/PI/sph/resilience/16S/phyloseq/perturb_physeq_22Jan18.rds")
 ```
 
 

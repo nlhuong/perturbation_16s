@@ -20,8 +20,8 @@ library("BiocStyle")
 library("rmarkdown")
 options(width = 200) 
 knitr::opts_chunk$set(
-  message = FALSE, error = FALSE,
-  warning = FALSE, fig.width = 10, fig.height = 7,
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
   fig.path = "figs/", dev='png') 
 ```
 
@@ -30,8 +30,6 @@ library("tidyverse")
 library("readxl")
 library("data.table")
 library("gridExtra")
-
-datadir <- "/scratch/PI/sph/resilience/metatranscriptomics/processed/"
 
 theme_set(theme_bw())
 theme_updates <- theme(text = element_text(size =20))
@@ -47,8 +45,17 @@ Here we summarize the read coverage statistics for all data modalities.
 ------------------------------------
 
 ```{r}
-ps <- readRDS(file.path(datadir, "../../16s/perturb_physeq_22Jan18.rds"))
+datadir <- "/scratch/PI/sph/resilience/"
+physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_22Jan18.rds")
+stats16sfile <- file.path(datadir, "16S/16S_dada2_results/track_all_pools.csv")
+ps <- readRDS(physeqfile)
+ps
+stats16s <-read.csv(stats16sfile, row.names = 1)
+head(stats16s)
 ```
+
+
+
 
 
 MetaGenomics {#read-coverage-metag .unnumbered}
