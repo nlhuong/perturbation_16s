@@ -38,6 +38,9 @@ dir.create(outdir)
 
 input_files <- list.files(argv$indir, "*.fastq*", recursive = TRUE, full.names = TRUE)
 input_files <- unique(gsub("_R1_001||_R2_001", "", input_files))
+# files should start with 'M' for measure id
+base_names <- sapply(input_files, function(f) basename(f))
+input_files <- input_files[startsWith(base_names, "M")]
 
 ## Identify and filter away procesed samples
 processed_files <- list.files(outdir, full.names = TRUE)
@@ -58,7 +61,8 @@ for (f in input_files) {
   f2 <- gsub(".fastq", "_R2_001.fastq", f)
   meas <- str_extract(f1, "M[0-9]+")
   if (any(is.na(meas), meas == "NA")){
-    meas <- f
+    #meas <- f
+    next 
   }
 
   ## species profiling

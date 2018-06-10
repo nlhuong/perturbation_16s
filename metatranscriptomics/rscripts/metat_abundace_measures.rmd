@@ -943,7 +943,7 @@ top20_family <- top20_family[1:20, ] %>% .[["Family"]]
 ```
 
 
-```{r metat-vs-16s, fig.width=10, fig.height=10}
+```{r metat-vs-16s, fig.width=8, fig.height=6}
 subjects <- unique(scatter_data$Subject)
 for (sub in subjects) {
   plt <- plot_comparison(
@@ -1175,18 +1175,18 @@ scores_df <- scores %>%
   arrange(Group, Subject, Samp_Date)
 ```
 
-```{r tsne-subj-org-metat, fig.width=10, fig.height=8}
+```{r tsne-subj-org-metat, fig.width=8, fig.height=6}
 (plt <- ggplot(scores_df, aes(Axis1, Axis2)) +
   geom_text(
     aes(label = Subject, color = Subject), size = 5) +
    scale_color_brewer(palette = "Set1") +
    ggtitle("tSNE plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))
+   theme(text = element_text(size = 15))
 )
 ```
 
 
-```{r tsne-subj-org-metat-abx, fig.width=10, fig.height=8}
+```{r tsne-subj-org-metat-abx, fig.width=8, fig.height=6}
 library(viridis)
 (plt <- ggplot(
   scores_df %>%
@@ -1197,11 +1197,11 @@ library(viridis)
     aes(label = Subject, color = Abx_RelDay), size = 5) +
    scale_color_viridis(option = "inferno") +
    ggtitle("tSNE plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20), legend.position = "bottom"))
+   theme(text = element_text(size = 15), legend.position = "bottom"))
 ```
 
 
-```{r tsne-subj-org-metat-time-diet, fig.width=10, fig.height=8}
+```{r tsne-subj-org-metat-time-diet, fig.width=8, fig.height=6}
 (plt <- ggplot(
   scores_df %>%
     mutate(Diet_RelDay = as.numeric(Diet_RelDay)),
@@ -1211,7 +1211,7 @@ library(viridis)
     aes(label = Subject, color = Diet_RelDay), size = 5) +
    scale_color_viridis() +
    ggtitle("tSNE plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20), legend.position = "bottom")) 
+   theme(text = element_text(size = 15), legend.position = "bottom")) 
 ```
 
 ```{r}
@@ -1236,7 +1236,7 @@ scores_pca_df <- scores_pca %>%
   arrange(Group, Subject, Samp_Date)
 ```
 
-```{r pca-subj-org-metat, fig.width=10, fig.height=8}
+```{r pca-subj-org-metat, fig.width=8, fig.height=6}
 var.explained <- round(eigs_pca$var_exp, 2)
 (plt <- ggplot(scores_pca_df, aes(Axis1, Axis2)) +
    geom_text(
@@ -1244,7 +1244,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
     size = 5) +
    scale_color_brewer(palette = "Set2") +
    ggtitle("PCA plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))  + 
+   theme(text = element_text(size = 15))  + 
   labs(
     x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
     y = sprintf("Axis2 [%s%% variance]", var.explained[2])
@@ -1253,7 +1253,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
 )
 ```
 
-```{r pca-subj-org-metat-diet, fig.width=10, fig.height=8}
+```{r pca-subj-org-metat-diet, fig.width=8, fig.height=6}
 var.explained <- round(eigs_pca$var_exp, 2)
 (plt <- ggplot(
   scores_pca_df %>%
@@ -1263,7 +1263,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
     size = 5) +
    scale_color_viridis() +
    ggtitle("PCA plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))  + 
+   theme(text = element_text(size = 15))  + 
   labs(
     x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
     y = sprintf("Axis2 [%s%% variance]", var.explained[2])
@@ -1272,7 +1272,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
 )
 ```
 
-```{r pca-subj-org-metat-abx, fig.width=10, fig.height=8}
+```{r pca-subj-org-metat-abx, fig.width=8, fig.height=6}
 var.explained <- round(eigs_pca$var_exp, 2)
 (plt <- ggplot(
   scores_pca_df %>%
@@ -1282,7 +1282,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
     size = 5) +
    scale_color_viridis(option = "magma") +
    ggtitle("PCA plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))  + 
+   theme(text = element_text(size = 15))  + 
   labs(
     x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
     y = sprintf("Axis2 [%s%% variance]", var.explained[2])
@@ -1337,7 +1337,7 @@ plot_scores_time <- function(scores, size = 3, text = FALSE,
 ```
 
 
-```{r fig.width=15, fig.height=8}
+```{r fig.width=12, fig.height=5}
 plot_scores_time(scores_df , path = TRUE) +
   facet_wrap(~Subject, scales = "free")
 ```
@@ -1394,18 +1394,18 @@ scores_df <- scores %>%
   arrange(Group, Subject, Samp_Date)
 ```
 
-```{r tsne-subj-fun-metat, fig.width=10, fig.height=8}
+```{r tsne-subj-fun-metat, fig.width=8 fig.height=6}
 (plt <- ggplot(scores_df, aes(Axis1, Axis2)) +
   geom_text(
     aes(label = Subject, color = Subject), size = 5) +
    scale_color_brewer(palette = "Set1") +
    ggtitle("tSNE plot on function aggragated abundances") +
-   theme(text = element_text(size = 20))
+   theme(text = element_text(size = 15))
 )
 ```
 
 
-```{r tsne-subj-fun-metat-abx, fig.width=10, fig.height=8}
+```{r tsne-subj-fun-metat-abx, fig.width=8, fig.height=6}
 library(viridis)
 (plt <- ggplot(
   scores_df %>%
@@ -1416,11 +1416,11 @@ library(viridis)
     aes(label = Subject, color = Abx_RelDay), size = 5) +
    scale_color_viridis(option = "inferno") +
    ggtitle("tSNE plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20), legend.position = "bottom"))
+   theme(text = element_text(size = 15), legend.position = "bottom"))
 ```
 
 
-```{r tsne-subj-org-metat-time-diet, fig.width=10, fig.height=8}
+```{r tsne-subj-org-metat-time-diet, fig.width=8, fig.height=6}
 (plt <- ggplot(
   scores_df %>%
     mutate(Diet_RelDay = as.numeric(Diet_RelDay)),
@@ -1430,11 +1430,11 @@ library(viridis)
     aes(label = Subject, color = Diet_RelDay), size = 5) +
    scale_color_viridis() +
    ggtitle("tSNE plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20), legend.position = "bottom")) 
+   theme(text = element_text(size = 15), legend.position = "bottom")) 
 ```
 
 
-```{r fig.width=15, fig.height=8}
+```{r fig.width=12, fig.height=5}
 plot_scores_time(scores_df , path = TRUE) +
   facet_wrap(~Subject, scales = "free")
 ```
@@ -1460,7 +1460,7 @@ scores_pca_df <- scores_pca %>%
   arrange(Group, Subject, Samp_Date)
 ```
 
-```{r pca-subj-fun-metat, fig.width=10, fig.height=8}
+```{r pca-subj-fun-metat, fig.width=8, fig.height=6}
 var.explained <- round(eigs_pca$var_exp, 2)
 (plt <- ggplot(scores_pca_df, aes(Axis1, Axis2)) +
    geom_text(
@@ -1468,7 +1468,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
     size = 5) +
    scale_color_brewer(palette = "Set1") +
    ggtitle("PCA plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))  + 
+   theme(text = element_text(size = 15))  + 
   labs(
     x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
     y = sprintf("Axis2 [%s%% variance]", var.explained[2])
@@ -1477,7 +1477,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
 )
 ```
 
-```{r pca-subj-fun-metat-diet, fig.width=10, fig.height=8}
+```{r pca-subj-fun-metat-diet, fig.width=8, fig.height=6}
 var.explained <- round(eigs_pca$var_exp, 2)
 (plt <- ggplot(
   scores_pca_df %>%
@@ -1487,7 +1487,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
     size = 5) +
    scale_color_viridis() +
    ggtitle("PCA plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))  + 
+   theme(text = element_text(size = 15))  + 
   labs(
     x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
     y = sprintf("Axis2 [%s%% variance]", var.explained[2])
@@ -1496,7 +1496,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
 )
 ```
 
-```{r pca-subj-fun-metat-abx, fig.width=10, fig.height=8}
+```{r pca-subj-fun-metat-abx, fig.width=8, fig.height=6}
 var.explained <- round(eigs_pca$var_exp, 2)
 (plt <- ggplot(
   scores_pca_df %>%
@@ -1506,7 +1506,7 @@ var.explained <- round(eigs_pca$var_exp, 2)
     size = 5) +
    scale_color_viridis(option = "magma") +
    ggtitle("PCA plot on organism aggragated abundances") +
-   theme(text = element_text(size = 20))  + 
+   theme(text = element_text(size = 15))  + 
   labs(
     x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
     y = sprintf("Axis2 [%s%% variance]", var.explained[2])

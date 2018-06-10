@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import multiprocessing as mp
 
-def merge_batches(batch_files, outfile, min_feature_sum=None):
+def merge_batches(batch_files, outfile, genelen_file=None, min_feature_sum=None):
     gene_info_cols = ['Organism', 'Function', 'SEED1', 'SEED2', 'SEED3', 'SEED4']
     smp_df = pd.DataFrame()
     gene_df = pd.DataFrame()    
@@ -49,14 +49,17 @@ def merge_batches(batch_files, outfile, min_feature_sum=None):
             smp_df = pd.merge(smp_df, abund, on='GeneID', how='outer') 
     
     smp_df = pd.merge(smp_df, gene_df, on='GeneID', how='left')
-    if min_feature_sum is None:
-        smp_df.to_csv(outfile, index = False)
-        return
     # Sample columns start with "M" for measurement:
-    sample_col = [col for col in merged_df if col.startswith('M')] 
-    abundance = smp_df[sample_col]
-    feat_sum = abundance.sum(axis=1, skipna=True)
-    smp_df = smp_df.loc[feat_sum > min_feature_sum]
+    #sample_col = [col for col in smp_df if col.startswith('M')] 
+    #abundance = smp_df[sample_col]
+    if min_feature_sum is not None:
+        feat_sum = abundance.sum(axis=1, skipna=True)
+        smp_df = smp_df.loc[feat_sum > min_feature_sum]
+    if genelen_file is not None:
+        gene_len = pd.read_csv(genelen_file, sep='\t')
+        gene_len = gene_len[['GeneID', 'Length']]
+        gene_len = gene_len[gene_len.GeneID.isin(smp_df['GeneID'])]
+        smp_df = pd.merge(smp_df, gene_len, on='GeneID', how='left')
     smp_df.to_csv(outfile, index = False)
     return
     
@@ -87,7 +90,16 @@ if __name__ == "__main__":
     for sff in suffixes:
         batch_files = glob.glob(args.indir[0] + "/*_" + sff )
         outfile = os.path.join(args.outdir, "abund_" + sff)
-        pool.apply_async(merge_batches(batch_files, outfile, args.thresh))
+        if "refseq" in sff:
+            db_gene_len_file = "/scratch/PI/sph/resilience/databases/RefSeq_bac.tsv"
+        elif "nr_unassembled" in sff:
+            db_gene_len_file = "/scratch/PI/sph/resilience/databases/nr.tsv"
+        elif "seed" in sff:
+            db_gene_len_file = "/scratch/PI/sph/resilience/databases/subsys_db.tsv"
+        else:
+            db_gene_len_file = None
+        pool.apply_async(merge_batches(batch_files, outfile, 
+            genelen_file=db_gene_len_file, min_feature_sum= args.thresh))
     pool.close()
     pool.join()
 
