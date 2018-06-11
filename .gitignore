@@ -3,6 +3,8 @@ output/*
 */figs/*
 logs/*
 amplicon/*cache/
+analysis/figs/*
+analysis/*cache/
 *.html
 .Rproj.user
 metatranscriptomics/pyscripts_edited/old
