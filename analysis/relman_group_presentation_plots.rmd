@@ -22,7 +22,8 @@ options(width = 200)
 knitr::opts_chunk$set(
   message = FALSE, error = FALSE, warning = FALSE, 
   fig.width = 8, fig.height = 6,
-  fig.path = "figs/", dev='png') 
+  fig.path = "./figs/relman_group_presentation/", 
+  dev='png') 
 ```
 
 ```{r setup}
@@ -31,6 +32,7 @@ library("readxl")
 library("data.table")
 library("gridExtra")
 library("RColorBrewer")
+library("feather")
 
 theme_set(theme_bw())
 theme_update(
@@ -160,8 +162,22 @@ df2plot <- meas_info %>%
   filter(!grepl("NA", Subject))
 ```
 
+```{r exp-design-group, fig.width=10, fig.height=15}
+ggplot(df2plot) +
+  geom_point(
+      pch = 124,
+      aes(y = Subject, x = Samp_Date, color = Interval,
+          fill = Interval, size = modality_count)
+    ) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    scale_size_continuous(range = c(5, 10)) +
+    theme(legend.direction = "horizontal", legend.box = "vertical") +
+    guides(color = guide_legend(override.aes = list(size=5)),
+           size = guide_legend(override.aes = list(color="black")))
+```
 
-```{r, fig.width=10}
+```{r exp-design-group, fig.width=10}
 colors <- colorRampPalette(brewer.pal(8, "Set3"))(length(new_intv_levs)-2)
 colors <- c("grey57", "red", colors)
 names(colors) <- c("NoInterv", "UnpAbx", 
@@ -170,18 +186,18 @@ names(colors) <- c("NoInterv", "UnpAbx",
 
 for(gr in unique(df2plot$Group)) {
   plt <- ggplot(df2plot %>% filter(Group == gr)) +
-  geom_point(
-    pch = 21, color = "grey77",
-    aes(y = Subject, x = Samp_Date, #color = Interval,
-        fill = Interval, size = modality_count) #, pch = modalities)
-  ) +
-  #facet_grid(Group ~ ., scales = "free", space = "free") +
-  scale_fill_manual(values = colors) +
- # scale_color_manual(values = colors) +
-  scale_size_continuous(range = c(3, 6)) +
-  theme(legend.direction = "horizontal", legend.box = "vertical") +
-  guides(fill = guide_legend(override.aes = list(size=5)),
-         size = guide_legend(override.aes = list(color="black")))
+    geom_point(
+      pch = 124,
+      aes(y = Subject, x = Samp_Date, color = Interval,
+          fill = Interval, size = modality_count)
+    ) +
+    #facet_grid(Group ~ ., scales = "free", space = "free") +
+    #scale_fill_manual(values = colors) +
+    scale_color_manual(values = colors) +
+    scale_size_continuous(range = c(5, 10)) +
+    theme(legend.direction = "horizontal", legend.box = "vertical") +
+    guides(color = guide_legend(override.aes = list(size=5)),
+           size = guide_legend(override.aes = list(color="black")))
   print(plt + ggtitle(gr))
 }
 
@@ -197,27 +213,81 @@ Here we summarize the read coverage statistics for all data modalities.
 ------------------------------------
 
 ```{r}
-physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_22Jan18.rds")
 stats16sfile <- file.path(datadir, "16S/16S_dada2_results/track_all_pools.csv")
-ps <- readRDS(physeqfile)
-ps
-stats16s <-read.csv(stats16sfile, row.names = 1)
+stats16s <- read.csv(stats16sfile, row.names = 1) %>%
+  mutate(Meas_ID = gsub(".*_M", "M", sample.id),
+         Meas_ID = gsub("\\-.*", "", Meas_ID)) %>%
+  select(pool, Meas_ID, sample.id:nonchim)
 head(stats16s)
 ```
 
 ```{r}
-
+physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_22Jan18.rds")
+ps <- readRDS(physeqfile)
+ps
 ```
 
 
+```{r}
+smp_depth_16s <- data.frame(
+  physeq = sample_sums(ps),
+  annotated_genus = sample_sums(subset_taxa(ps, !is.na(Genus))),
+  annotated_species = sample_sums(subset_taxa(ps, !is.na(Species)))) %>%
+  rownames_to_column("Meas_ID")
 
+stats16s <- stats16s %>%
+  left_join(smp_depth_16s)
+```
+
+
+```{r}
+all_reads <- colSums(stats16s %>% select(-(pool:file.name)))
+(total_reads_coverage_16s <- 100*all_reads/all_reads[1])
+```
+
+
+```{r}
+reads_coverage_batches_16s <- stats16s %>% 
+  select(-(Meas_ID:file.name)) %>%
+  group_by(pool) %>%
+  summarize_all(sum) %>%
+  as.data.frame() %>%
+  mutate_at(
+    .funs = function(x) round(100 * x/(.)$input, digits = 1),
+    .vars = setdiff(colnames((.)), "pool")
+  )
+```
+
+```{r}
+reads_coverage_16s <- rbind(
+  data.frame(pool = "All_16S", t(round(total_reads_coverage_16s, digits = 1))), 
+  reads_coverage_batches_16s) %>%
+  rename(batch = pool, inferred = merged, "len-trimmed" = tabled.rightlen, 
+         "no-bimera" = nonchim) 
+```
+
+```{r}
+reads_coverage_16s %>%
+  select(-`len-trimmed`, -`no-bimera`) # the same as inferred and physeq
+```
 
 MetaGenomics {#read-coverage-metag .unnumbered}
 ------------------------------------
 
 ```{r}
-
+statsMetaGfile <- file.path(datadir, "metagenomics/stats/all_samples_stats.csv")
+statsMetaG <- read.csv(statsMetaGfile, stringsAsFactors = FALSE) %>%
+  filter(startsWith(Meas_ID, prefix = "M")) %>%
+  mutate(batch = gsub(".*\\/", "", batch))
 ```
+
+```{r}
+metagDepthfile <- file.path(datadir, "metagenomics/merged/depths.feather")
+depths <- read_feather(metagDepthfile) %>%
+  mutate(genus = str_extract(species, "[^_]+"))
+```
+
+
 
 MetaTranscriptomics {#read-coverage-metat .unnumbered}
 ------------------------------------
@@ -225,6 +295,9 @@ MetaTranscriptomics {#read-coverage-metat .unnumbered}
 ```{r}
 
 ```
+
+
+
 
 
 ```{r}
