@@ -6,7 +6,7 @@ author:
 keywords: microbiome, metatranscriptomics.
 date: "`r BiocStyle::doc_date()`"
 output: 
-  BiocStyle::html_document2:
+  BiocStyle::html_document:
     toc_float: true
     df_print: paged
 vignette: >
@@ -18,7 +18,7 @@ vignette: >
 rm(list = ls())
 library("BiocStyle")
 library("rmarkdown")
-options(width = 200) 
+options(width = 200, stringsAsFactors = FALSE) 
 knitr::opts_chunk$set(
   message = FALSE, error = FALSE, warning = FALSE, 
   fig.width = 8, fig.height = 6,
@@ -162,7 +162,12 @@ df2plot <- meas_info %>%
   filter(!grepl("NA", Subject))
 ```
 
-```{r exp-design-group, fig.width=10, fig.height=15}
+```{r exp-design, fig.width=10, fig.height=15}
+colors <- colorRampPalette(brewer.pal(8, "Set3"))(length(new_intv_levs)-2)
+colors <- c("grey57", "red", colors)
+names(colors) <- c("NoInterv", "UnpAbx", 
+                   setdiff(new_intv_levs, c("NoInterv", "UnpAbx")))
+
 ggplot(df2plot) +
   geom_point(
       pch = 124,
@@ -178,12 +183,6 @@ ggplot(df2plot) +
 ```
 
 ```{r exp-design-group, fig.width=10}
-colors <- colorRampPalette(brewer.pal(8, "Set3"))(length(new_intv_levs)-2)
-colors <- c("grey57", "red", colors)
-names(colors) <- c("NoInterv", "UnpAbx", 
-                   setdiff(new_intv_levs, c("NoInterv", "UnpAbx")))
-
-
 for(gr in unique(df2plot$Group)) {
   plt <- ggplot(df2plot %>% filter(Group == gr)) +
     geom_point(
@@ -214,10 +213,11 @@ Here we summarize the read coverage statistics for all data modalities.
 
 ```{r}
 stats16sfile <- file.path(datadir, "16S/16S_dada2_results/track_all_pools.csv")
-stats16s <- read.csv(stats16sfile, row.names = 1) %>%
+stats16s <- read.csv(stats16sfile, row.names = 1, stringsAsFactors = FALSE) %>%
   mutate(Meas_ID = gsub(".*_M", "M", sample.id),
          Meas_ID = gsub("\\-.*", "", Meas_ID)) %>%
-  select(pool, Meas_ID, sample.id:nonchim)
+  select(pool, Meas_ID, sample.id:nonchim) %>%
+  rename(batch = pool)
 head(stats16s)
 ```
 
@@ -241,63 +241,213 @@ stats16s <- stats16s %>%
 
 
 ```{r}
-all_reads <- colSums(stats16s %>% select(-(pool:file.name)))
+all_reads <- colSums(stats16s %>% select(-(batch:file.name)))
 (total_reads_coverage_16s <- 100*all_reads/all_reads[1])
 ```
 
 
 ```{r}
-reads_coverage_batches_16s <- stats16s %>% 
-  select(-(Meas_ID:file.name)) %>%
-  group_by(pool) %>%
-  summarize_all(sum) %>%
-  as.data.frame() %>%
+percent_stats16s <- stats16s %>% 
   mutate_at(
-    .funs = function(x) round(100 * x/(.)$input, digits = 1),
-    .vars = setdiff(colnames((.)), "pool")
+    .funs = function(x) 100 * x/(.)$input,
+    .vars = setdiff(colnames((.)), c("batch", "Meas_ID","sample.id", "file.name"))
+  ) 
+
+reads_coverage_16s <- percent_stats16s %>%
+  select(-(Meas_ID:file.name)) %>%
+  group_by(batch) %>%
+  summarize_all(median) %>%
+  as.data.frame() %>%
+  bind_rows(
+    data.frame(
+      batch = "All_16S", 
+      percent_stats16s %>%
+          select(-(batch:file.name)) %>%
+          summarise_all(median),
+      stringsAsFactors = FALSE
+    )
   )
-```
-
-```{r}
-reads_coverage_16s <- rbind(
-  data.frame(pool = "All_16S", t(round(total_reads_coverage_16s, digits = 1))), 
-  reads_coverage_batches_16s) %>%
-  rename(batch = pool, inferred = merged, "len-trimmed" = tabled.rightlen, 
-         "no-bimera" = nonchim) 
-```
-
-```{r}
 reads_coverage_16s %>%
-  select(-`len-trimmed`, -`no-bimera`) # the same as inferred and physeq
+  select(-tabled.rightlen, -nonchim) %>% # the same as merged and physeq
+  mutate_at(.funs = function(x) round(x, digits = 1),
+            .vars = vars(-batch))
 ```
+
 
 MetaGenomics {#read-coverage-metag .unnumbered}
 ------------------------------------
 
 ```{r}
+metagReadfile <- file.path(datadir, "metagenomics/merged/gene_reads.feather")
+metagreads <- read_feather(metagReadfile) %>%
+  mutate(genus = str_extract(species, "[^_]+")) %>%
+  select( genus, species, gene_id, starts_with("M"))
+metagreads[is.na(metagreads)] <- 0 
+```
+
+
+```{r}
 statsMetaGfile <- file.path(datadir, "metagenomics/stats/all_samples_stats.csv")
 statsMetaG <- read.csv(statsMetaGfile, stringsAsFactors = FALSE) %>%
+  mutate(input = input_fwd) %>%
+  select(Meas_ID, batch, input, input_fwd:annotated) %>%
   filter(startsWith(Meas_ID, prefix = "M")) %>%
-  mutate(batch = gsub(".*\\/", "", batch))
+  mutate(
+    batch = gsub(".*\\/", "", batch),
+    batch = gsub("\\.(.*)", "", batch)
+)
 ```
 
 ```{r}
-metagDepthfile <- file.path(datadir, "metagenomics/merged/depths.feather")
-depths <- read_feather(metagDepthfile) %>%
-  mutate(genus = str_extract(species, "[^_]+"))
+smp_depth_metag <- data.frame(
+  metag_pangenome = colSums(metagreads %>% select(-genus, -species, -gene_id))
+  ) %>%
+  rownames_to_column("Meas_ID")
+
+statsMetaG <- statsMetaG %>%
+  left_join(smp_depth_metag) %>%
+  rename(metag_marker_genes = annotated)
 ```
 
+```{r}
+statsMetaG %>% filter(is.na(metag_pangenome))
+statsMetaG <- statsMetaG %>%
+  mutate(input = input_fwd) %>%
+  filter(!is.na(metag_pangenome))
+```
+
+
+```{r}
+all_reads <- colSums(statsMetaG %>% select(-Meas_ID, -batch))
+(total_reads_coverage_metaG <- 100*all_reads/all_reads[1])
+```
+
+
+```{r}
+percent_statsMetaG <- statsMetaG %>% 
+  mutate_at(
+    .funs = function(x) 100 * x/(.)$input_fwd,
+    .vars = setdiff(colnames((.)), c("batch", "Meas_ID"))
+  ) 
+
+reads_coverage_metaG <- percent_statsMetaG %>%
+  select(-(Meas_ID)) %>%
+  group_by(batch) %>%
+  summarize_all(median) %>%
+  as.data.frame() %>%
+  bind_rows(
+    data.frame(
+      batch = "All_MetaG", 
+      percent_statsMetaG %>%
+          select(-batch, -Meas_ID) %>%
+          summarise_all(median),
+      stringsAsFactors = FALSE
+    )
+  ) %>%
+  select(batch, input, starts_with("metag_"))
+
+reads_coverage_metaG %>%
+  mutate_at(.funs = function(x) round(x, digits = 1),
+            .vars = vars(-batch))
+```
 
 
 MetaTranscriptomics {#read-coverage-metat .unnumbered}
 ------------------------------------
 
 ```{r}
+statsMetaTfile <- file.path(datadir, "metatranscriptomics/stats/all_samples_stats.csv")
+statsMetaT <- read.csv(statsMetaTfile, stringsAsFactors = FALSE) %>%
+  mutate( input = input_fwd) %>%
+  select(Meas_ID, batch, input, input_fwd:qual_fltr, mRNA, dmnd_refseq, dmnd_seed)
+head(statsMetaT)
+```
 
+```{r}
+all_reads <- colSums(statsMetaT %>% select(-Meas_ID, -batch))
+(total_reads_coverage_metaT <- 100*all_reads/all_reads[1])
 ```
 
 
+```{r}
+percent_statsMetaT <- statsMetaT %>% 
+  mutate_at(
+    .funs = function(x) 100 * x/(.)$input_fwd,
+    .vars = setdiff(colnames((.)), c("batch", "Meas_ID"))
+  ) 
 
+reads_coverage_metaT <- percent_statsMetaT %>%
+  select(-(Meas_ID)) %>%
+  group_by(batch) %>%
+  summarize_all(median) %>%
+  as.data.frame() %>%
+  bind_rows(
+    data.frame(
+      batch = "All_MetaT", 
+      percent_statsMetaT %>%
+          select(-batch, -Meas_ID) %>%
+          summarise_all(median),
+      stringsAsFactors = FALSE
+    )
+  ) %>%
+  select(batch, input, trimmed:dmnd_seed)
+
+reads_coverage_metaT %>%
+  mutate_at(.funs = function(x) round(x, digits = 1),
+            .vars = vars(-batch))
+```
+
+Combine Data {#read-coverage-all .unnumbered}
+------------------------------------
+
+```{r}
+cols <- c("batch", "Meas_ID", "input")
+stats_input <- bind_rows(
+  data.frame(modality = "16S", stats16s[, cols]),
+  data.frame(modality = "MetaG", statsMetaG[, cols]),
+  data.frame(modality = "MetaT", statsMetaT[, cols])
+)
+```
+
+```{r, input-read-counts}
+ggplot(stats_input, 
+       aes(x = modality, y = input)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.3) 
+```
+
+
+```{r}
+cats <- c("16S_physeq", "16S_annotated_genus", "16S_annotated_species",
+          "MetaG_metag_pangenome","MetaG_metag_marker_genes", #"MetaT_mRNA", 
+          "MetaT_dmnd_refseq", "MetaT_dmnd_seed")         
+reads_coverage <- bind_rows(
+  reads_coverage_16s %>%
+    select(batch, physeq, annotated_genus, annotated_species) %>%
+    gather(key = type, value = percentage_of_input, -batch) %>%
+    mutate(modality = "16S"),
+  reads_coverage_metaG %>%
+    select(batch, metag_marker_genes, metag_pangenome) %>%
+    gather(key = type, value = percentage_of_input, -batch) %>%
+    mutate(modality = "MetaG"),
+  reads_coverage_metaT %>%
+    select(batch,  dmnd_refseq, dmnd_seed) %>% #mRNA,
+    gather(key = type, value = percentage_of_input, -batch) %>%
+    mutate( modality = "MetaT")) %>%
+  filter(grepl("All", batch)) %>%
+  mutate(
+    category = paste0(modality, "_", type),
+    category = factor(category, levels = cats))
+```
+
+```{r percetage-output-read-coverage}
+ggplot(reads_coverage) +
+  geom_bar(
+    aes(x = category, y = percentage_of_input, group = modality, fill = modality),
+    stat = "identity") +
+  scale_fill_brewer(palette = "Set2") +
+  coord_flip()
+```
 
 
 ```{r}

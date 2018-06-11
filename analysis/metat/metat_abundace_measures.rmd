@@ -6,7 +6,7 @@ author:
 keywords: microbiome, metatranscriptomics.
 date: "`r BiocStyle::doc_date()`"
 output: 
-  BiocStyle::html_document2:
+  BiocStyle::html_document:
     toc_float: true
     df_print: paged
 vignette: >
