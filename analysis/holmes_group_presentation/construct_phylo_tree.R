@@ -16,8 +16,8 @@ DIST <- FALSE
 PHYLONJ <- FALSE
 PHYLOGTR <- TRUE
 
-path_to_process_data <- "/home/lanhuong/Projects/PerturbationStudy/data/processed"
-data_file <- "perturb_physeq_filtered_8Dec.rds"
+path_to_process_data <- "/scratch/PI/sph/resilience/16S/phyloseq/"
+data_file <- "perturb_physeq_10Jul18.rds"
 res_filename <- "phanghorn_fit.rda"
 res_prev_run <- "phanghorn_fit_0.rda"
 res_alignfile <- "decipher_align_0.rds"
