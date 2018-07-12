@@ -8,6 +8,8 @@ analysis/*cache/
 *.html
 .Rproj.user
 metatranscriptomics/pyscripts_edited/old
-*/*.rda
-*/*.Rda
-*/*.Rhistory
+analysis/*/*.csv
+analysis/*/*.rds
+analysis/*/*.rda
+analysis/*/*.RData
+analysis/*/*.Rhistory
