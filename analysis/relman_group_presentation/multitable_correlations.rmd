@@ -1,0 +1,933 @@
+---
+title: "Multi-table Correlations"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "./figs/relman_group_presentation/", 
+  dev='png') 
+```
+
+```{r setup}
+#rm(list = ls())
+library("tidyverse")
+library("data.table")
+library("gridExtra")
+library("RColorBrewer")
+library("feather")
+library("ade4")
+
+theme_set(theme_bw())
+theme_update(
+  text = element_text(15),
+  panel.border = element_rect(size = 0.5),
+  panel.grid = element_blank(),
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 10),
+  legend.position = "bottom",
+  strip.background = element_blank()
+)
+options(width = 200, stringsAsFactors = FALSE) 
+
+datadir <- "/scratch/PI/sph/resilience/"
+#Sample data information
+meas_info <- read.csv("./meas_info.csv", row.names = 1)
+```
+
+Get Data Tables {#get-data .unnumbered}
+========================================
+
+
+```{r}
+overlap_samples <- meas_info %>%
+  filter(Meas_Type %in% c("16S", "MetaG", "MetaT")) %>%
+  group_by(Samp_ID) %>%
+  summarise(
+    n_modalities = length(unique(Meas_Type)),
+    modalities = paste0(sort(unique(Meas_Type)), collapse = "_")) %>%  
+  filter(n_modalities > 1)
+table(overlap_samples$modalities)
+```
+
+16S amplicon data {#16s-data .unnumbered}
+------------------------------------
+```{r, echo = FALSE}
+load("mult_tab_res.rda")
+```
+
+```{r}
+physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_22Jan18.rds")
+ps <- readRDS(physeqfile)
+taxtab16s <- data.frame(tax_table(ps))
+```
+
+```{r, eval = FALSE}
+seq16s_org <- otu_table(ps) %>%
+  as("matrix") %>%
+  as.data.frame()
+```
+
+```{r}
+samples_16s <- meas_info %>%
+  filter(Meas_ID %in% colnames(seq16s_org)) %>%
+  select(Meas_ID, Samp_ID, Samp_Type, Meas_Type, Subject)
+sum(table(samples_16s$Samp_ID) > 1)
+head(samples_16s)
+```
+
+
+```{r, eval = FALSE}
+seq16s_org <- seq16s_org[, samples_16s$Meas_ID]
+colnames(seq16s_org) <- samples_16s$Samp_ID
+```
+
+```{r, eval = FALSE}
+seq16s_genus <- seq16s_org %>%
+  mutate(Genus = taxtab16s[rownames(seq16s_org), "Genus"]) %>%
+  data.table()
+
+seq16s_genus <- seq16s_genus[, lapply(.SD, sum), by = .(Genus), 
+                           .SDcols = setdiff(colnames(seq16s_genus), "Genus")]
+dim(seq16s_genus)
+
+VAR_LIST <- c("seq16s_genus", "seq16s_org")
+save(list = c("VAR_LIST", VAR_LIST), file = "mult_tab_res.rda")
+
+```
+
+```{r}
+rm(ps)
+```
+
+
+
+Metagenomic data {#metag-data .unnumbered}
+------------------------------------
+
+```{r, echo = FALSE}
+load("mult_tab_res.rda")
+```
+
+
+```{r, eval = FALSE}
+metag_pangenome_file <- file.path(
+  datadir, "metagenomics/merged/gene_depths.feather")
+metag_pangenome <- read_feather(metag_pangenome_file) %>%
+  mutate(genus = str_extract(species, "[^_]+")) %>%
+  select( genus, species, gene_id, starts_with("M")) %>%
+  rename(species_id = species)
+metag_pangenome[is.na(metag_pangenome)] <- 0 
+dim(metag_pangenome) # 416355    749
+```
+
+```{r, eval = FALSE}
+tab <- metag_pangenome %>%
+  select(starts_with("M"))
+gene_prev <- rowSums(tab > 0)
+gene_sum <- rowSums(tab)
+
+min_gene_prev <- 0.01*ncol(tab) # prevalent in at least 1% of samples
+min_gene_sum <- 0.1*ncol(tab) # with gene sum at least 10% of number of samples
+metag_pangenome <- metag_pangenome %>%
+  filter(gene_prev >= min_gene_prev, gene_sum >= min_gene_sum)
+
+dim(metag_pangenome)
+summary(colSums(metag_pangenome %>% select(starts_with("M")))) # sample depths
+rm(tab, gene_prev, gene_sum)
+
+# 184624    749
+#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 14152  199075  263920  282461  347396 1613859 
+```
+
+
+```{r, eval = FALSE}
+metag_org_file <- file.path(
+  datadir, "metagenomics/merged/species_identifier_coverage.tsv")
+metag_org <- read_tsv(metag_org_file) %>%
+  mutate(
+    genus = str_extract(species_id, "[^_]+")) %>%
+  select(genus, species_id, starts_with("M"))
+dim(metag_org) #5952  766
+```
+
+```{r, eval =FALSE}
+meas <- intersect(colnames(metag_org %>% select(starts_with("M"))), 
+                  colnames(metag_org))
+metag_org <- metag_org[, c("genus", "species_id", meas)]
+metag_pangenome <- metag_pangenome[, c("genus",  "species_id", "gene_id", meas)]
+
+#dim(metag_org) #5952 748
+#dim(metag_pangenome) #5952 749
+```
+
+
+```{r}
+samples_metag <- meas_info %>%
+  filter(Meas_ID %in% meas) %>%
+  select(Meas_ID, Samp_ID, Samp_Type, Meas_Type, Subject)
+
+sum(table(samples_metag$Samp_ID) > 1) # 0
+```
+
+
+```{r, eval = FALSE}
+metag_org <- 
+  metag_org[, c("genus", "species_id", samples_metag$Meas_ID)]
+metag_pangenome <- 
+  metag_pangenome[, c("genus",  "species_id", "gene_id", samples_metag$Meas_ID)]
+
+colnames(metag_org) <- c("genus", "species_id", samples_metag$Samp_ID)
+colnames(metag_pangenome) <- 
+  c("genus", "species_id", "gene_id", samples_metag$Samp_ID)
+```
+
+
+```{r, eval = FALSE}
+metag_genus <- data.table(metag_org)[, lapply(.SD, sum), 
+   by = .(genus), 
+  .SDcols = colnames(metag_org)[startsWith(colnames(metag_org), "S")]]
+
+VAR_LIST <- c(VAR_LIST, c("metag_genus", "metag_org", "metag_pangenome"))
+save(list = VAR_LIST, file = "mult_tab_res.rda")
+```
+
+Metatranscriptomics data {#metag-data .unnumbered}
+------------------------------------
+
+```{r, eval = FALSE}
+file <- "metatranscriptomics/processed/final_results/abund_refseq_len_ratio_fltr.csv"
+metat_refseq <- fread(file.path(datadir, file))
+colnames(metat_refseq) <- gsub("_.*", "", colnames(metat_refseq))
+dim(metat_refseq)
+```
+
+
+
+```{r, eval = FALSE}
+samples_metat <- meas_info %>%
+  filter(Meas_ID %in% colnames(metat_refseq)) %>%
+  select(Meas_ID, Samp_ID, Samp_Type, Meas_Type, Subject)
+
+intersect_samples <- intersect(
+  intersect(
+    samples_metat$Samp_ID, 
+    colnames(seq16s_org)[startsWith(colnames(seq16s_org), "S")]),
+  colnames(metag_org)[startsWith(colnames(metag_org), "S")])
+length(intersect_samples) #469
+
+samples_metat_intersect <- samples_metat %>%
+  filter(Samp_ID %in% intersect_samples)
+
+saveRDS(intersect_samples, "samples_with_all_modalities.rds")
+
+VAR_LIST <- c(VAR_LIST, "intersect_samples")
+save(list = VAR_LIST, file = "mult_tab_res.rda")
+```
+
+
+```{r, eval = FALSE}
+annot_cols <- c("GeneID", "Organism", "Function", "Length")
+
+metat_refseq <- as.data.frame(metat_refseq) %>%
+  select(c(annot_cols, samples_metat$Meas_ID))
+colnames(metat_refseq) <- c(annot_cols, samples_metat$Samp_ID)
+metat_refseq[is.na(metat_refseq)] <- 0 
+
+metat_genus <- metat_refseq %>%
+  select(c(annot_cols, samples_metat_intersect$Meas_ID))
+  separate(
+    Organism,
+    c("Genus", "Species", "Strain"), " ",
+    remove = FALSE
+  ) %>%
+  mutate(Genus = gsub("[^[:alnum:] ]", "", Genus)) %>%
+  select(Genus, starts_with("S"), -Species, -Strain) %>%
+  group_by(Genus) %>%
+  summarise_all(sum) 
+
+VAR_LIST <- c(VAR_LIST, "metat_refseq", "metat_genus")
+save(list = VAR_LIST, file = "mult_tab_res.rda")
+```
+
+
+```{r, eval = FALSE}
+file <- "metatranscriptomics/processed/final_results/abund_seed_len_ratio.csv"
+metat_seed <- fread(file.path(datadir, file))
+colnames(metat_seed) <- gsub("_.*", "", colnames(metat_seed))
+dim(metat_seed)
+```
+
+```{r}
+seed_annot_cols <- c("GeneID", "SEED1", "SEED2", "SEED3",  "SEED4", "Length")
+meas_cols <- colnames(metat_seed)[startsWith(colnames(metat_seed), "M")]
+metat_seed <- data.frame(metat_seed) %>%
+  select(c(seed_annot_cols,meas_cols))
+```
+
+```{r, eval = FALSE}
+seed_samples_metat <- meas_info %>%
+  filter(Meas_ID %in% colnames(metat_seed)) %>%
+  select(Meas_ID, Samp_ID, Samp_Type, Meas_Type, Subject)
+
+metat_seed <- as.data.frame(metat_seed) %>%
+  select(c(seed_annot_cols, seed_samples_metat$Meas_ID))
+colnames(metat_seed) <- c(seed_annot_cols, seed_samples_metat$Samp_ID)
+metat_seed[is.na(metat_seed)] <- 0 
+
+VAR_LIST <- c(VAR_LIST, "metat_seed")
+save(list = VAR_LIST, file = "mult_tab_res.rda")
+```
+
+
+```{r}
+tabs <- c("metat_refseq_x", "metat_seed_x",
+          "seq16s_org_x",
+          "metag_org_x", "metag_pangenome_x")
+
+annot <- c("metat_refseq_info", "metat_seed_info",
+          "seq16s_org_info",
+          "metag_org_info", "metag_pangenome_info")
+
+metat_refseq_x <- metat_refseq[, intersect_samples]
+rownames(metat_refseq_x) <- metat_refseq$GeneID
+metat_refseq_info <- metat_refseq[, c("GeneID", "Organism", "Function", "Length")]
+
+
+metat_seed_x <- metat_seed[, intersect_samples]
+metat_seed_info <- metat_seed[, c("GeneID", "SEED1", "SEED2", "SEED3",  "SEED4", "Length")]
+rownames(metat_seed_x) <- metat_seed_info$GeneID
+
+
+seq16s_org_x <- seq16s_org[, intersect_samples]
+seq16s_org_info <- taxtab16s %>%
+  rownames_to_column("GeneID") %>%
+  select(GeneID:Species) 
+
+metag_org_x <- data.frame(metag_org)[, intersect_samples]
+rownames(metag_org_x) <- metag_org$species_id
+metag_org_info <- metag_org[, c("genus", "species_id")] %>%
+  mutate(GeneID = species_id) %>%
+  separate(
+    species_id,
+    c("Genus", "Species", "Strain"), "_",
+    remove = FALSE
+  ) %>%
+  select(GeneID, Genus, Species, Strain, species_id)
+
+metag_pangenome_x <- metag_pangenome[, intersect_samples]
+rownames(metag_pangenome_x) <- metag_pangenome$gene_id
+metag_pangenome_info <- metag_pangenome[, c("genus","species_id", "gene_id" )] %>%
+  mutate(GeneID = gene_id) %>%
+   separate(
+    species_id,
+    c("Genus", "Species", "Strain"), "_",
+    remove = FALSE
+  ) %>%
+  select(GeneID, Genus, Species, Strain, species_id, gene_id) 
+
+
+TAB_VAR_LIST <- c("tabs", "annot", tabs, annot)
+save(list = TAB_VAR_LIST, file = "mult_tabs.rda")
+```
+
+```{r}
+load("mult_tab_res.rda")
+```
+
+
+Pairwise Comparisons {#pairwise-comp .unnumbered}
+========================================
+
+We do the the pairwise comparison at the genus level.
+
+
+```{r, echo = FALSE}
+load("mult_tab_res.rda")
+```
+
+```{r}
+sample_info_cols <- c("Samp_ID", "Subject", "Interval", "Group")
+data_df <- meas_info %>% select(sample_info_cols) %>%
+  distinct()
+
+melt_genus_16s <- seq16s_genus %>%
+  as.data.frame() %>%
+  select("Genus", intersect_samples) %>%
+  mutate_at(.funs = function(x) x/sum(x), 
+            .vars = setdiff(colnames((.)), "Genus")) %>%
+  gather(Samp_ID, rel_total, -Genus) %>%
+  left_join(data_df) %>%
+  mutate(source = "16S")
+
+melt_genus_metaG <- metag_genus %>%
+  as.data.frame() %>%
+  rename(Genus = genus) %>%
+  select("Genus", intersect_samples) %>%
+  mutate_at(.funs = function(x) x/sum(x), 
+            .vars = setdiff(colnames((.)), "Genus")) %>%
+  gather(Samp_ID, rel_total, -Genus) %>%
+  left_join(data_df) %>%
+  mutate(source = "MetaG")
+
+melt_genus_metaT <- metat_genus %>%
+  as.data.frame() %>%
+  select("Genus", intersect_samples) %>%
+  mutate_at(.funs = function(x) x/sum(x), 
+            .vars = setdiff(colnames((.)), "Genus")) %>%
+  gather(Samp_ID, rel_total, -Genus) %>%
+  left_join(data_df) %>%
+  mutate(source = "MetaT")
+  
+melt_genus <- bind_rows(melt_genus_16s, melt_genus_metaG, melt_genus_metaT) 
+
+## scatterplot of abundances from the two sources, per sample
+genus_levels <- melt_genus %>%
+  group_by(Genus) %>%
+  summarise(mean = mean(rel_total)) %>%
+  arrange(desc(mean))
+
+head(genus_levels)
+
+melt_genus <- melt_genus  %>%
+  mutate(Genus = factor(Genus, genus_levels$Genus)) %>%
+  filter(!is.na(Subject))
+
+subject <- unique(melt_genus$Subject)
+
+scatter_data <- melt_genus %>%
+  spread(source, rel_total)
+
+taxtab16s_1 <- taxtab16s %>% 
+  select(Kingdom:Genus) %>%
+  filter(Genus %in% unique(scatter_data$Genus)) %>%
+  distinct() %>%
+  group_by(Genus) %>%
+  filter(row_number() <= 1) 
+
+scatter_data <- scatter_data %>%
+  left_join(taxtab16s_1)
+```
+
+```{r}
+family_stat <- melt_genus %>%
+  left_join(taxtab16s_1) %>%
+  group_by(Kingdom, Phylum, Class, Order, Family) %>%
+  summarise(sum = sum(rel_total)) %>%
+  arrange(desc(sum))
+
+tbl_df(family_stat)
+
+top15_family <- family_stat %>% 
+  filter(!is.na(Family)) 
+
+top15_family <- top15_family[1:15, ] %>% .[["Family"]]
+
+scatter_data <- scatter_data %>%
+  mutate(Family = factor(Family, levels = top15_family))
+```
+
+```{r metag-vs-16s, fig.width=8, fig.height=8}
+(plt <- ggplot() +
+  geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = scatter_data,
+    aes(x = `16S`, y = MetaG, color = Family),
+    size = 1, alpha = 0.5
+  ) +
+  scale_x_log10() + scale_y_log10() +
+  guides(color = guide_legend(override.aes = list(size=5))))
+```
+
+```{r metag-vs-16s-subj, fig.width=8, fig.height=8}
+plt + facet_wrap(~Subject) +
+ 
+```
+
+```{r metat-vs-16s, fig.width=8, fig.height=8}
+(plt <- ggplot() +
+  geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = scatter_data,
+    aes(x = `16S`, y = MetaT, color = Family),
+    size = 1, alpha = 0.5
+  ) +
+  scale_x_log10() + scale_y_log10() +
+  guides(color = guide_legend(override.aes = list(size=5))))
+```
+
+```{r metat-vs-16s-subj, fig.width=8, fig.height=8}
+plt + facet_wrap(~Subject) 
+ 
+```
+
+
+
+```{r metat-vs-metag, fig.width=8, fig.height=8}
+(plt <- ggplot() +
+  geom_abline(alpha = 0.4, size = 0.2) +
+  geom_point(
+    data = scatter_data,
+    aes(x = MetaG, y = MetaT, color = Family),
+    size = 1, alpha = 0.5
+  ) +
+  scale_x_log10() + scale_y_log10() +
+  guides(color = guide_legend(override.aes = list(size=5))))
+```
+
+```{r metat-vs-metag-subj, fig.width=8, fig.height=8}
+plt + facet_wrap(~Subject) 
+ 
+```
+
+Ordination with tSNE {#ord-tsne .unnumbered}
+========================================
+
+
+```{r}
+X <- metat_genus %>%
+  column_to_rownames("Genus") %>%
+  select(starts_with("S")) 
+X <- X[rowSums(X) > 0, ]
+bray_dist <- vegan::vegdist(X, "bray")
+```
+
+
+```{r}
+set.seed(123456)
+tsne_bray <- Rtsne::Rtsne(
+  bray_dist, dims = 2, 
+  is_distance = TRUE, pca = FALSE,
+  perplexity = 20, #min(30, floor((nrow(X) - 1)/3)),
+  eta = 10, exaggeration_factor = 20)
+  #eta = 10, exaggeration_factor = 12)
+scores <- as.data.frame(tsne_bray$Y)
+rownames(scores) <- rownames(X)
+```
+
+
+```{r}
+colnames(scores) <- paste0("Axis", 1:ncol(scores))
+scores_df <- scores %>%
+  rownames_to_column("Meas_ID") %>%
+  mutate(Meas_ID = gsub("\\_(.*)", "", Meas_ID)) %>%
+  left_join(smp_data) %>%
+  arrange(Group, Subject, Samp_Date)
+```
+
+```{r tsne-subj-org-metat, fig.width=8, fig.height=6}
+(plt <- ggplot(scores_df, aes(Axis1, Axis2)) +
+  geom_text(
+    aes(label = Subject, color = Subject), size = 5) +
+   scale_color_brewer(palette = "Set1") +
+   ggtitle("tSNE plot on organism aggragated abundances") +
+   theme(text = element_text(size = 15))
+)
+```
+
+
+
+
+Data Transformation {#transform-data .unnumbered}
+========================================
+
+
+Transformation {#transform-data .unnumbered}
+------------------------------------
+
+Sample Size normalization (for samples) and
+variance stabilization (for variables).
+First using DESeq size factor function; 
+second using asinh function.
+
+
+```{r, eval = FALSE}
+load("mult_tabs.rda")
+
+min_prev <- 0.01*ncol(seq16s_org_x) # prevalent in at least 1% of samples
+min_sum <- 0.1*ncol(seq16s_org_x) # with gene sum at least 10% of number of samples
+
+filter_variables <- function(X, minPrev, minSum){
+  X <- data.frame(X, stringsAsFactors = FALSE)
+  X <- X[rowSums(X > 0) >= minPrev, ]
+  X <- X[rowSums(X) >= minSum, ]
+  return(X)
+}
+
+metat_refseq_x <- filter_variables(metat_refseq_x, min_prev, min_sum)
+metat_refseq_x <- asinh(metat_refseq_x)
+
+metat_seed_x <- filter_variables(metat_seed_x, min_prev, min_sum)
+metat_seed_x <- asinh(metat_seed_x)
+
+seq16s_org_x <- filter_variables(seq16s_org_x, min_prev, min_sum)
+seq16s_org_x <- asinh(seq16s_org_x)
+
+metag_org_x <- filter_variables(metag_org_x, min_prev, 0)
+metag_org_x <- asinh(metag_org_x)
+
+metag_pangenome_x <- filter_variables(metag_pangenome_x, min_prev, min_sum)
+metag_pangenome_x <- asinh(metag_pangenome_x)
+
+# X <- metag_pangenome_x
+# range(rowSums(X))
+# dim(X)
+# X[1:10, 1:10]
+
+save(list = TAB_VAR_LIST, file = "mult_tabs_fltr.rda")
+```
+
+
+Handle Sample Depths???
+
+
+RV Coefficients {#RV-coeff .unnumbered}
+========================================
+
+
+```{r}
+load("mult_tabs_fltr.rda")
+```
+
+```{r}
+library(ade4)
+tab_lst <- list(metat_refseq_x, metat_seed_x,seq16s_org_x,
+                metag_org_x, metag_pangenome_x)
+names(tab_lst) <- tabs
+
+cor_mat_long <- expand.grid(
+  factor(tabs, levels = tabs, ordered = TRUE),
+  factor(tabs, levels = tabs, ordered = TRUE)
+  ) %>%
+  filter(Var1 <= Var2)
+
+coeff_rv <- lapply(seq(nrow(cor_mat_long)), function(i){
+  if(i%% 5 == 0) print(i)
+  if(cor_mat_long$Var1[i] == cor_mat_long$Var2[i]) {
+    return(1)
+  }
+  tab1 <- t(tab_lst[[cor_mat_long$Var1[i]]])
+  tab2 <- t(tab_lst[[cor_mat_long$Var2[i]]])
+  tab1 <- tab1[rownames(tab2), ]
+  rv <- MatrixCorrelation::RV(tab1, tab2) 
+  return(rv)
+})
+cor_mat_long$RV <- unlist(coeff_rv)
+cor_mat_long$RVcoeff <- round(cor_mat_long$RV , digits = 2)
+
+coeff_rv_pc <- lapply(seq(nrow(cor_mat_long)), function(i){
+  if(i%% 5 == 0) print(i)
+  if(cor_mat_long$Var1[i] == cor_mat_long$Var2[i]) {
+    return(1)
+  }
+  tab1 <- t(tab_lst[[cor_mat_long$Var1[i]]])
+  tab2 <- t(tab_lst[[cor_mat_long$Var2[i]]])
+  tab1 <- tab1[rownames(tab2), ]
+  pca1 <- prcomp(tab1)
+  pca2 <- prcomp(tab2)
+  rv <- MatrixCorrelation::RV(pca1$x[, 1:10], pca2$x[, 1:10]) 
+  return(rv)
+})
+cor_mat_long$RV_pc <- unlist(coeff_rv_pc)
+cor_mat_long$RVcoeff_pc <- round(cor_mat_long$RV_pc , digits = 2)
+
+
+cor_mat_long$Var1 <- factor(cor_mat_long$Var1, levels = tabs, labels = gsub("_x", "", tabs))
+cor_mat_long$Var2 <- factor(cor_mat_long$Var2, levels = tabs, labels = gsub("_x", "", tabs))
+```
+
+```{r}
+saveRDS(cor_mat_long, "rv_matrix.rds")
+```
+
+
+```{r}
+library(viridis)
+theme_cor <-  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank(),
+    legend.justification = c(1, 0),
+    legend.position = c(0.5, 0.7),
+    legend.direction = "horizontal",
+    legend.text = element_text(angle = 45) ) 
+
+ggheatmap <- ggplot(data = cor_mat_long, aes(Var2, Var1, fill = RV))+
+  geom_tile(color = "white") +
+  scale_fill_viridis(name="RV coefficient", direction = -1) +
+  theme_minimal()+ 
+  theme(
+    axis.text.x = element_text(angle = 30, vjust = 1, size = 12, hjust = 1),
+    axis.text.y = element_text(size = 12)
+    ) +
+ coord_fixed()
+```
+
+```{r, fig.width=7, fig.height=6}
+ggheatmap + 
+  geom_text(
+    aes(Var2, Var1, label = RVcoeff), 
+    fontface = "bold",
+    color = "white", size = 4) +
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+         title.position = "top", title.hjust = 0.5))
+  theme_cor
+
+```
+
+```{r}
+ggheatmap_pc <- ggplot(data = cor_mat_long, aes(Var2, Var1, fill = RV_pc))+
+  geom_tile(color = "white") +
+  scale_fill_viridis(name="RV coefficient", direction = -1) +
+  theme_minimal()+ 
+  theme(
+    axis.text.x = element_text(angle = 30, vjust = 1, size = 12, hjust = 1),
+    axis.text.y = element_text(size = 12)
+    ) +
+ coord_fixed()
+```
+
+
+```{r, fig.width=7, fig.height=6}
+ggheatmap_pc + 
+  geom_text(
+    aes(Var2, Var1, label = RVcoeff_pc), 
+    fontface = "bold",
+    color = "white", size = 4) +
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+        title.position = "top", title.hjust = 0.5)) +
+  theme_cor
+
+```
+
+
+DiSTATIS Ordiantion {#distatis .unnumbered}
+========================================
+
+```{r, eval = FALSE}
+library(doParallel)
+library(foreach)
+load("mult_tabs_fltr.rda")
+tab_lst <- list(metat_refseq_x, metat_seed_x,seq16s_org_x,
+                 metag_org_x, metag_pangenome_x)
+names(tab_lst) <- tabs
+
+B <- length(tabs)
+n <- ncol(seq16s_org_x)
+
+registerDoParallel(length(tab_lst))
+brayD_lst <- foreach(i=seq_along(tab_lst)) %dopar% {
+  print(i)
+  X <- t(tab_lst[[i]])
+  bray_dist <- vegan::vegdist(X, "bray")
+}
+names(brayD_lst) <- names(tab_lst) 
+saveRDS(brayD_lst, "brayD_lst.rds")
+
+```
+
+
+```{r}
+brayD_lst <- readRDS("brayD_lst.rds")
+B <- length(brayD_lst)
+n <- ncol( as.matrix(brayD_lst[[1]]))
+sample_names <- rownames(as.matrix(brayD_lst[[1]]))
+
+sample_info_cols <- c("Samp_ID", "Subject", "Interval", "Group",
+                      "Samp_Date", "First_Sample_Date")
+data_df <- meas_info %>% 
+  select(sample_info_cols) %>%
+  filter(Samp_ID %in% sample_names) %>%
+  distinct() %>%
+  mutate(Samp_Date = as.Date(Samp_Date),
+         First_Sample_Date = as.Date(First_Sample_Date),
+         Day_from_Start = Samp_Date - First_Sample_Date,
+         Day_from_T0 = as.numeric(Day_from_Start))
+rownames(data_df) <- data_df$Samp_ID
+
+# 3D array for DiSTATIS
+D.arr <- array(0, dim=c(n, n, B))
+for(i in 1:B){
+  D.arr[, , i] <- as.matrix(brayD_lst[[i]])
+}
+
+# Compute DiSTATIS representation
+fit_distatis <- DistatisR::distatis(D.arr, nfact2keep = 5)
+
+
+info_lst <- list(metat_refseq_info, metat_seed_info, seq16s_org_info,
+                metag_org_info, metag_pangenome_info)
+names(info_lst) <- tabs
+
+# Collect configurations for each D in bootD and for 
+distatis_coords <- fit_distatis$res4Splus[["PartialF"]]
+distatis_df <- plyr::alply(distatis_coords, 3)
+distatis_df <- lapply(1:length(distatis_df), function(i) {
+  data.frame(Samp_ID = rownames(as.matrix(brayD_lst[[i]])), distatis_df[[i]])
+})
+names(distatis_df) <- names(brayD_lst)
+distatis_df <- plyr::ldply(distatis_df)
+distatis_df <- distatis_df %>%
+  left_join(data_df)
+
+# Consensus coordinates
+consensus_coords <- fit_distatis$res4Splus[["F"]]
+consensus_df <- data.frame(data_df, consensus_coords)
+
+```
+
+
+```{r, fig.height=5, fig.width=10}
+library(viridis)
+eigs <- fit_distatis$res4Cmat$eigValues
+var_exp <- round(100*(eigs/sum(eigs)), digits = 2)
+
+
+ggplot(distatis_df, aes(Factor.1, Factor.2)) +
+    geom_point(data =  distatis_df,
+               aes(color = Subject),
+               size = 2, alpha = 0.6) +
+    geom_point(data = consensus_df, size = 4, color = "grey17",
+               pch = 21, aes(fill = Subject)) +
+  coord_fixed(sqrt(eigs[2]/eigs[1])) +
+  xlab(paste0("Factor1 [ ", var_exp[1], "% ]")) +
+  ylab(paste0("Factor1 [ ", var_exp[2], "% ]"))
+
+
+ggplot(distatis_df, aes(Factor.1, Factor.2)) +
+    geom_point(data =  distatis_df,
+               aes(color = Day_from_T0),
+               size = 2, alpha = 0.6) +
+    geom_point(data = consensus_df, size = 4, color = "grey17",
+               pch = 21, aes(fill = Day_from_T0)) +
+  coord_fixed(sqrt(eigs[2]/eigs[1])) +
+  xlab(paste0("Factor1 [ ", var_exp[1], "% ]")) +
+  ylab(paste0("Factor1 [ ", var_exp[2], "% ]")) +
+  scale_fill_viridis(direction = 1, name = 'Day_from_T0', discrete = FALSE) +
+  scale_color_viridis(direction = 1, name = 'Day_from_T0', discrete = FALSE) +
+  theme(legend.text = element_text(angle = 30))
+
+
+# +   scale_alpha(range = c(0, 0.9))
+# +
+#     xlim(1.1*min(distatis_df$Factor.1), 1.1*max(distatis_df$Factor.1)) +
+#     ylim(1.1*min(distatis_df$Factor.2), 1.1*max(distatis_df$Factor.2))
+```
+
+
+Top Variables {#top-vars .unnumbered}
+========================================
+
+```{r}
+metat_refseq_info_new <- metat_refseq_info %>%
+  filter(GeneID %in% rownames(metat_refseq_x)) %>%
+  left_join(
+    data.frame(GeneID = rownames(metat_refseq_x),
+               TotSum = rowSums(metat_refseq_x))
+  ) 
+
+top_refseq <- metat_refseq_info_new %>%
+  mutate(Organism = gsub("\\[", "", Organism)) %>%
+  group_by(Organism) %>%
+  summarise(Total = sum(TotSum)) %>%
+  arrange(desc(Total)) %>%
+  as.data.frame() %>%
+  mutate(Percent = round(Total/sum(Total)*100, digits = 2)) %>%
+  select(Organism, Percent)
+
+
+top_refseq <- metat_refseq_info_new %>%
+  #mutate(Function = gsub("\\[", "", Organism)) %>%
+  group_by(Function) %>%
+  summarise(Total = sum(TotSum)) %>%
+  arrange(desc(Total)) %>%
+  as.data.frame() %>%
+  mutate(Percent = round(Total/sum(Total)*100, digits = 2)) %>%
+  select(Function, Percent)
+
+top_refseq %>%  head(10)
+```
+
+
+```{r}
+metag_org_info_new <- metag_org_info %>%
+  filter(GeneID %in% rownames(metag_org_x)) %>%
+  left_join(
+    data.frame(GeneID = rownames(metag_org_x),
+               TotSum = rowSums(metag_org_x))
+  ) 
+
+top_metag <- metag_org_info_new %>%
+  mutate(Organism = gsub("\\[", "", Organism)) %>%
+  group_by(Organism) %>%
+  summarise(Total = sum(TotSum)) %>%
+  arrange(desc(Total)) %>%
+  as.data.frame() %>%
+  mutate(Percent = round(Total/sum(Total)*100, digits = 2)) %>%
+  select(Organism, Percent)
+
+
+top_refseq <- metat_refseq_info_new %>%
+  #mutate(Function = gsub("\\[", "", Organism)) %>%
+  group_by(Function) %>%
+  summarise(Total = sum(TotSum)) %>%
+  arrange(desc(Total)) %>%
+  as.data.frame() %>%
+  mutate(Percent = round(Total/sum(Total)*100, digits = 2)) %>%
+  select(Function, Percent)
+
+top_refseq %>%  head(10)
+```
+
+
+
+```{r}
+metat_seed_info_new <- metat_seed_info %>%
+  filter(GeneID %in% rownames(metat_seed_x)) %>%
+  left_join(
+    data.frame(GeneID = rownames(metat_seed_x),
+               TotSum = rowSums(metat_seed_x))
+  ) 
+
+top_seed <- metat_seed_info_new %>%
+  #mutate(Function = gsub("\\[", "", Organism)) %>%
+  group_by(SEED1, SEED2, SEED3, SEED4) %>%
+  summarise(Total = sum(TotSum)) %>%
+  arrange(desc(Total)) %>%
+  as.data.frame() %>%
+  mutate(Percent = round(Total/sum(Total)*100, digits = 2)) %>%
+  select(SEED1, SEED2, SEED3, SEED4, Percent)
+
+top_seed %>%  head(10)
+```
+
+```{r}
+knitr::kable(top_seed %>%  head(10))
+```
+
+
+```{r}
+sessionInfo()
+```
+
+
