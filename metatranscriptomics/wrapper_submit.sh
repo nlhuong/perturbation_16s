@@ -14,13 +14,13 @@ PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 #do
 
 SUBDIR=Arati_R_plate_11
-#SUBDIR=Relman_RNAseq_21
+#SUBDIR=Relman_RNAseq_18
 
 IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}
-LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/sh2_count_seed}
+LOG=${3:-$PI_BASE_DIR/logs/$SUBDIR/new_recount}
 
-TIME=${3:-01:30:00}
+TIME=${3:-24:00:00}
 NCPUS=${4:-1}
 MEM=${5:-8G}
 

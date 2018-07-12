@@ -8,3 +8,6 @@ analysis/*cache/
 *.html
 .Rproj.user
 metatranscriptomics/pyscripts_edited/old
+*/*.rda
+*/*.Rda
+*/*.Rhistory
