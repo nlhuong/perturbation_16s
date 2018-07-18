@@ -747,6 +747,8 @@ saveRDS(brayD_lst, "brayD_lst.rds")
 ```
 
 
+
+
 ```{r}
 brayD_lst <- readRDS("brayD_lst.rds")
 B <- length(brayD_lst)
@@ -773,12 +775,15 @@ for(i in 1:B){
 
 # Compute DiSTATIS representation
 fit_distatis <- DistatisR::distatis(D.arr, nfact2keep = 5)
+```
 
-
-info_lst <- list(metat_refseq_info, metat_seed_info, seq16s_org_info,
+```{r}
+info_lst <- list(nfonfo, metat_seed_info, seq16s_org_info,
                 metag_org_info, metag_pangenome_info)
 names(info_lst) <- tabs
+```
 
+```{r}
 # Collect configurations for each D in bootD and for 
 distatis_coords <- fit_distatis$res4Splus[["PartialF"]]
 distatis_df <- plyr::alply(distatis_coords, 3)
@@ -796,6 +801,10 @@ consensus_df <- data.frame(data_df, consensus_coords)
 
 ```
 
+```{r}
+meas_info <- read.csv("../holmes_group_presentation/meas_info_10June2018.csv", 
+                      row.names = 1) 
+```
 
 ```{r, fig.height=5, fig.width=10}
 library(viridis)
@@ -803,12 +812,16 @@ eigs <- fit_distatis$res4Cmat$eigValues
 var_exp <- round(100*(eigs/sum(eigs)), digits = 2)
 
 
-ggplot(distatis_df, aes(Factor.1, Factor.2)) +
-    geom_point(data =  distatis_df,
-               aes(color = Subject),
+ggplot(distatis_df,
+       aes(Factor.1, Factor.2)) +
+    geom_point(aes(color = Subject),
                size = 2, alpha = 0.6) +
-    geom_point(data = consensus_df, size = 4, color = "grey17",
-               pch = 21, aes(fill = Subject)) +
+    geom_point(data = consensus_df %>% 
+        left_join(meas_info %>% 
+        select(Samp_ID, Meas_ID, Subject, Meas_Type, 
+                contains("_Interval"))), 
+        size = 4, color = "grey17",
+        pch = 21, aes(fill = Subject)) +
   coord_fixed(sqrt(eigs[2]/eigs[1])) +
   xlab(paste0("Factor1 [ ", var_exp[1], "% ]")) +
   ylab(paste0("Factor1 [ ", var_exp[2], "% ]"))
@@ -827,11 +840,58 @@ ggplot(distatis_df, aes(Factor.1, Factor.2)) +
   scale_color_viridis(direction = 1, name = 'Day_from_T0', discrete = FALSE) +
   theme(legend.text = element_text(angle = 30))
 
+```
 
-# +   scale_alpha(range = c(0, 0.9))
-# +
-#     xlim(1.1*min(distatis_df$Factor.1), 1.1*max(distatis_df$Factor.1)) +
-#     ylim(1.1*min(distatis_df$Factor.2), 1.1*max(distatis_df$Factor.2))
+```{r}
+cols_itv <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols_itv) <- c("NoInterv", setdiff(unique(distatis_df$Interval), "NoInterv"))
+
+
+distatis_df <- distatis_df %>% 
+        left_join(meas_info %>% 
+                    select(Samp_ID, Meas_ID, Subject, 
+                           Meas_Type, contains("_Interval")))
+
+consensus_df <- consensus_df %>% 
+        left_join(meas_info %>% 
+                    select(Samp_ID, Meas_ID, Subject, 
+                           Meas_Type, contains("_Interval")))
+```
+
+```{r fig.height=6, fig.width=12}
+
+ggplot(distatis_df, 
+       aes(Factor.1, Factor.2)) +
+    geom_point(aes(color = Interval),
+               size = 2, alpha = 0.6) +
+    geom_point(
+      data = consensus_df, 
+      size = 3, color = "grey17",
+      pch = 21, aes(fill = Interval)) +
+  coord_fixed(sqrt(eigs[2]/eigs[1])) +
+  scale_color_manual(values = cols_itv) + 
+  scale_fill_manual(values = cols_itv) + 
+  xlab(paste0("Factor1 [ ", var_exp[1], "% ]")) +
+  ylab(paste0("Factor1 [ ", var_exp[2], "% ]")) 
+```
+
+
+```{r fig.height=8, fig.width=15}
+
+ggplot(distatis_df, 
+       aes(Factor.1, Factor.2)) +
+    geom_point(aes(color = Interval),
+               size = 2, alpha = 0.6) +
+    geom_point(
+      data = consensus_df, 
+      size = 3, color = "grey17",
+      pch = 21, aes(fill = Interval)) +
+  facet_wrap(~ Subject, scales = "free") +
+  coord_fixed(sqrt(eigs[2]/eigs[1])) +
+  scale_color_manual(values = cols_itv) + 
+  scale_fill_manual(values = cols_itv) + 
+  xlab(paste0("Factor1 [ ", var_exp[1], "% ]")) +
+  ylab(paste0("Factor1 [ ", var_exp[2], "% ]")) 
 ```
 
 
