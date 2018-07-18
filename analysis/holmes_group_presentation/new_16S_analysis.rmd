@@ -91,11 +91,12 @@ names(cols_itv) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
 
 
 ```{r}
-#resfile <- "ordinate_16S.rda"
-resfile <- "ordinate_16S_no_abx_cc.rda"
-
-load("./processed_physeq.rda")
+processed_datafile <- "./results/processed_physeq.rda"
+load(processed_datafile)
 ps <- subset_samples(ps, !(Group %in% c("Abx", "CC")))
+
+#resfile <- "ordinate_16S.rda"
+resfile <- "./results/ordinate_16S_no_abx_cc.rda"
 load(resfile)
 ```
 
@@ -600,13 +601,13 @@ norm_counts <- counts(dds, normalized = TRUE)
 # otu_table(ps_vst) <- otu_table(assay(vsd), taxa_are_rows = TRUE)
 # save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds",
 #               "norm_counts", "ps_vst", "vsd"), 
-#      file = "./processed_physeq.rda")
+#      file = processed_datafile)
 ```
 
 
 ```{r, eval = FALSE}
 save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds", "norm_counts"), 
-     file = "./processed_physeq.rda")
+     file = processed_datafile)
 ```
 
 ```{r eval = FALSE}
@@ -631,7 +632,7 @@ taxtab <- data.frame(tax_table(ps)) %>%
 ```{r pca, eval = FALSE}
 # Compute PCA 
 pca.ihs <- prcomp(t(asinh(norm_counts)), scale = FALSE)
-save(list = c("pca.ihs"), file = "./ordinate_16S.rda")
+save(list = c("pca.ihs"), file = resfile)
 ```
 
 
@@ -795,7 +796,7 @@ Sparse PCA {#spase-pca .unnumbered}
 sparse_pca <- PMA::SPC(
   scale(t(asinh(norm_counts)), center = TRUE, scale = FALSE), 
   K = 10, sumabsv = 10)
-save(list = c("pca.ihs", "sparse_pca"), file = "./ordinate_16S.rda")
+save(list = c("pca.ihs", "sparse_pca"), file = resfile)
 ```
 
 
@@ -1058,7 +1059,7 @@ rtsne.norm.ihs <- Rtsne::Rtsne(
   norm_ihs, dims = 2, initial_dims = 50, perplexity = 50, 
   is_distance = FALSE, pca = TRUE, eta = 200, exaggeration_factor = 12)
 save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs"), 
-     file = "./ordinate_16S.rda")
+     file = resfile)
 ```
 
 
@@ -1070,7 +1071,7 @@ rtsne.bray.ihs <- Rtsne::Rtsne(
   pca = FALSE, eta = 200, exaggeration_factor = 12)
 save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs", 
               "brayD.ihs", "rtsne.bray.ihs"), 
-     file = "./ordinate_16S.rda")
+     file = resfile)
 ```
 
 
