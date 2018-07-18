@@ -11,9 +11,5 @@ analysis/*cache/
 */*.html
 .Rproj.user
 metatranscriptomics/pyscripts_edited/old
-analysis/*/*.csv
-analysis/*/*.rds
-analysis/*/*.rda
-analysis/*/*.RData
-analysis/*/*.Rhistory
+analysis/*/results/*
 
