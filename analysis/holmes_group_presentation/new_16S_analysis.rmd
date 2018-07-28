@@ -15,9 +15,6 @@ vignette: >
 ---
 
 
-
-
-
 ```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
 library("BiocStyle")
 library("rmarkdown")
@@ -25,7 +22,7 @@ options(width = 200, stringsAsFactors = FALSE)
 knitr::opts_chunk$set(
   message = FALSE, error = FALSE, warning = FALSE, 
   fig.width = 8, fig.height = 6,
-  fig.path = "../figs/holmes_group_presentation/", 
+  fig.path = "../figs/holmes_group_presentation/all_groups/", 
   dev='png') 
 ```
 
@@ -85,18 +82,16 @@ theme_update(
   legend.position = "bottom",
   strip.background = element_blank()
 )
-cols_itv <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
-names(cols_itv) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
 ```
 
 
 ```{r}
-processed_datafile <- "./results/processed_physeq.rda"
+processed_datafile <- "results/processed_physeq.rda"
 load(processed_datafile)
-ps <- subset_samples(ps, !(Group %in% c("Abx", "CC")))
+#ps <- subset_samples(ps, !(Group %in% c("Abx", "CC")))
 
-#resfile <- "ordinate_16S.rda"
-resfile <- "./results/ordinate_16S_no_abx_cc.rda"
+resfile <- "results/ordinate_16S.rda"
+#resfile <- "./results/ordinate_16S_no_abx_cc.rda"
 load(resfile)
 ```
 
@@ -209,7 +204,7 @@ write.csv(meas_info, "./meas_info_10June2018.csv")
 
 
 ```{r}
-meas_info <- read.csv("./meas_info_10June2018.csv", row.names = 1) 
+meas_info <- read.csv("results/meas_info_10June2018.csv", row.names = 1) 
 smp_modality_count <- meas_info %>%
   select(Meas_ID, Samp_ID, Meas_Type) %>%
   group_by(Samp_ID) %>%
@@ -276,6 +271,12 @@ ggplot(df2plot) +
 
 ```{r}
 rm("colors", "df2plot", "smp_modality_count", "new_intv_levs")
+```
+
+```{r}
+levels <- unique(meas_info$Interval)
+cols_itv <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(length(levels) - 1))
+names(cols_itv) <- c("NoInterv", setdiff(levels, "NoInterv"))
 ```
 
 
@@ -468,6 +469,8 @@ two different subjects.
 
 ```{r, eval = FALSE}
 minTaxaSubjPrev <- 2
+minNonZeroSamples <- 5
+minPrevLevel <- 5 
 
 # Compute prevalence across subjects
 num_subj_present <- function(physeq, subject_indicator = "Subject") {
@@ -475,8 +478,11 @@ num_subj_present <- function(physeq, subject_indicator = "Subject") {
   seqtab <- as(otu_table(physeq), "matrix")
   if(!taxa_are_rows(physeq)) seqtab <- t(seqtab)
   sapply(1:ntaxa(physeq), function(i) {
-    subj.present <- smp[[subject_indicator]][seqtab[i, ] > 0]
-    length(unique(subj.present))})
+    subj.present <- smp[[subject_indicator]][seqtab[i, ] >= minPrevLevel]
+    freq <- table(subj.present)
+    sum(freq >= minNonZeroSamples)
+    #length(unique(subj.present))
+  })
 }
 subjects_prevalence <- num_subj_present(ps)
 
@@ -611,7 +617,7 @@ save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds", "norm_counts
 ```
 
 ```{r eval = FALSE}
-saveRDS(ps, file = file.path(datadir, "16S/phyloseq/perturb_physeq_filtr_10Jul18.rds"))
+saveRDS(ps, file = file.path(datadir, "16S/phyloseq/perturb_physeq_fltr2430_17Jul18.rds"))
 ```
 
 
@@ -873,7 +879,7 @@ print(plt)
 cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
 names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
 plot_projection(
-  scores, xname = "sPC1", yname = "sPC2", eigs = spca_var,
+  scores, xname = "sPC1", yname = "sPC2",
   labname = NULL, size = 3, color = "Interval") +
   geom_point(
     data = scores %>% 
@@ -1075,31 +1081,33 @@ save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs",
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 tsne_scores <- data.frame(
   Meas_ID = sample_names(ps),
   tSNE1 = rtsne.norm.ihs$Y[, 1],
   tSNE2 = rtsne.norm.ihs$Y[, 2],
   tSNE1_bray = rtsne.bray.ihs$Y[, 1],
-  tSNE2_bray = rtsne.bray.ihs$Y[, 2]) 
+  tSNE2_bray = rtsne.bray.ihs$Y[, 2],
+  tSNE1_centered = rtsne.centered.ihs$Y[, 1], 
+  tSNE2_centered = rtsne.centered.ihs$Y[, 2]) 
 
 scores <- scores %>%
   left_join(tsne_scores)
 ```
 
 
-```{r tsne-group, fig.height=10, fig.width=12}
-plot_projection(
-  scores, xname = "tSNE1", yname = "tSNE2",
-  labname = NULL, size = 2, color = "Group") +
-  scale_color_brewer(palette = "Set1") +
-  theme(legend.position = "right")
-```
-
 ```{r tsne-subj, fig.height=10, fig.width=14}
 plot_projection(
   scores, xname = "tSNE1", yname = "tSNE2",
   labname = NULL, size = 2, color = "Subject") +
+  theme(legend.position = "right")
+```
+
+
+```{r tsne-itv, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2",
+  labname = NULL, size = 2, color = "Interval") +
   theme(legend.position = "right")
 ```
 
@@ -1131,9 +1139,34 @@ plot_projection(
 
 
 
+```{r tsne-centered-subj, fig.height=10, fig.width=14}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered",
+  labname = NULL, size = 2, color = "Subject") +
+  theme(legend.position = "right")
+```
+
+```{r tsne-centered-itv, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered",
+  labname = NULL, size = 2, color = "Interval") +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "right")
+```
 
 
-```{r}
+```{r tsne-centered-time, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered", 
+  labname = NULL, size = 2,  color = "DaysFromStart") + 
+  theme(legend.position = "right") +
+  scale_color_viridis() 
+```
+
+
+
+
+```{r, eval = FALSE}
 save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs", 
               "brayD.ihs", "rtsne.bray.ihs", "pp", "out.agpca",
               "scores", "loadings", "scores_centered"), 

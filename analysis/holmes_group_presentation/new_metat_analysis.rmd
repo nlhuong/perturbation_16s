@@ -1,0 +1,199 @@
+---
+title: "MetaTranscriptomics Data Analysis"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/", 
+  dev='png') 
+```
+
+```{r setup}
+rm(list = ls())
+library("tidyverse")
+library("readxl")
+library("data.table")
+library("gridExtra")
+library("RColorBrewer")
+library("feather")
+library("data.table")
+
+theme_set(theme_bw())
+theme_update(
+  text = element_text(20),
+  panel.border = element_rect(size = 0.5),
+  legend.title = element_text(size = 15),
+  legend.text = element_text(size = 15),
+  legend.position = "bottom",
+  strip.background = element_blank()
+)
+datadir <- "/scratch/PI/sph/resilience/"
+curdir <- getwd()
+```
+
+Sample Data {#sample-data .unnumbered}
+==================================================
+
+```{r}
+meas_info <- read.csv("results/meas_info_10June2018.csv", row.names = 1) 
+rownames(meas_info) <- meas_info$Meas_ID
+```
+
+
+Metatranscriptomics data {#metag-data .unnumbered}
+==================================================
+
+```{r}
+file <- "metatranscriptomics/processed/final_results/abund_seed_len_ratio.csv"
+metat_seed <- fread(file.path(datadir, file))
+colnames(metat_seed) <- gsub("_.*", "", colnames(metat_seed))
+dim(metat_seed)
+```
+
+```{r}
+seed_annot_cols <- c("GeneID", "SEED", "SEED1", "SEED2", "SEED3",  "SEED4", "Length")
+meas_cols <- colnames(metat_seed)[startsWith(colnames(metat_seed), "M")]
+metat_seed <- data.frame(metat_seed) %>%
+  mutate_at(
+    .vars = vars(starts_with("SEED")),
+    .funs = function(x) {gsub(" ", "", x)}
+  ) %>%
+  mutate(SEED = paste(SEED1, SEED2, SEED3, SEED4, sep = ";;")) %>%
+  select(c(seed_annot_cols, meas_cols))
+#metat_seed[is.na(metat_seed)] <- 0 
+```
+
+
+```{r}
+freq <- data.frame(table(metat_seed$SEED)) %>% arrange(desc(Freq))
+head(freq)
+```
+
+
+```{r}
+meas_info <- meas_info %>%
+  filter(Meas_ID %in% meas_cols) 
+
+control_meas <- meas_info %>%
+  filter(is.na(Subject))
+
+control_cols <- control_meas$Meas_ID
+meas_cols <- setdiff(meas_cols, control_cols) 
+```
+
+
+```{r}
+metat <- metat_seed[, meas_cols]
+seed_anot <- metat_seed[, seed_annot_cols]
+```
+
+```{r}
+summary(colSums(metat, na.rm = TRUE)) # sample depth 
+```
+
+```{r}
+dim(metat) # 839406    562
+```
+
+
+```{r}
+minSampleDepth <- 1e4
+metat <- metat[, colSums(metat, na.rm = TRUE) > minSampleDepth]
+dim(metat)
+```
+
+
+```{r}
+metat.dt <- data.table(metat)
+metat.dt <- metat.dt[, SEED:=seed_anot$SEED]
+metat.gene.dt <- metat.dt[, lapply(.SD, sum, na.rm = TRUE),
+                          by = SEED,  .SDcols=colnames(metat)]
+```
+
+
+```{r}
+metat.gene.dt <- metat.gene.dt[ , rowsums :=rowSums(.SD, na.rm = TRUE), 
+                                .SDcols = colnames(metat)]
+sum(metat.gene.dt$rowsums)
+```
+
+```{r}
+#NOHIERARCHY;;;;;; 1980426
+metat.gene.dt[SEED == "NOHIERARCHY;;;;;;", rowsums]/sum(metat.gene.dt$rowsums)
+metat.gene.dt <- metat.gene.dt[SEED != "NOHIERARCHY;;;;;;", ]
+```
+
+
+
+```{r}
+rownames(meas_info) <- meas_info$Meas_ID
+subject_indicator <- meas_info[colnames(metat), "Subject"] 
+
+minTaxaSubjPrev <- 5
+minNonZeroSmps <- 5
+minPrevLev <- 5
+
+
+# Compute prevalence across subjects
+num_subj_present <- function(x, subject_indicator, 
+                             minPrevLevel, minNonZeroSamples) {
+  subj.present <- subject_indicator[x >= minPrevLevel]
+  freq <- table(subj.present)
+  return(sum(freq >= minNonZeroSamples))
+}
+
+metat.gene.dt.T <- data.table(t(metat.gene.dt))
+subjects_prevalence <- 
+  metat.gene.dt.T[, lapply(.SD, num_subj_present,
+                           subject_indicator = subject_indicator,
+                           minPrevLevel = minPrevLev, 
+                           minNonZeroSamples = minNonZeroSmps)]
+subjects_prevalence <- as.matrix(subjects_prevalence)[1, ]
+
+metat.gene.dt <- metat.gene.dt[subjects_prevalence >= minTaxaSubjPrev, ]
+dim(metat.gene.dt)
+```
+
+```{r}
+metat.gene.dt %>% select(starts_with("M")) %>%
+  colSums() %>% summary()
+```
+
+
+```{r}
+covtab_seed <- metat.gene.dt %>% select(starts_with("M"))
+rownames(covtab_seed) <- metat.gene.dt$SEED
+SMP <- meas_info[colnames(covtab_seed), ]
+genetab <- data.frame(SEED = metat.gene.dt$SEED) %>%
+  separate(SEED, into = paste0("SEED", 1:4), sep =";;")
+save(list = c("covtab_seed", "SMP", "genetab"),
+     file = "./results/metat_seed_filtered.rda")
+```
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+
