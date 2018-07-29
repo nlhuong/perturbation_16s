@@ -101,10 +101,6 @@ cd $REF_DIR
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
 
-# Download UniProt DB (takes a long time 32GB)
-# wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fasta.gz
-# gunzip uniref100.fasta.gz
-
 ## The following is Adapted from SAMSA2
 
 # Download NCBI RefSeq database:
@@ -115,6 +111,10 @@ wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshar
 # Download SEED Subsystems database:
 echo "NOW DOWNLOADING SEED SUBSYSTEMS DATABASE AT: "; date
 wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" # Download non-redundant (NR) protein DB
+
+# Download UniRef100 database:
+wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fasta.gz
+gunzip uniref100.fasta.gz
 
 ## Build database indexes -----------
 

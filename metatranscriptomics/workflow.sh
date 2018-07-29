@@ -59,8 +59,9 @@ TAX_CLASS=false #true
 ASSEMBLE=false #true
 GENOME_ANN=false #true
 PROT_ANN=false #true
-DIAMOND_REFSEQ=true
-DIAMOND_SEED=true
+DIAMOND_REFSEQ=false
+DIAMOND_SEED=false
+DIAMOND_UNIREF=true
 DIAMOND_COUNT=true
 
 ## HELP DOCS ----------
@@ -924,6 +925,34 @@ if $DIAMOND_SEED && [ ! -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
         $OUTPUT_DIR/time/${base}_time.log
 fi
 
+
+if $DIAMOND_UNIREF && [ ! -s $OUTPUT_DIR/diamond/${base}_uniref.dmdout ]; then
+    echo =======================================================================
+    echo UniRef100 annotation with DIAMOND ...
+
+    if [ $rna_samples ]; then
+        infile=$OUTPUT_DIR/main/${base}_mRNA.fq
+    else
+        infile=$OUTPUT_DIR/main/${base}_fltr.fq
+    fi
+
+    start=`date +%s`
+    # Align with UniRef100 database
+    $DIAMOND blastx --threads $n_threads \
+        -d $REF_DIR/uniref100 \
+        -q $infile \
+        -o $OUTPUT_DIR/diamond/${base}_uniref.dmdout \
+        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "DIAMOND UniRef gene annotation: $runtime min" >> \
+        $OUTPUT_DIR/time/${base}_time.log
+    echo ========================================== >> \
+        $OUTPUT_DIR/time/${base}_time.log
+fi
+
+
 if $DIAMOND_COUNT; then
     echo =======================================================================
     echo Aggregate DIAMOND results and count reads...
@@ -931,6 +960,7 @@ if $DIAMOND_COUNT; then
     mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
     mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
     mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
+    mkdir -p $OUTPUT_DIR/counts/dmnd_UniRef/
 
     start=`date +%s`
     if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq_abund.csv ] && \
@@ -975,6 +1005,17 @@ if $DIAMOND_COUNT; then
             $REF_DIR/subsys_db.tsv \
             -outfile $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed_abund.csv
         echo Completed counting of the SEED  anotated reads!
+    fi
+    
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_UniRef/${base}_uniref_abund.csv ] && \
+    [ -s $OUTPUT_DIR/diamond/${base}_uniref.dmdout ];
+    then
+        echo Diamond UniRef results aggregation ...
+        python $PYSCRIPT_DIR/reads_counter.py \
+            $OUTPUT_DIR/diamond/${base}_uniref.dmdout \
+            $REF_DIR/uniref100.tsv \
+            -outfile $OUTPUT_DIR/counts/dmnd_UniRef/${base}_uniref_abund.csv
+        echo Completed counting of the UniRef anotated reads!
     fi
     
     end=`date +%s`

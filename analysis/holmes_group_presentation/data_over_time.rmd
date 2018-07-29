@@ -1,0 +1,473 @@
+---
+title: "Microbiome variation over time"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+
+Setup {#setup .unnumbered}
+========================================
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/time_trends/", 
+  dev='png') 
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+#rm(list = ls())
+library("DESeq2")
+library("viridis")
+library("RColorBrewer")
+library("tidyverse")
+library("readxl")
+library("phyloseq")
+datadir <- "/scratch/PI/sph/resilience/"
+curdir <- getwd()
+
+theme_set(theme_bw())
+theme_update(
+  text = element_text(20),
+  legend.title = element_text(size = 15),
+  legend.text = element_text(size = 15),
+  legend.position = "right",
+  strip.background = element_blank()
+)
+
+
+```
+
+```{r}
+load("./processed_physeq.rda")
+load("ordinate_16S.rda")
+cols_itv <- c("grey57", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols_itv) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+```
+
+
+Time series {#time-series .unnumbered} 
+=========================================
+
+Bray-Curtis Distance {#bray .unnumbered}
+---------------------------------
+
+```{r}
+SMP <- sample_data(ps) %>%
+  data.frame() %>%
+  select(Meas_ID, Group, Subject, Interval, contains("_Interval"), 
+         Samp_Date, Real_First_Sample_Date, DaysFromStart,
+         contains("_RelDay"), Gender:BMI)
+  
+  
+brayD.df <- reshape2::melt(as.matrix(brayD.ihs), varnames = c("S1", "S2")) 
+brayD.df <- brayD.df %>%
+  left_join(SMP, by = c("S1" = "Meas_ID")) %>%
+  left_join(SMP, by = c("S2" = "Meas_ID"), suffix = c(".S1", ".S2")) %>%
+  filter(Subject.S1 == Subject.S2)
+
+
+```
+
+```{r}
+brayD.df.windows <- brayD.df %>%
+  filter(abs(DaysFromStart.S2 - DaysFromStart.S1) <= 7)
+
+brayD.df.windows.mean <- brayD.df.windows %>%
+  group_by(Group.S2, Interval.S2, Diet_RelDay.S2,
+           Abx_RelDay.S2, DaysFromStart.S2, Subject.S2) %>%
+  summarise(mean = mean(value),
+            sd = mean(value), 
+            upper = mean + sd,
+            lower = mean - sd)
+```
+
+```{r bray-window-abx, fig.width=10, fig.height=10}
+
+ggplot(brayD.df.windows.mean %>%
+         filter(grepl("Abx", Group.S2)),
+       aes(x = Abx_RelDay.S2, y = mean, color = Interval.S2)) +
+  geom_point(data = brayD.df.windows %>%
+               filter(grepl("Abx", Group.S2)), 
+             aes(y = value), size = 0.5, alpha = 0.2) + 
+  geom_line(aes(group = Subject.S2), lwd = 0.7, alpha = 0.7) + 
+  facet_wrap(~ Group.S2, ncol = 1, scales = "free") +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "bottom") +
+   guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+  
+```
+
+```{r bray-window-diet, fig.width=10, fig.height=10}
+
+ggplot(brayD.df.windows.mean %>%
+  filter(grepl("Diet", Group.S2), !grepl("MidAbx", Interval.S2),
+                  !grepl("PostAbx", Interval.S2)),
+  aes(x = Diet_RelDay.S2, y = mean, color = Interval.S2)) +
+  geom_point(data = brayD.df.windows %>%
+               filter(grepl("Diet", Group.S2), !grepl("MidAbx", Interval.S2),
+                !grepl("PostAbx", Interval.S2)),
+             aes(y = value), size = 0.5, alpha = 0.2) + 
+  geom_line(aes(group = Subject.S2), lwd = 0.7, alpha = 0.7) + 
+  facet_wrap(~ Group.S2, ncol = 1, scales = "free") +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(ncol=3, override.aes = list(size=3)))
+
+
+```
+
+
+```{r bray-window-control, fig.width=10, fig.height=4}
+
+ggplot(brayD.df.windows.mean %>%
+         filter(grepl("NoIntv", Group.S2)),
+       aes(x = DaysFromStart.S2, y = mean, color = Interval.S2)) +
+  geom_point(data = brayD.df.windows %>%
+               filter(grepl("NoIntv", Group.S2)), 
+             aes(y = value), size = 0.5, alpha = 0.2) + 
+  geom_line(aes(group = Subject.S2), lwd = 0.7, alpha = 0.7) + 
+  facet_wrap(~ Group.S2, ncol = 1, scales = "free") +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "bottom") +
+   guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+  
+```
+
+```{r}
+brayD.df.over.time <- brayD.df %>%
+  filter(DaysFromStart.S1 == 0)
+```
+
+```{r bray-over-time-abx, fig.width=10, fig.height=10}
+
+ggplot(brayD.df.over.time %>%
+         filter(grepl("Abx", Group.S2)),
+       aes(x = Abx_RelDay.S2, y = value, color = Interval.S2)) +
+  geom_line(aes(group = Subject.S2)) +
+  facet_wrap(~ Group.S2, ncol = 1, scales = "free") +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "bottom") +
+   guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+  
+
+
+```
+
+
+```{r bray-over-time-diet, fig.width=10, fig.height=10}
+
+ggplot(brayD.df.over.time %>%
+         filter(grepl("Diet", Group.S2), !grepl("MidAbx", Interval.S2),
+                !grepl("PostAbx", Interval.S2)),
+       aes(x = Diet_RelDay.S2, y = value, color = Interval.S2)) +
+  geom_line(aes(group = Subject.S2)) +
+  facet_wrap(~ Group.S2, ncol = 1, scales = "free") +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "bottom") +
+   guides(color = guide_legend(ncol=3, override.aes = list(size=3)))
+  
+```
+
+
+```{r bray-over-time-control, fig.width=10, fig.height=5}
+
+ggplot(brayD.df.over.time %>%
+         filter(grepl("NoIntv", Group.S2)),
+       aes(x = DaysFromStart.S2, y = value, color = Interval.S2)) +
+  geom_line(aes(group = Subject.S2)) +
+  facet_wrap(~ Group.S2, ncol = 1, scales = "free") +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "bottom") +
+   guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+  
+```
+
+Sparse PCA {#spca .unnumbered}
+---------------------------------
+
+```{r}
+subject_scores <- scores %>%
+  select(Subject, sPC1:sPC10) %>%
+  group_by(Subject) %>%
+  summarise_all(mean)
+
+scores_centered <- scores_centered %>%
+  left_join(sparse_scores) %>%
+  left_join(subject_scores, by = c("Subject"), suffix = c("", ".subj")) 
+
+for(sPC in paste0("sPC", 1:10)) {
+  scores_centered[, sPC] <- scores_centered[, sPC] - 
+    scores_centered[, paste0(sPC, ".subj")]
+}
+```
+
+
+```{r}
+scores_group <- subject_scores %>%
+  select(Group, DaysFromStart, sPC1:sPC3) %>%
+  group_by(Group, DaysFromStart) %>%
+  summarise_all(mean)
+
+
+```
+
+
+```{r abx-sPC1-over-time, fig.width=10, fig.height=10}
+abx_data <- scores_centered %>%
+  filter(grepl("Abx", Group))
+ggplot(
+  abx_data,
+  aes(x = Abx_RelDay, y = sPC1)) +
+  geom_line(alpha = 0.7, aes(group = Subject, color = Interval)) +
+ geom_line(
+   data = abx_data %>% filter(grepl("MidAbx", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  geom_line(alpha = 0.5, 
+   data = abx_data %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Group , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+
+```
+
+```{r abx-sPC2-over-time, fig.width=10, fig.height=10}
+ggplot(
+  abx_data,
+  aes(x = Abx_RelDay, y = sPC2)) +
+  geom_line(alpha = 0.7, aes(group = Subject, color = Interval)) +
+ geom_line(
+   data = abx_data %>% filter(grepl("MidAbx", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  geom_line(
+   data = abx_data %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Group , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+ guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+
+```
+
+
+```{r diet-sPC1-over-time, fig.width=10, fig.height=10}
+diet_data <- scores_centered %>%
+  filter(grepl("Diet", Group), 
+         !grepl("MidAbx", Interval),
+         !grepl("PostAbx", Interval))
+ggplot(
+  diet_data,
+  aes(x = Diet_RelDay, y = sPC1)) +
+  geom_line(alpha = 0.7,
+    aes(group = Subject, color = Interval)) +
+  geom_line(
+   data = diet_data %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Group , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+
+```
+
+
+
+```{r diet-sPC2-over-time, fig.width=10, fig.height=10}
+ggplot(
+  diet_data,
+  aes(x = Diet_RelDay, y = sPC2)) +
+  geom_line(alpha = 0.7, aes(group = Subject, color = Interval)) +
+  geom_line(
+   data = diet_data %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Group , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+
+```
+
+```{r cc-sPC1-over-time, fig.width=10, fig.height=10}
+cc_data <- scores_centered %>%
+  filter(grepl("CC", Group), 
+         !grepl("MidAbx", Interval),
+         !grepl("PostAbx", Interval))
+ggplot(
+  cc_data,
+  aes(x = CC_RelDay, y = sPC1)) +
+  geom_line(alpha = 0.7,
+    aes(group = Subject, color = Interval)) +
+  geom_line(
+   data = cc_data %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Group , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+
+```
+
+```{r cc-sPC2-over-time, fig.width=10, fig.height=10}
+ggplot(
+  cc_data,
+  aes(x = CC_RelDay, y = sPC2)) +
+  geom_line(alpha = 0.7,
+    aes(group = Subject, color = Interval)) +
+  geom_line(
+   data = cc_data %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Subject, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Group , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+ guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+
+```
+
+
+```{r sPC1, fig.height=10, fig.width=10}
+ggplot(loadings %>% filter(abs(sPC1) > 1e-2),
+       aes(y = Genus, x = sPC1)) +
+  geom_jitter(
+    aes(color = Family),
+    height = 0.2, width = 0, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  guides(color=guide_legend(ncol=3)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom", 
+        legend.text = element_text(size = 12),
+        text = element_text(size = 20)) 
+```
+
+
+```{r sPC2, fig.height=11, fig.width=10}
+ggplot(loadings %>% filter(abs(sPC2) > 1e-2),
+       aes(y = Genus, x = sPC2)) +
+  geom_jitter(
+    aes(color = Family),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  guides(color=guide_legend(ncol=3)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom", 
+        legend.text = element_text(size = 12),
+        text = element_text(size = 20)) 
+
+```
+
+
+Clustering ASVs {#clustering .unnumbered} 
+=========================================
+
+
+```{r}
+# tab <- table(abx@sam_data$Abx_RelDay, abx@sam_data$Subject)
+# tab <- spread(data.frame(tab), value = "Freq", key = "Var2") %>%
+#   rename("Abx_RelDay" = "Var1") 
+# 
+# idx <- c(1)
+# subj_sum <- c(sum(tab[1, 2:ncol(tab)]))
+# for(i in 2:nrow(tab)) {
+#   itab <- tab %>% select(-Abx_RelDay)
+#   itab <- itab[idx[i-1]:i, ]
+#   subj_sum <- c(subj_sum, sum(itab))
+#   if(all(colSums(itab) > 0)) {
+#     idx <- c(idx, i)
+#   } else {
+#     idx <- c(idx, idx[i-1])
+#   }
+# }
+# tab$idx <- idx
+# tab$cum_sum <- cumsum(tab$sum_all_subj)
+# 
+# tab2 <- tab[1, 1:(ncol(tab)-1)]
+# for(i in 2:nrow(tab)) {
+#   itab <- tab %>% select(starts_with(("E")))
+#   itab <- itab[idx[i-1]:i, ]
+#   itab_sum <- as.numeric(colSums(itab))
+#   tab2 <- rbind(tab2,
+#                 c(as.character(tab[i, "Abx_RelDay"]), itab_sum))
+# }
+#   
+```
+
+
+```{r}
+abx <- subset_samples(ps, Group == "Diet_Abx")
+
+minTaxaSums <- 0.1*nsamples(abx)
+abx <- subset_taxa(abx, taxa_sums(abx) > minTaxaSums)
+abx
+
+seqtab_long <- reshape2::melt(
+  as(otu_table(abx), "matrix"),
+  varname = c("Seq_ID", "Meas_ID")
+)
+
+seqtab_long <- seqtab_long %>%
+  left_join(data.frame(sample_data(abx))) %>%
+  group_by(Seq_ID, Interval, Abx_Interval , Abx_RelDay) %>%
+  summarise(value= mean(value))
+
+```
+
+```{r}
+taxa_long <- seqtab_long %>%
+  left_join(data.frame(tax_table(abx)) %>% rownames_to_column("Seq_ID"))
+
+genus_long <- taxa_long %>%
+  group_by(Interval, Abx_Interval, Abx_RelDay, Genus) %>%
+  summarise(value = mean(value))
+
+genus_long <- genus_long %>%
+  left_join(data.frame(tax_table(abx)) %>%
+              rownames_to_column("Seq_ID"))
+```
+
+```{r}
+top_genus <- genus_long %>%
+  group_by(Genus) %>%
+  summarise(value = mean(value)) %>%
+  arrange(desc(value)) %>%
+  top_n(20)
+```
+
+```{r, fig.height=30, fig.width=10}
+ggplot(
+  genus_long,
+  aes(x = Abx_RelDay, y = value)) +
+  geom_line(alpha = 0.7, aes(group = Genus, color = Interval)) +
+ geom_line(
+   data = genus_long %>% filter(grepl("MidAbx", Interval)), 
+   aes(group = Genus, color = Interval), lwd = 1) +
+  geom_line(
+   data = genus_long %>% filter(grepl("MidDiet", Interval)), 
+   aes(group = Genus, color = Interval), lwd = 1) +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Class , scales = "free", ncol = 1) +
+  theme(legend.position = "bottom") +
+ guides(color = guide_legend(ncol=4, override.aes = list(size=3)))
+```
+
+
+
+```{r}
+sessionInfo()
+```
+
