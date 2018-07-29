@@ -15,10 +15,6 @@ vignette: >
 ---
 
 
-
-System Setup {#setup .unnumbered}
-========================================
-
 ```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
 library("BiocStyle")
 library("rmarkdown")
@@ -26,37 +22,21 @@ options(width = 200, stringsAsFactors = FALSE)
 knitr::opts_chunk$set(
   message = FALSE, error = FALSE, warning = FALSE, 
   fig.width = 8, fig.height = 6,
-  fig.path = "../figs/holmes_group_presentation/", 
+  fig.path = "../figs/holmes_group_presentation/all_groups/", 
   dev='png') 
 ```
 
-```{r setup}
-rm(list = ls())
+```{r setup, warning=FALSE, message=FALSE}
+#rm(list = ls())
 library("DESeq2")
 library("viridis")
 library("RColorBrewer")
 library("tidyverse")
 library("readxl")
 library("phyloseq")
-
-
-theme_set(theme_bw())
-theme_update(
-  text = element_text(15),
-  panel.border = element_rect(size = 0.5),
-  panel.grid = element_blank(),
-  axis.ticks = element_blank(),
-  legend.title = element_text(size = 12),
-  legend.text = element_text(size = 12),
-  legend.position = "bottom",
-  strip.background = element_blank()
-)
 datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
-```
 
-
-```{r}
 plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
                             color = NULL, eigs = NULL, ...){
   if(all(!is.null(color), color %in% colnames(data))){
@@ -90,6 +70,29 @@ plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
   }
   return(plt + theme(text = element_text(size = 20))) 
 }
+
+theme_set(theme_bw())
+theme_update(
+  text = element_text(15),
+  panel.border = element_rect(size = 0.5),
+  panel.grid = element_blank(),
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 12),
+  legend.text = element_text(size = 12),
+  legend.position = "bottom",
+  strip.background = element_blank()
+)
+```
+
+
+```{r}
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+#ps <- subset_samples(ps, !(Group %in% c("Abx", "CC")))
+
+resfile <- "results/ordinate_16S.rda"
+#resfile <- "./results/ordinate_16S_no_abx_cc.rda"
+load(resfile)
 ```
 
 
@@ -144,27 +147,27 @@ samp <- read_xlsx(smpinfo_file, "Samp", skip = 1)  %>%
     Interval = gsub("_NoInterv", "", Interval),
     Interval = factor(Interval, unique(Interval))
   ) %>%
-  select(Samp_ID:Abx_RelDay, Interval) 
+  mutate(
+    Group = sapply(1:nrow(.), function(i) {
+      group <- c()
+      if(Diet_RelDay[i] != "NA") group <- c(group, "Diet")
+      if(CC_RelDay[i] != "NA") group <- c(group, "CC")
+      if(Abx_RelDay[i] != "NA") group <- c(group, "Abx")
+      if(length(group) == 0) group <- "NoIntv"
+      return(paste(group, collapse = "_"))
+    })
+  ) %>%
+  select(Samp_ID:Abx_RelDay, Interval, Group) 
 head(samp)
 ```
 
 ```{r, eval = FALSE}
 # Subject Data
 subj_data <- read_excel(
-  smpinfo_file, sheet = "SubjNoRagged", skip = 1, 
+  smpinfo_file, sheet = "Subj", skip = 1, 
   col_types = c("text", rep("date", 4), rep("guess", 864))
   )  %>%
-  mutate(
-    Group = sapply(1:nrow(.), function(i) {
-      group <- c()
-      if(!is.na(Diet_StartDate[i])) group <- c(group, "Diet")
-      if(!is.na(CC_Date[i])) group <- c(group, "CC")
-      if(!is.na(Abx_StartDate[i])) group <- c(group, "Abx")
-      if(length(group) == 0) group <- "NoIntv"
-      return(paste(group, collapse = "_"))
-    })
-    ) %>%
-  select(Subject, Group, First_Sample_Date, CC_Date, Diet_StartDate, 
+  select(Subject, First_Sample_Date, CC_Date, Diet_StartDate, 
          Abx_StartDate, Age:BMI)
 head(subj_data)
 ```
@@ -176,14 +179,14 @@ meas_info <- meas %>%
 write.csv(meas_info, "./meas_info_10June2018.csv")
 ```
 
-```{r}
+```{r, eval = FALSE}
 meas_info <- read.csv("./meas_info_10June2018.csv", row.names = 1) %>%
   mutate_at(.vars = vars(contains("Date")), 
             .funs = function(x) {as.Date(as.character(x), "%Y-%m-%d")}) 
 head(meas_info)
 ```
 
-```{r}
+```{r, eval = FALSE}
 start_dates <- meas_info %>%
    group_by(Subject, First_Sample_Date) %>%
     summarise(Real_First_Sample_Date = min(Samp_Date, na.rm = TRUE))
@@ -201,6 +204,7 @@ write.csv(meas_info, "./meas_info_10June2018.csv")
 
 
 ```{r}
+meas_info <- read.csv("results/meas_info_10June2018.csv", row.names = 1) 
 smp_modality_count <- meas_info %>%
   select(Meas_ID, Samp_ID, Meas_Type) %>%
   group_by(Samp_ID) %>%
@@ -209,7 +213,8 @@ smp_modality_count <- meas_info %>%
     modality_count = n()
   ) %>%
   mutate(
-    modalities = ifelse(modalities == "MetaT_MetaG_16S", "16S_MetaG_MetaT", modalities)
+    modalities = ifelse(modalities == "MetaT_MetaG_16S", 
+                        "16S_MetaG_MetaT", modalities)
   )
   
 df2plot <- meas_info %>%
@@ -220,13 +225,35 @@ df2plot <- meas_info %>%
   filter(!grepl("NA", Subject))
 ```
 
-```{r exp-design, fig.width=10, fig.height=8}
+```{r exp-design, fig.width=10, fig.height=12}
 new_intv_levs <- unique(meas_info$Interval)
 colors <- colorRampPalette(brewer.pal(8, "Set3"))(length(new_intv_levs)-2)
 colors <- c("grey57", "red", colors)
 names(colors) <- c("NoInterv", "UnpAbx", 
                    setdiff(new_intv_levs, c("NoInterv", "UnpAbx")))
-ggplot(df2plot %>% filter(Group != "Abx")) +
+ggplot(df2plot %>% 
+         filter(
+           !(Group %in% c("Abx", "CC", "CC_Abx")),
+           !is.na(Subject), !grepl("QC", Subject), 
+           !(Subject  %in% c("DAG", "DAC")))
+       ) +
+  geom_point(
+      pch = 124,
+      aes(y = Subject, x = Samp_Date, color = Interval,
+          fill = Interval, size = modality_count)
+    ) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    scale_size_continuous(range = c(5, 10)) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=0)) +
+    guides(color = guide_legend(ncols = 4, override.aes = list(size=5, pch = 16)),
+           size = guide_legend(override.aes = list(color="black")))
+```
+
+
+```{r exp-design-all, fig.width=10, fig.height=15}
+ggplot(df2plot) +
   geom_point(
       pch = 124,
       aes(y = Subject, x = Samp_Date, color = Interval,
@@ -246,6 +273,12 @@ ggplot(df2plot %>% filter(Group != "Abx")) +
 rm("colors", "df2plot", "smp_modality_count", "new_intv_levs")
 ```
 
+```{r}
+levels <- unique(meas_info$Interval)
+cols_itv <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(length(levels) - 1))
+names(cols_itv) <- c("NoInterv", setdiff(levels, "NoInterv"))
+```
+
 
 Generate Phyloseq Object {#generate-phyloseq .unnumbered}
 ========================================
@@ -255,7 +288,6 @@ from two new batches.
 
 We read the data stored as a `phyloseq` object from batches 1-4, 
 then 5-6.
-
 
 ```{r get-physeq-batches-1-4, eval = FALSE}
 # Bacthes 1-4
@@ -300,7 +332,6 @@ psSilvaMult_merge <- merge_phyloseq(psSilvaMult, psSilvaMult2)
 rm(psRDP, psRDP2, psRDPMult, psRDPMult2, psSilva, psSilva2, psSilvaMult, psSilvaMult2)
 ```
 
-
 ```{r, eval = FALSE}
 df <- bind_rows(
   data.frame(DB = "RDP", tax_table(psRDP_merge)@.Data),
@@ -325,7 +356,6 @@ df <- bind_rows(
 ```
 
 
-
 ```{r, eval = FALSE}
 newTaxtab <- tax_table(psRDP_merge)
 newTaxtab <- cbind(newTaxtab, "SpeciesMult" = tax_table(psRDPMult_merge)[, "Species"])
@@ -340,7 +370,6 @@ seqtab <- as(otu_table(psRDP_merge), "matrix")
 seqtab <- seqtab[newTaxtab[, "Seq"], ]
 rownames(seqtab) <- rownames(newTaxtab) 
 ```
-
 
 ```{r, eval=FALSE}
 ps_smp_names <- colnames(seqtab) 
@@ -410,7 +439,6 @@ Preprocess Data {#preprocess .unnumbered}
 =========================================
 
 
-
 ```{r, eval = FALSE}
 physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_10Jul18.rds")
 ps0 <- readRDS(file = physeqfile)
@@ -420,7 +448,8 @@ ps0
 ```
 
 
-We will remove samples from subject who did not have sufficient number of
+
+We will now remove samples from subject who did not have sufficient number of
 samples sequenced, either because they came from a different experiment or
 because the subjects did not complete the study.
 
@@ -440,6 +469,8 @@ two different subjects.
 
 ```{r, eval = FALSE}
 minTaxaSubjPrev <- 2
+minNonZeroSamples <- 5
+minPrevLevel <- 5 
 
 # Compute prevalence across subjects
 num_subj_present <- function(physeq, subject_indicator = "Subject") {
@@ -447,8 +478,11 @@ num_subj_present <- function(physeq, subject_indicator = "Subject") {
   seqtab <- as(otu_table(physeq), "matrix")
   if(!taxa_are_rows(physeq)) seqtab <- t(seqtab)
   sapply(1:ntaxa(physeq), function(i) {
-    subj.present <- smp[[subject_indicator]][seqtab[i, ] > 0]
-    length(unique(subj.present))})
+    subj.present <- smp[[subject_indicator]][seqtab[i, ] >= minPrevLevel]
+    freq <- table(subj.present)
+    sum(freq >= minNonZeroSamples)
+    #length(unique(subj.present))
+  })
 }
 subjects_prevalence <- num_subj_present(ps)
 
@@ -489,7 +523,7 @@ Remove contamination:
 ```
 
 
-```{r, eval = FALSE}
+```{r}
 SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
   mutate(SampleDepth = sample_sums(ps))
   
@@ -499,11 +533,67 @@ SUBJ <-  SMP %>%
 ```
 
 
+Estimate the phylo tree {#phylo-tree .unnumbered} 
+-------------------------------------------------
+
+Go to code in 
+"/scratch/users/lanhuong/Projects/perturbation_16s/16S/construct_phylo_tree.R"
+and see how the tree was estimated.
+
+```{r eval = FALSE}
+load(file.path(datadir, "16S/phyloseq/phylo_fit.rda"))
+phy_tree(ps) <- rootedGTRtree
+```
+
+```{r}
+# Assign colors to taxa
+tax_rank <- "Family"
+n_taxa <- 15
+
+taxFreq <- tibble(Seq_ID = taxa_names(ps),Seq_Sum = taxa_sums(ps)) %>%
+  left_join(data.frame(tax_table(ps)) %>%
+              rownames_to_column("Seq_ID")) %>%
+  group_by_(tax_rank) %>%
+  summarise(Taxa_Sum = sum(Seq_Sum)) %>%
+  filter(!is.na(.[[tax_rank]])) %>%
+  arrange(desc(Taxa_Sum)) %>%
+  top_n(n_taxa) %>%
+  mutate(color = colorRampPalette(brewer.pal(8, "Dark2"))(n_taxa))
+
+other <-  data.frame("Other", 0, "grey77")
+colnames(other) <- colnames(taxFreq)
+taxFreq <- rbind(taxFreq, other)
+
+taxa_col <- tibble(
+  Seq_ID = taxa_names(ps),
+  Taxa = c(tax_table(ps)[, tax_rank])) %>%
+  mutate(
+    Taxa = ifelse(is.na(Taxa), "Unknown", Taxa),
+    Taxa = ifelse(Taxa == "", "Unknown", Taxa),
+    Taxa = ifelse(Taxa %in% taxFreq[[tax_rank]], Taxa, "Other")) %>%
+  left_join(taxFreq, by=c("Taxa" = tax_rank))
+```
+
+```{r phylotree, fig.height=10, fig.width=15}
+default_par <- par()
+par(mar=c(7,1,1,1), xpd = TRUE)
+plot(ps@phy_tree, label.offset=0.7, show.tip.label = FALSE, 
+     direction = "downwards") 
+par(mar=c(1,1,1,1), xpd = TRUE)
+ape::tiplabels(pch=21, col="black", adj=1, bg=taxa_col$color, cex=1) 
+legend(x= 600, y = -0.1, legend = taxFreq[[tax_rank]], 
+       fill = taxFreq$color, ncol = 4, cex = 1.2)
+```
+
+
+
+Variance Stabilization {#vst .unnumbered} 
+-------------------------------------------------
+
 ```{r, eval = FALSE}
 # Transform counts to not "over-weight" highly abundant taxa
 ps_asinh <- transform_sample_counts(ps, function(x) {asinh(x)})
 ```
-
 
 ```{r, eval = FALSE}
 # Takes too long
@@ -511,45 +601,44 @@ dds <- phyloseq_to_deseq2(ps, design = ~ 1)
 dds <- estimateSizeFactors(dds, type = "poscounts")
 norm_counts <- counts(dds, normalized = TRUE)
 
-## The following takes too long; and vst() does not work with too few genes with rowmeans > 5
-vsd <- varianceStabilizingTransformation(dds)
-ps_vst <- ps
-otu_table(ps_vst) <- otu_table(assay(vsd), taxa_are_rows = TRUE)
-save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds",
-              "norm_counts", "ps_vst", "vsd"), 
-     file = "./processed_physeq.rda")
+# ## The following takes too long; and vst() does not work with too few genes with rowmeans > 5
+# vsd <- varianceStabilizingTransformation(dds)
+# ps_vst <- ps
+# otu_table(ps_vst) <- otu_table(assay(vsd), taxa_are_rows = TRUE)
+# save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds",
+#               "norm_counts", "ps_vst", "vsd"), 
+#      file = processed_datafile)
 ```
 
 
 ```{r, eval = FALSE}
 save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds", "norm_counts"), 
-     file = "./processed_physeq.rda")
+     file = processed_datafile)
 ```
 
+```{r eval = FALSE}
+saveRDS(ps, file = file.path(datadir, "16S/phyloseq/perturb_physeq_fltr2430_17Jul18.rds"))
+```
 
 
 Data Visualization {#dat-vis .unnumbered} 
 =========================================
+
+
+
+PCA {#pca .unnumbered}
+---------------------------------
+
 
 ```{r}
 taxtab <- data.frame(tax_table(ps)) %>%
   mutate(Seq_ID = rownames((.)))
 ```
 
-
-PCA {#pca .unnumbered}
----------------------------------
-
-```{r}
-load("./processed_physeq.rda")
-load("ordinate_16S.rda")
-```
-
-
 ```{r pca, eval = FALSE}
 # Compute PCA 
 pca.ihs <- prcomp(t(asinh(norm_counts)), scale = FALSE)
-save(list = c("pca.ihs"), file = "./ordinate_16S.rda")
+save(list = c("pca.ihs"), file = resfile)
 ```
 
 
@@ -593,7 +682,7 @@ plot_projection(
   theme(legend.position = "right")
 ```
 
-```{r pca-intv-2-3, fig.height=9, fig.width=12}
+```{r pca-intv-3-4, fig.height=9, fig.width=12}
 plot_projection(
   scores, xname = "PC3", yname = "PC4", labname = NULL,
   size = 2, color = "Interval", eigs = pca.ihs$sdev^2) +
@@ -617,14 +706,19 @@ print(plt)
 
 
 ```{r pca-subj-time, fig.height=40, fig.width=20, warning = FALSE}
-plot_projection(scores, xname = "PC1", yname = "PC2", labname = NULL, 
-                size = 5, color = "constant", eigs = pca.ihs$sdev^2) +
-  geom_point(data = scores %>% 
-               filter(Interval != "NoInterv"), aes(fill = Interval),
-             size = 5, pch = 23, color = "black", lwd=2) +
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "PC1", yname = "PC2", 
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
   facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
-  scale_color_manual(values  = "grey77") +
-  scale_fill_manual(values = colorRampPalette(brewer.pal(9, "Set1"))(20))
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
 ```
 
 Centering the subjects
@@ -647,34 +741,45 @@ scores_centered <- scores %>%
 ```
 
 ```{r pca-intv-centered-abx, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(4, "Set1"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Abx_Interval), "NoInterv")))
+
 plot_projection(
   scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
-  size = 2.5, color = "Abx_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
-  geom_point(data = scores_centered %>% 
-                filter(Interval == "MidAbx"), aes(color = Interval),
-             size = 2.5) +
-  scale_color_brewer(palette = "Dark2") +
+  size = 2, color = "Abx_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidAbx"), 
+    aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
   theme(legend.position = "right") +
   facet_wrap(~Group)
 ```
 
 ```{r pca-intv-centered-diet, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(3, "Dark2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Diet_Interval), "NoInterv")))
+
 plot_projection(
   scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
   size = 2, color = "Diet_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
-  geom_point(data = scores_centered %>% 
-                filter(Interval == "MidDiet"), aes(color = Interval),
-             size = 2.5) +
-  scale_color_brewer(palette = "Set1") +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidDiet"), aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
   theme(legend.position = "right") +
   facet_wrap(~Group)
 ```
 
 ```{r pca-intv-centered-cc, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(2, "Set2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$CC_Interval), "NoInterv")))
 plot_projection(
   scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
-  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
-  scale_color_brewer(palette = "Dark2") +
+  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.9) +
+   scale_color_manual(values = cols) +
   theme(legend.position = "right") +
   facet_wrap(~Group)
 ```
@@ -690,42 +795,207 @@ plot_projection(
 ```
 
 
-Sparse PCA {#pcoa .unnumbered}
+Sparse PCA {#spase-pca .unnumbered}
 ------------------------------
 
-```{r}
+```{r eval = FALSE}
 sparse_pca <- PMA::SPC(
   scale(t(asinh(norm_counts)), center = TRUE, scale = FALSE), 
-  K = 5, sumabsv = 30)
-save(list = c("pca.ihs", "sparse_pca"), file = "./ordinate_16S.rda")
-
+  K = 10, sumabsv = 10)
+save(list = c("pca.ihs", "sparse_pca"), file = resfile)
 ```
 
 
 
 ```{r}
-nPC <- 5
-loadings <- 
-  left_join(taxtab)
+sparse_loadings <- data.frame(taxa_names(ps), sparse_pca$v)
+colnames(sparse_loadings) <- c("Seq_ID", paste0("sPC", 1:ncol(sparse_pca$v)))
 
-scores <- pca.ihs$x[, 1:nPC] %>%
-  as.data.frame() %>%
-  rownames_to_column("Meas_ID") %>%
-  left_join(SMP) %>%
-  arrange(Group, Subject, Samp_Date)  %>%
-  mutate(constant = "constant")
+sparse_scores <- data.frame(sample_names(ps), sparse_pca$u)
+colnames(sparse_scores) <- c("Meas_ID", paste0("sPC", 1:ncol(sparse_pca$u)))
+
+loadings <- loadings %>%
+  left_join(sparse_loadings)
+
+scores <- scores %>%
+  left_join(sparse_scores) 
 ```
+
+
+
+```{r}
+var.exp <- c(sparse_pca$prop.var.explained[1], 
+             diff(sparse_pca$prop.var.explained))
+
+ggplot(
+  data.frame(k = seq_along(sparse_pca$d),
+             eig = sparse_pca$d^2, 
+             percent.var.exp = 100* var.exp)) +
+  geom_bar(aes(x = k, y = percent.var.exp), stat = "identity")
+```
+
+```{r spca-group, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Group", eigs = spca_var) +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "right")
+```
+
+```{r spca-subj, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Subject", eigs = spca_var) +
+  #scale_color_manual(values = cols) +
+  theme(legend.position = "right")
+```
+
+
+```{r spca-intv, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Interval", eigs = spca_var) +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "right")
+```
+
+```{r spca-loadings, fig.height=10, fig.width=18}
+plt <- plot_projection(
+  loadings, xname = "sPC1", yname = "sPC2", size = "sPC3",
+  color = "Class", eigs = spca_var, alpha = 0.5) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter((sPC1^2 + sPC2^2) > 0.006), 
+    aes(label = Genus),
+    nudge_y = 0.002, size = 5) +
+  theme(legend.position = "right")
+print(plt)
+```
+
+```{r spca-subj-time, fig.height=40, fig.width=20, warning = FALSE}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2",
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
+```
+
+Centering the subjects
+
+```{r}
+subject_scores <- scores %>%
+  select(Subject, sPC1:sPC10) %>%
+  group_by(Subject) %>%
+  summarise_all(mean)
+
+scores_centered <- scores_centered %>%
+  left_join(sparse_scores) %>%
+  left_join(subject_scores, by = c("Subject"), suffix = c("", ".subj")) 
+
+for(sPC in paste0("sPC", 1:10)) {
+  scores_centered[, sPC] <- scores_centered[, sPC] - 
+    scores_centered[, paste0(sPC, ".subj")]
+}
+```
+
+```{r spca-intv-centered-abx, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(4, "Set1"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Abx_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Abx_Interval", eigs = spca_var, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidAbx"), 
+    aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+```{r spca-intv-centered-diet, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(3, "Dark2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Diet_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Diet_Interval", eigs = spca_var, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidDiet"), aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+```{r spca-intv-centered-cc, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(2, "Set2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$CC_Interval), "NoInterv")))
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.9) +
+   scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+```{r spca-intv-centered-time, fig.height=6, fig.width=12}
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = spca_var, alpha = 0.5) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+```{r sPC1, fig.height=8, fig.width=12}
+ggplot(loadings %>% filter(abs(sPC1) > 1e-2),
+       aes(y = Genus, x = sPC1)) +
+  geom_jitter(
+    aes(color = Family),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom") 
+```
+
+
+```{r sPC2, fig.height=8, fig.width=12}
+ggplot(loadings %>% filter(abs(sPC2) > 1e-2),
+       aes(x = Genus, y = sPC2)) +
+  geom_jitter(
+    aes(color = Family),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom")
+
+```
+
 
 adaptiveGPCA {#agPCA .unnumbered}
 ---------------------------------
 
 ```{r, echo = FALSE, eval = FALSE}
 library("adaptiveGPCA")
-pp <- processPhyloseq(ps)
+pp <- processPhyloseq(ps_asinh)
 out.agpca <- adaptivegpca(pp$X, pp$Q, k = 5)
-
-pp.ihs <- processPhyloseq(psIHS)
-out.agpca.ihs <- adaptivegpca(pp.ihs$X, pp.ihs$Q, k = 5)
 
 # out.ff = gpcaFullFamily(pp$X, pp$Q, k = 2)
 # out.agpca <- 
@@ -735,146 +1005,173 @@ out.agpca.ihs <- adaptivegpca(pp.ihs$X, pp.ihs$Q, k = 5)
 #                       var_data = tax_table(ps),
 #                       var_mapping = aes(x = Axis1, y = Axis2, color = Class))
 
-save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs", "bray.rtsne.ihs",
-            "out.agpca", "out.agpca.ihs"), 
-   file = "../data/processed/perturb_ordinate.rda")
-            
+
 ```
 
-```{r, eval=FALSE}
-sample.scores <- cbind(agPCA1 = out.agpca.ihs$U[, 1],
-                       agPCA2 = out.agpca.ihs$U[, 2],
-                       agPCA3 = out.agpca.ihs$U[, 3],
-                       sample.scores) 
+```{r}
+agpca_scores <- data.frame(sample_names(ps), out.agpca$U)
+colnames(agpca_scores) <- c("Meas_ID", paste0("agPC", 1:ncol(out.agpca$U)))
+
+agpca_loadings <- data.frame(taxa_names(ps), out.agpca$QV) 
+colnames(agpca_loadings) <- c("Seq_ID", paste0("agPC", 1:ncol(out.agpca$QV)))
+
+scores <- scores %>%
+  left_join(agpca_scores) 
+
+loadings <- loadings %>%
+  left_join(agpca_loadings) 
 ```
 
-```{r agpca-subj, echo = FALSE, eval= FALSE, fig.height=10, fig.width=14}
-plot_projection(sample.scores, xname = "agPCA1", yname = "agPCA2", 
-            size = 3, color = "Subject", eigs = out.agpca.ihs$vars)
-```
-
-```{r, eval=FAlSE}
-loadings <- data.frame(out.agpca.ihs$QV, tax_table(psIHS)) %>%
-  as.data.frame(stringsAsFactors = FALSE) %>%
-  rownames_to_column("Seq_ID") %>%
-  left_join(taxtab)
+```{r agpca-subj, echo = FALSE, fig.height=7, fig.width=14}
+plot_projection(
+  scores, xname = "agPC1", yname = "agPC2", labname = NULL,
+  size = 2, color = "Subject", eigs = out.agpca$vars, alpha = 0.7) +
+  theme(legend.position = "right") 
 ```
 
 
-```{r agpca-loadings,  eval=FAlSE, fig.height=15, fig.width=20}
-plot_projection(loadings, 
-                xname = "Axis1", yname = "Axis2", size = "Axis3",
-                color = "genus", eigs = out.agpca.ihs$vars, alpha = 0.3) +
+```{r agpca-loadings, fig.height=12, fig.width=12}
+plt <- plot_projection(
+  loadings, xname = "agPC1", yname = "agPC2", size = "agPC3",
+  color = "Class", eigs = out.agpca$vars, alpha = 0.5) +
   geom_text_repel(
     data = loadings %>% 
-      filter(abs(Axis1) + abs(Axis2) > 0.035), 
-    aes(label = species), 
-    force = 0.002) + 
-  theme(legend.position = "bottom")
-
-plot_projection(loadings, 
-                xname = "Axis1", yname = "Axis2", size = "Axis3",
-                color = "Class", eigs = out.agpca.ihs$vars, alpha = 0.3) +
-  geom_text_repel(
-    data = loadings %>% 
-      filter(abs(Axis1) + abs(Axis2) > 0.035), 
-    aes(label = genus), 
-    force = 0.002) + 
-  theme(legend.position = "bottom")
+      filter( (agPC1^2 + agPC2^2) > 0.0006), 
+    aes(label = Genus),
+    nudge_y = 0.002, size = 5) +
+  theme(legend.position = "right")
+print(plt)
 ```
 
 
-```{r agpca-time,  eval=FAlSE, fig.height=30, fig.width=18}
-theme_set(theme_bw())
-plot_projection(sample.scores, 
-                xname = "agPCA1", yname = "agPCA2", labname = NULL, 
-                size = 3, color = "DayFromStart",
-                eigs = out.agpca.ihs$vars) +
-  geom_point(data = sample.scores %>% 
-               filter(Timeline != "typical"), aes(fill = Timeline),
-             size = 5, pch = 23, color = "black", lwd=2) +
-  facet_wrap(Group~Subject, scales = "free", ncol = 5) +
-  scale_color_viridis() +
-  scale_fill_brewer(palette = "Oranges")
+```{r agpca-time,  fig.height=10, fig.width=15}
+plot_projection(
+  scores, xname = "agPC1", yname = "agPC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = out.agpca$vars, alpha = 0.7) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
 ```
 
 
-## TSNE {#tsne .unnumbered}
+tSNE {#tsne .unnumbered}
+------------------------
+
 
 ```{r, eval = FALSE}
 set.seed(123)
-bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, 
-                               pca = TRUE,
-                               eta = 1, exaggeration_factor = nsamples(ps)/10)
-save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs", "bray.rtsne.ihs"), 
-     file = "../data/processed/perturb_ordinate.rda")
-```
-
-```{r}
-bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, 
-                               pca = TRUE)
-sample.scores2 <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
-                        tsne.2.ihs = bray.rtsne.ihs$Y[, 2],
-                        sample.scores) 
+norm_ihs <- t(asinh(norm_counts))
+rtsne.norm.ihs <- Rtsne::Rtsne(
+  norm_ihs, dims = 2, initial_dims = 50, perplexity = 50, 
+  is_distance = FALSE, pca = TRUE, eta = 200, exaggeration_factor = 12)
+save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs"), 
+     file = resfile)
 ```
 
 
-```{r}
-sample.scores <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
-                       tsne.2.ihs = bray.rtsne.ihs$Y[, 2],
-                       sample.scores) 
+```{r, eval = FALSE}
+brayD.ihs <- phyloseq::distance(ps_asinh, method = "bray")
+set.seed(123)
+rtsne.bray.ihs <- Rtsne::Rtsne(
+  brayD.ihs, is_distance = TRUE, dims = 2, perplexity = 50, 
+  pca = FALSE, eta = 200, exaggeration_factor = 12)
+save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs", 
+              "brayD.ihs", "rtsne.bray.ihs"), 
+     file = resfile)
+```
+
+
+```{r, eval = FALSE}
+tsne_scores <- data.frame(
+  Meas_ID = sample_names(ps),
+  tSNE1 = rtsne.norm.ihs$Y[, 1],
+  tSNE2 = rtsne.norm.ihs$Y[, 2],
+  tSNE1_bray = rtsne.bray.ihs$Y[, 1],
+  tSNE2_bray = rtsne.bray.ihs$Y[, 2],
+  tSNE1_centered = rtsne.centered.ihs$Y[, 1], 
+  tSNE2_centered = rtsne.centered.ihs$Y[, 2]) 
+
+scores <- scores %>%
+  left_join(tsne_scores)
+```
+
+
+```{r tsne-subj, fig.height=10, fig.width=14}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2",
+  labname = NULL, size = 2, color = "Subject") +
+  theme(legend.position = "right")
+```
+
+
+```{r tsne-itv, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2",
+  labname = NULL, size = 2, color = "Interval") +
+  theme(legend.position = "right")
+```
+
+
+```{r tsne-time, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2", 
+  labname = NULL, size = 2,  color = "DaysFromStart") + 
+  theme(legend.position = "right") +
+  scale_color_viridis() 
+```
+
+
+```{r tsne-subj-time, fig.height=40, fig.width=20, warning = FALSE}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2", 
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
 ```
 
 
 
-```{r tsne-bray-subj, fig.height=10, fig.width=14}
-plot_projection(sample.scores, xname = "tsne.1.ihs", yname = "tsne.2.ihs", 
-            size = 3, color = "Subject")
-
-plot_projection(sample.score2s, xname = "tsne.1.ihs", yname = "tsne.2.ihs", 
-            size = 3, color = "Subject")
+```{r tsne-centered-subj, fig.height=10, fig.width=14}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered",
+  labname = NULL, size = 2, color = "Subject") +
+  theme(legend.position = "right")
 ```
 
-```{r tsne-bray-time, fig.height=10, fig.width=14}
-plot_projection(sample.scores, 
-                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL,
-                size = 3, color = "DayFromStart") + 
-  scale_color_viridis()
-
-plot_projection(sample.scores2, 
-                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL,
-                size = 3, color = "DayFromStart") + 
-  scale_color_viridis()
+```{r tsne-centered-itv, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered",
+  labname = NULL, size = 2, color = "Interval") +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "right")
 ```
 
 
-```{r tsne-bray-subj-time,  fig.height=30, fig.width=18}
-
-plot_projection(sample.scores %>%
-                  arrange(Subject, Samp_Date), 
-                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL, 
-            size = 3, color = "DayFromStart") +
-  geom_path(
-        aes(group = Subject, color = DayFromStart), 
-        alpha = 0.8, lwd = 1) +
-  geom_point(data = sample.scores %>% 
-               filter(Timeline != "typical"), aes(fill = Timeline),
-             size = 5, pch = 23, color = "black", lwd=2) +
-  facet_wrap(Group~Subject, scales = "free", ncol = 5) +
-  scale_color_viridis() +
-  scale_fill_brewer(palette = "Oranges")
+```{r tsne-centered-time, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered", 
+  labname = NULL, size = 2,  color = "DaysFromStart") + 
+  theme(legend.position = "right") +
+  scale_color_viridis() 
 ```
 
 
 
 
-
-
-```{r}
-
+```{r, eval = FALSE}
+save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs", 
+              "brayD.ihs", "rtsne.bray.ihs", "pp", "out.agpca",
+              "scores", "loadings", "scores_centered"), 
+     file = resfile)
 ```
-
-
 
 
 
