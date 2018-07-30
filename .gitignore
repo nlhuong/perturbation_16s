@@ -9,7 +9,8 @@ amplicon/*cache/
 analysis/figs/*
 analysis/*cache/
 analysis/*/results/*
+analysis/*/figs/*
 *.html
 */*.html
 .Rproj.user
-*/.Rhistory
+*/*.Rhistory
