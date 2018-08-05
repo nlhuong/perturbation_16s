@@ -40,23 +40,30 @@ Sys.setenv("MIDAS_DB" = file.path(midas_path, "database", "midas_db_v1.2"))
 ###############################################################################
 samples_dir <- file.path(argv$subdir, "processed")
 merged_dir <- file.path(argv$subdir, "merged")
+species_dir <- file.path(merged_dir, "species")
 genes_dirs <- file.path(merged_dir, "genes")
 dir.create(merged_dir)
+dir.create(species_dir)
 dir.create(genes_dirs)
 
 base_cmd <- "merge_midas.py %s %s -i %s -t dir"
-system(sprintf(base_cmd, "species", merged_dir, samples_dir))
+system(sprintf(base_cmd, "species", species_dir, samples_dir))
 system(sprintf(base_cmd, "genes", genes_dirs, samples_dir))
 
 ###############################################################################
 ## Combine gene coverage and depth data
 ###############################################################################
 genes_f <- list.files(genes_dirs, full.names = TRUE)
+reads <- list()
 depths <- list()
 copy_num <- list()
 
 for (i in seq_along(genes_f)) {
   message("Merging ", genes_f[i])
+
+  reads[[i]] <- read_tsv(file.path(genes_f[i], "genes_reads.txt")) 
+  reads[[i]]$species <- basename(genes_f[i])
+
   depths[[i]] <- read_tsv(file.path(genes_f[i], "genes_depth.txt"))
   depths[[i]]$species <- basename(genes_f[i])
 
@@ -67,6 +74,8 @@ for (i in seq_along(genes_f)) {
 ###############################################################################
 ## Write results to file
 ###############################################################################
-write_feather(bind_wrapper(depths), file.path(merged_dir, "depths.feather"))
-write_feather(bind_wrapper(copy_num), file.path(merged_dir, "copy_num.feather"))
-file.rename(file.path(merged_dir, "coverage.txt"), file.path(merged_dir, "coverage.tsv"))
+write_feather(bind_wrapper(reads), file.path(merged_dir, "gene_reads.feather"))
+write_feather(bind_wrapper(depths), file.path(merged_dir, "gene_depths.feather"))
+write_feather(bind_wrapper(copy_num), file.path(merged_dir, "gene_copy_num.feather"))
+file.copy(file.path(species_dir, "coverage.txt"), 
+    file.path(merged_dir, "species_identifier_coverage.tsv"))

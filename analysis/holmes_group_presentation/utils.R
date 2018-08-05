@@ -32,7 +32,6 @@ plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
   return(plt + theme(text = element_text(size = 20))) 
 }
 
-
 plot_coefficients <- function (out.treeda, 
                                color = NULL,
                                remove.bl = TRUE, 

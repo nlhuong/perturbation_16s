@@ -34,7 +34,6 @@ library("RColorBrewer")
 library("tidyverse")
 library("readxl")
 library("phyloseq")
-library("treeDA")
 library("adaptiveGPCA")
 datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()

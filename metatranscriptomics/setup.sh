@@ -17,27 +17,26 @@ if [ -z ${SCRATCH+x} ]; then
     module load gcc/gcc6
     BASE_DIR=~/Projects/perturbation_16s
     APP_DIR=~/.local/bin/
-    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 else
     echo Working on SHERLOCK cluster
     ## The following modules must be preloaded:
-    # module load python/2.7.13
+    module load python/2.7.13
     # module load py-biopython/1.70
     module load biology
     module load bwa/0.7.17
     module load samtools/1.6
     module load ncbi-blast+/2.6.0
+    #module load python/3.6.1
     BASE_DIR=$SCRATCH/Projects/perturbation_16s
     APP_DIR=$SCRATCH/applications/bin/
-    PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
 fi
 
 # Matetranscriptomics data folder
 MT_DIR=$BASE_DIR/data/metatranscriptomics
 # Pthon scripts
-PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts
+PYSCRIPT_DIR=$BASE_DIR/metatranscriptomics/pyscripts_edited
 # Reference directories
-REF_DIR=$BASE_DIR/data/databases
+REF_DIR=$PI_SCRATCH/resilience/databases
 KAIJUBD_DIR=$REF_DIR/kaijudb
 # SortMeRNA directories
 SORTMERNA_DIR=$APP_DIR/sortmerna
@@ -101,10 +100,6 @@ cd $REF_DIR
 wget ftp://ftp.ncbi.nih.gov/blast/db/FASTA/nr.gz
 gunzip nr.gz
 
-# Download UniProt DB (takes a long time 32GB)
-# wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fasta.gz
-# gunzip uniref100.fasta.gz
-
 ## The following is Adapted from SAMSA2
 
 # Download NCBI RefSeq database:
@@ -115,6 +110,10 @@ wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshar
 # Download SEED Subsystems database:
 echo "NOW DOWNLOADING SEED SUBSYSTEMS DATABASE AT: "; date
 wget --no-check-certificate "https://bioshare.bioinformatics.ucdavis.edu/bioshare/download/2c8s521xj9907hn/subsys_db.fa" # Download non-redundant (NR) protein DB
+
+# Download UniRef100 database:
+wget ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref100/uniref100.fasta.gz
+gunzip uniref100.fasta.gz
 
 ## Build database indexes -----------
 
@@ -141,17 +140,19 @@ $APP_DIR/sortmerna/build/Release/src/indexdb/indexdb \
 $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/RefSeq_bac.fa --db $REF_DIR/RefSeq_bac
 $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/subsys_db.fa --db $REF_DIR/subsys_db
 $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/nr -d $REF_DIR/nr
-# $APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
+$APP_DIR/diamond makedb -p $n_threads --in $REF_DIR/uniref100.fasta -d $REF_DIR/uniref100
 
+chmod g+xwr $REF_DIR/*
 
 # Generated a text file with gene info [id, length, function/organism]
 python $PYSCRIPT_DIR/db_to_pydict.py \
-     $REF_DIR/RefSeq_bac.fa $REF_DIR/RefSeq_bac.tsv --prot-seq
+     $REF_DIR/RefSeq_bac.fa $REF_DIR/RefSeq_bac.tsv "refseq"
 python $PYSCRIPT_DIR/db_to_pydict.py \
-     $REF_DIR/nr $REF_DIR/nr.tsv --prot-seq
+     $REF_DIR/nr $REF_DIR/nr.tsv "nr"
 python $PYSCRIPT_DIR/db_to_pydict.py \
-     $REF_DIR/subsys_db.fa $REF_DIR/subsys_db.tsv --prot-seq
-
+     $REF_DIR/subsys_db.fa $REF_DIR/subsys_db.tsv "seed"
+python $PYSCRIPT_DIR/db_to_pydict.py \
+     $REF_DIR/uniref100.fasta $REF_DIR/uniref100.tsv "uniref"
 
 
 echo "Setup Completed!"

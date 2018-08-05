@@ -303,6 +303,14 @@ ggplot(dat %>% filter(Group == "Diet_Abx"),
 ```
 
 
+```{r}
+ggplot(dat %>% filter(grepl("Abx", Group)), 
+       aes(x = Abx_RelDay, y = coverage)) +
+  geom_line(aes(group = Subject, color = Interval)) +
+  facet_grid(Seq_ID ~ Group)
+```
+
+
 
 Data Visualization {#data-vis .unnumbered}
 ==================================================

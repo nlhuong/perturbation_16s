@@ -39,18 +39,24 @@ def sample_reads(infile, dbfile, outfile):
                 'mismatch', 'gapopen', 'qstart', 'qend', 'sstart', 'send', 
                 'evalue', 'bitscore']
 
-    infile_kwargs = {'sep': '\t', 'chunksize': 100000, 'low_memory': False, \
-                     'header': None, 'names': colnames}
-
-    gene_abund = pd.DataFrame()
-    for chunk in pd.read_csv(infile, **infile_kwargs):
-        chunk = chunk[['GeneID', 'Length_Aligned']]
-        chunk['Raw'] = 1
-        gene_abund = pd.concat([gene_abund, chunk], axis = 0)
-        gene_abund = gene_abund.groupby('GeneID')[['Length_Aligned', 'Raw']].sum()
+#    infile_kwargs = {'sep': '\t', 'chunksize': 100000, 'low_memory': False, \
+#                     'header': None, 'names': colnames}
+#    gene_abund = pd.DataFrame()
+#    for chunk in pd.read_csv(infile, **infile_kwargs):
+#        chunk = chunk[['GeneID', 'Length_Aligned']]
+#        chunk['Raw'] = 1
+#        gene_abund = pd.concat([gene_abund, chunk], axis = 0)
+#        gene_abund = gene_abund.groupby('GeneID')[['Length_Aligned', 'Raw']].sum()
+#        gene_abund.index.name = 'GeneID'
+#        gene_abund.reset_index(inplace=True)
     
+    gene_abund = pd.read_csv(infile, sep ="\t")
+    gene_abund.columns = colnames
+    gene_abund['Raw'] = 1
+    gene_abund = gene_abund.groupby('GeneID')[['Length_Aligned', 'Raw']].sum()
     gene_abund.index.name = 'GeneID'
     gene_abund.reset_index(inplace=True)
+    
     
     db_map = pd.DataFrame()
     for chunk in pd.read_csv(dbfile, sep='\t', chunksize = 100000, 
