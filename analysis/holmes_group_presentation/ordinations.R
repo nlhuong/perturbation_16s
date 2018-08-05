@@ -12,6 +12,7 @@
 ## Setup and libraries
 ###############################################################################
 
+rm(list = ls())
 library("tidyverse")
 library("phyloseq")
 library("PMA")
@@ -34,13 +35,30 @@ if(AMPLICON) {
                            !grepl("PostAbx", Interval))
     norm_counts <- norm_counts[, sample_names(ps)]
   }
+  
   taxtab <- data.frame(tax_table(ps)) %>%
     mutate(Seq_ID = rownames((.)))
-  
   SMP <- sam_data(ps)
   norm_ihs <- t(asinh(norm_counts))
-} else {
   
+} else {
+  load("results/metat_seed_filtered.rda")
+  resfile <- "results/ordinate_metat.rda"
+  taxtab <- data.frame(Seq_ID = rownames(covtab_seed), 
+                       stringsAsFactors = FALSE) %>%
+    separate(Seq_ID, into = paste0("SEED", 1:4), sep =";;", remove = FALSE)
+  size_fac <- DESeq2::estimateSizeFactorsForMatrix(covtab_seed)
+  covtab_seed_norm <- sweep(covtab_seed, MARGIN = 2, FUN = "/", size_fac)
+  norm_ihs <- t(asinh(covtab_seed_norm))
+  colnames(norm_ihs) <- taxtab$Seq_ID
+  
+  norm_ihs_mean <- data.frame(Subject = SMP$Subject, norm_ihs) %>%
+    group_by(Subject) %>%
+    summarise_all(mean) %>%
+    as.data.frame() %>%
+    column_to_rownames("Subject")
+  norm_ihs_mean <- norm_ihs_mean[SMP$Subject, ]
+  norm_ihs_centered <- as.matrix(norm_ihs) - as.matrix(norm_ihs_mean)
 }
 
 
@@ -48,6 +66,12 @@ if(AMPLICON) {
 cat("Starting pca. \n")
 ptm <- proc.time()
 pca.ihs <- prcomp(norm_ihs, scale = FALSE)
+time <- proc.time() - ptm
+cat("Finished  pca in:\n")
+time
+# user  system elapsed 
+# 8.568   0.012   8.580 
+
 
 loadings <- pca.ihs$rotation[, 1:nPC] %>%
   as.data.frame(stringsAsFactors = FALSE) %>%
@@ -75,11 +99,35 @@ for(PC in paste0("PC", 1:nPC)) {
   scores_centered[, PC] <- scores_centered[, PC] - 
     scores_centered[, paste0(PC, ".subj")]
 }
-save(list = c("pca.ihs", "scores", "loadings", "scores_centered"), 
-     file = resfile)
+
+cat("Starting centered pca. \n")
+ptm <- proc.time()
+pca.centered.ihs <- prcomp(norm_ihs_centered, scale = FALSE)
 time <- proc.time() - ptm
-cat("Finished  pca in:\n")
+cat("Finished  centered pca in:\n")
 time
+# user  system elapsed 
+# 0.112   0.000   0.111
+
+pca_centered_loadings <- data.frame(colnames(norm_ihs), 
+                                    pca.centered.ihs$rotation[, 1:nPC])
+colnames(pca_centered_loadings) <- 
+  c("Seq_ID", paste0("PC_centered", seq_len(nPC)))
+
+pca_centered_scores <- data.frame(rownames(norm_ihs), 
+                                  pca.centered.ihs$x[, 1:nPC])
+colnames(pca_centered_scores) <- 
+  c("Meas_ID", paste0("PC_centered", seq_len(nPC)))
+
+loadings <- loadings %>%
+  left_join(pca_centered_loadings)
+
+scores <- scores %>%
+  left_join(pca_centered_scores) 
+
+
+save(list = c("pca.ihs","pca.centered.ihs","scores", "loadings", "scores_centered"), 
+     file = resfile)
 
 ## Sparse PCA ------------------------------------------------------------------
 cat("Starting sparse pca. \n")
@@ -87,13 +135,13 @@ ptm <- proc.time()
 sparse_pca <- PMA::SPC(
   scale(norm_ihs, center = TRUE, scale = FALSE),
   v = pca.ihs$rotation[, 1],
-  K = 10, sumabsv = 10)
+  K = 10, sumabsv = 15)
 
 sparse_loadings <- data.frame(colnames(norm_ihs), sparse_pca$v)
 colnames(sparse_loadings) <- 
   c("Seq_ID", paste0("sPC", seq_len(ncol(sparse_pca$v))))
 
-sparse_scores <- data.frame(SMP, sparse_pca$u)
+sparse_scores <- data.frame(rownames(norm_ihs), sparse_pca$u)
 colnames(sparse_scores) <- 
   c("Meas_ID", paste0("sPC",seq_len(ncol(sparse_pca$u))))
 
@@ -112,15 +160,18 @@ scores_centered <- scores_centered %>%
   left_join(sparse_scores) %>%
   left_join(subject_scores, by = c("Subject"), suffix = c("", ".subj")) 
 
-for(sPC in paste0("sPC", 1:nPC)) {
+for(sPC in paste0("sPC", 1:5)) {
   scores_centered[, sPC] <- scores_centered[, sPC] - 
     scores_centered[, paste0(sPC, ".subj")]
 }
-save(list = c("pca.ihs", "sparse_pca", "scores", "loadings", "scores_centered"),
+save(list = c("pca.ihs", "pca.centered.ihs", "sparse_pca", "scores", "loadings", 
+              "scores_centered"),
      file = resfile)
 time <- proc.time() - ptm
 cat("Finished sparse pca in:\n")
 time
+# user  system elapsed 
+# 66.012   0.092  66.085 
 
 ## tSNE ------------------------------------------------------------------------
 

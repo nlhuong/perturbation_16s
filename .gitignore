@@ -4,12 +4,13 @@ output/*
 */figs/*
 logs/*
 */*.log
+metatranscriptomics/pyscripts_edited/old
 amplicon/*cache/
 analysis/figs/*
 analysis/*cache/
+analysis/*/results/*
+analysis/*/figs/*
 *.html
 */*.html
 .Rproj.user
-metatranscriptomics/pyscripts_edited/old
-analysis/*/results/*
-
+**/*.Rhistory
