@@ -238,7 +238,7 @@ mkdir -p $OUTPUT_DIR/main
 mkdir -p $OUTPUT_DIR/QC
 mkdir -p $OUTPUT_DIR/trimmed/
 mkdir -p $OUTPUT_DIR/unique/
-mkdir -p $OUTPUT_DIR/dmnd_tmp/
+mkdir -p $OUTPUT_DIR/dmnd_tmp/${base}/
 mkdir -p $OUTPUT_DIR/counts/
 
 if [ $PROT_ANN ] || [ $DIAMOND_REFSEQ ] || [ $DIAMOND_SEED ]; then
@@ -845,14 +845,14 @@ if $PROT_ANN && [ ! -s $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
         -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout \
-        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 1 --sensitive
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp/${base} -k 1 --sensitive
 
     $DIAMOND blastx --id 85 --query-cover 65 --min-score 60 \
         --threads $n_threads \
         -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout \
-        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 1 --sensitive
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp/${base} -k 1 --sensitive
     
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -881,7 +881,7 @@ if $DIAMOND_REFSEQ && [ ! -s $OUTPUT_DIR/diamond/${base}_refseq.dmdout ]; then
         -d $REF_DIR/RefSeq_bac \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
-        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+        -t $OUTPUT_DIR/dmnd_tmp/${base} -f 6 -k 1 --sensitive
 
     # $DIAMOND blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
     #     -q $infile \
@@ -915,7 +915,7 @@ if $DIAMOND_SEED && [ ! -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
         -d $REF_DIR/subsys_db \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_seed.dmdout \
-        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+        -t $OUTPUT_DIR/dmnd_tmp/${base} -f 6 -k 1 --sensitive
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -942,7 +942,7 @@ if $DIAMOND_UNIREF && [ ! -s $OUTPUT_DIR/diamond/${base}_uniref.dmdout ]; then
         -d $REF_DIR/uniref100 \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_uniref.dmdout \
-        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+        -t $OUTPUT_DIR/dmnd_tmp/${base} -f 6 -k 1 --sensitive
 
     end=`date +%s`
     runtime=$(((end-start)/60))
