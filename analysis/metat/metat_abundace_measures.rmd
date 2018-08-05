@@ -6,7 +6,7 @@ author:
 keywords: microbiome, metatranscriptomics.
 date: "`r BiocStyle::doc_date()`"
 output: 
-  BiocStyle::html_document2:
+  BiocStyle::html_document:
     toc_float: true
     df_print: paged
 vignette: >
@@ -16,7 +16,7 @@ vignette: >
 
 
 ```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
-rm(list = ls())
+#rm(list = ls())
 library("BiocStyle")
 library("rmarkdown")
 options(width = 200) 
@@ -97,7 +97,8 @@ plt_trend <- function(df, x, y, contour = FALSE,
 # Loading data
 
 ```{r}
-metat <- fread(file.path(datadir, "final_results/abund_refseq_len_ratio.csv"))
+file <- "final_results/abund_refseq_len_ratio.csv"
+metat <- fread(file.path(datadir, file))
 gene_info <- fread(file.path(datadir, "final_results/gene_len_refseq_raw.csv"))
 
 dim(metat)

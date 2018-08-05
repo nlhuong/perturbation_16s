@@ -1,0 +1,594 @@
+---
+title: "MetaTranscriptomics Data Analysis"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/metat/", 
+  dev='png') 
+```
+
+```{r setup}
+rm(list = ls())
+library("tidyverse")
+library("readxl")
+library("data.table")
+library("gridExtra")
+library("RColorBrewer")
+library("feather")
+library("data.table")
+library("factoextra")
+library("ggrepel")
+library("viridis")
+
+theme_set(theme_bw())
+theme_update(
+  text = element_text(15),
+  panel.border = element_rect(size = 0.5),
+  legend.title = element_text(size = 15),
+  legend.text = element_text(size = 15),
+  legend.position = "bottom",
+  strip.background = element_blank()
+)
+datadir <- "/scratch/PI/sph/resilience/"
+processed_data_file <- "results/metat_seed_filtered.rda"
+resfile <- "results/ordinate_metat.rda"
+curdir <- getwd()
+
+levels <- c("MidAbx", "PostDiet_PreAbx", "MidDiet", "PostDiet_PostAbx",
+            "PostDiet_PreCC", "PostDiet_PostCC", "PostDiet_PreCC_PreAbx",
+            "PostDiet_PostCC_PreAbx", "PostDiet_PostCC_PostAbx")
+cols_intv <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols_intv) <- c("NoInterv", levels)
+
+source('utils.R')
+```
+
+
+```{r}
+load(processed_data_file)
+load(resfile)
+```
+
+
+
+Sample Data {#sample-data .unnumbered}
+==================================================
+
+```{r, eval = FALSE}
+meas_info <- read.csv("results/meas_info_10June2018.csv", row.names = 1) 
+rownames(meas_info) <- meas_info$Meas_ID
+```
+
+
+Metatranscriptomics data {#metag-data .unnumbered}
+==================================================
+
+```{r, eval = FALSE}
+file <- "metatranscriptomics/processed/final_results/abund_seed_len_ratio.csv"
+metat_seed <- fread(file.path(datadir, file))
+colnames(metat_seed) <- gsub("_.*", "", colnames(metat_seed))
+dim(metat_seed)
+```
+
+```{r, eval = FALSE}
+seed_annot_cols <- c("GeneID", "SEED", "SEED1", "SEED2", "SEED3",  "SEED4", "Length")
+meas_cols <- colnames(metat_seed)[startsWith(colnames(metat_seed), "M")]
+metat_seed <- data.frame(metat_seed) %>%
+  mutate_at(
+    .vars = vars(starts_with("SEED")),
+    .funs = function(x) {gsub(" ", "", x)}
+  ) %>%
+  mutate(SEED = paste(SEED1, SEED2, SEED3, SEED4, sep = ";;")) %>%
+  select(c(seed_annot_cols, meas_cols))
+#metat_seed[is.na(metat_seed)] <- 0 
+```
+
+
+```{r, eval = FALSE}
+freq <- data.frame(table(metat_seed$SEED)) %>% arrange(desc(Freq))
+head(freq)
+```
+
+
+```{r, eval = FALSE}
+meas_info <- meas_info %>%
+  filter(Meas_ID %in% meas_cols) 
+
+control_meas <- meas_info %>%
+  filter(is.na(Subject))
+
+control_cols <- control_meas$Meas_ID
+meas_cols <- setdiff(meas_cols, control_cols) 
+```
+
+
+```{r, eval = FALSE}
+metat <- metat_seed[, meas_cols]
+seed_anot <- metat_seed[, seed_annot_cols]
+```
+
+```{r, eval = FALSE}
+dim(metat) # 839406    562
+```
+
+```{r, eval = FALSE}
+minSampleDepth <- 1e4
+metat <- metat[, colSums(metat, na.rm = TRUE) > minSampleDepth]
+dim(metat)
+```
+
+
+```{r, eval = FALSE}
+metat.dt <- data.table(metat)
+metat.dt <- metat.dt[, SEED:=seed_anot$SEED]
+metat.gene.dt <- metat.dt[, lapply(.SD, sum, na.rm = TRUE),
+                          by = SEED,  .SDcols=colnames(metat)]
+```
+
+
+```{r, eval = FALSE}
+metat.gene.dt <- metat.gene.dt[ , rowsums :=rowSums(.SD, na.rm = TRUE), 
+                                .SDcols = colnames(metat)]
+sum(metat.gene.dt$rowsums)
+```
+
+```{r, eval = FALSE}
+#NOHIERARCHY;;;;;; 1980426
+metat.gene.dt[SEED == "NOHIERARCHY;;;;;;", rowsums]/sum(metat.gene.dt$rowsums)
+metat.gene.dt <- metat.gene.dt[SEED != "NOHIERARCHY;;;;;;", ]
+```
+
+
+
+```{r, eval = FALSE}
+rownames(meas_info) <- meas_info$Meas_ID
+subject_indicator <- meas_info[colnames(metat), "Subject"] 
+
+minTaxaSubjPrev <- 5
+minNonZeroSmps <- 5
+minPrevLev <- 5
+
+
+# Compute prevalence across subjects
+num_subj_present <- function(x, subject_indicator, 
+                             minPrevLevel, minNonZeroSamples) {
+  subj.present <- subject_indicator[x >= minPrevLevel]
+  freq <- table(subj.present)
+  return(sum(freq >= minNonZeroSamples))
+}
+
+metat.gene.dt.T <- data.table(t(metat.gene.dt))
+subjects_prevalence <- 
+  metat.gene.dt.T[, lapply(.SD, num_subj_present,
+                           subject_indicator = subject_indicator,
+                           minPrevLevel = minPrevLev, 
+                           minNonZeroSamples = minNonZeroSmps)]
+subjects_prevalence <- as.matrix(subjects_prevalence)[1, ]
+
+metat.gene.dt <- metat.gene.dt[subjects_prevalence >= minTaxaSubjPrev, ]
+dim(metat.gene.dt)
+```
+
+```{r, eval = FALSE}
+metat.gene.dt %>% select(starts_with("M")) %>%
+  colSums() %>% summary()
+```
+
+
+```{r, eval = FALSE}
+covtab_seed <- metat.gene.dt %>% select(starts_with("M"))
+rownames(covtab_seed) <- metat.gene.dt$SEED
+SMP <- meas_info[colnames(covtab_seed), ]
+genetab <- data.frame(Seq_ID = metat.gene.dt$SEED) %>%
+  separate(Seq_ID, into = paste0("SEED", 1:4), sep =";;")
+save(list = c("covtab_seed", "SMP", "genetab",
+     file = processed_data_file)
+```
+
+Most Abundant Genes {#abundant-genes .unnumbered}
+==================================================
+
+```{r}
+tot_sum <- sum(covtab_seed %>% select(starts_with("M")))
+metat.gene.dt <- 
+  copy(covtab_seed)[, Percent := round(100*rowSums(.SD, na.rm = TRUE)/tot_sum, digits = 2)]
+metat.gene.dt <- metat.gene.dt[, Seq_ID := rownames(covtab_seed)]
+
+metat.gene.dt <- metat.gene.dt %>%
+  separate(Seq_ID, into = paste0("SEED", 1:4), sep =";;", remove = FALSE)
+
+top100genes <- metat.gene.dt %>% 
+  arrange(desc(Percent)) %>%
+  top_n(100, Percent) %>%
+  select(starts_with("SEED"), "Percent")
+
+top100genes %>% print(n = 10)
+```
+
+```{r}
+write.csv(top100genes, file = "results/metat_top100_seed.csv") 
+```
+
+```{r}
+size_fac <- DESeq2::estimateSizeFactorsForMatrix(covtab_seed)
+covtab_seed_norm <- sweep(covtab_seed, MARGIN = 2, FUN = "/", size_fac)
+#norm_ihs <- asinh(covtab_seed_norm)
+rownames(covtab_seed_norm) <- rownames(covtab_seed)
+```
+
+
+```{r}
+nGenes <- 20
+top_gene_names <- apply(top100genes[1:nGenes, 1:4], 1, 
+                        function(x) paste(x, collapse = ";;"))
+dat <- covtab_seed_norm %>%
+  rownames_to_column("Seq_ID") %>%
+  filter(Seq_ID %in% top_gene_names)
+
+dat <- gather(dat, key = "Meas_ID", value = "coverage", -Seq_ID)
+dat <- dat %>%
+  left_join(SMP) %>%
+  mutate(Seq_ID = factor(Seq_ID, levels = top_gene_names))
+```
+
+```{r}
+unique(dat$Group)
+```
+
+```{r fig.width=12, fig.height=30}
+ggplot(dat %>% filter(Group == "Diet_CC_Abx"), 
+       aes(x = Diet_RelDay, y = coverage)) +
+  geom_line(aes(group = Subject, color = Interval)) +
+  facet_wrap(Seq_ID ~ ., scales = "free", ncol = 1) +
+  theme(text = element_text(size = 15),
+    strip.text = element_text(size = 10)) +
+  guides(color = guide_legend(ncol = 4, override.aes = list(size=5, pch = 16))) + 
+  scale_y_log10() + scale_color_manual(values = cols_intv)
+```
+
+```{r fig.width=12, fig.height=30}
+ggplot(dat %>% filter(Group == "Diet_CC"), 
+       aes(x = Diet_RelDay, y = coverage)) +
+  geom_line(aes(group = Subject, color = Interval)) +
+  facet_wrap(Seq_ID ~ ., scales = "free", ncol = 1) +
+  theme(text = element_text(size = 15),
+    strip.text = element_text(size = 10)) +
+  guides(color = guide_legend(ncol = 4, override.aes = list(size=5, pch = 16))) + 
+  scale_y_log10() + scale_color_manual(values = cols_intv)
+```
+
+```{r fig.width=12, fig.height=30}
+ggplot(dat %>% filter(Group == "Diet_Abx"), 
+       aes(x = Diet_RelDay, y = coverage)) +
+  geom_line(aes(group = Subject, color = Interval)) +
+  facet_wrap(Seq_ID ~ ., scales = "free", ncol = 1) +
+  theme(text = element_text(size = 15),
+    strip.text = element_text(size = 10)) +
+  guides(color = guide_legend(ncol = 4, override.aes = list(size=5, pch = 16))) + 
+  scale_y_log10() + scale_color_manual(values = cols_intv)
+```
+
+
+
+```{r, fig.width=12, fig.height=30}
+ggplot(dat %>% filter(Group == "Diet_Abx"), 
+       aes(x = Abx_RelDay, y = coverage)) +
+  geom_line(aes(group = Subject, color = Interval)) +
+  facet_wrap(~Seq_ID, scales = "free", ncol = 1) +
+  theme(
+    text = element_text(size = 15),
+    strip.text = element_text(size = 10)) +
+  guides(color = guide_legend(override.aes = list(size=5, pch = 16))) +
+  scale_y_log10() + scale_color_manual(values = cols_intv)
+```
+
+
+
+Data Visualization {#data-vis .unnumbered}
+==================================================
+
+```{r, eval = FALSE}
+# Run ordination.R file
+load(resfile)
+```
+
+```{r}
+fviz_eig(pca.ihs)
+```
+
+```{r pca-subj, fig.height=6, fig.width=12}
+fviz_pca_ind(pca.ihs, habillage= SMP$Subject, 
+             label = "none", geom = "point", pointshape = 16, 
+             addEllipses = TRUE, ellipse.level = 0.6) + 
+  coord_fixed(pca.ihs$sdev[2]/pca.ihs$sdev[1])
+```
+
+```{r pca-loadings, fig.height=15, fig.width=18}
+plt <- plot_projection(
+  loadings, xname = "PC1", yname = "PC2",
+  color = "SEED3", eigs = pca.ihs$sdev^2, alpha = 0.5
+  ) +
+  geom_text_repel(
+    data = loadings %>%
+      filter((PC1^2 + PC2^2) > 0.003),
+    aes(label = SEED4),
+    nudge_y = 0.002, size = 5) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(ncol=3, override.aes = list(size=3)))
+print(plt)
+```
+
+
+
+```{r pca-subj-time, fig.height=10, fig.width=20, warning = FALSE}
+levels <- c("MidAbx", "PostDiet_PreAbx", "MidDiet", "PostDiet_PostAbx",
+            "PostDiet_PreCC", "PostDiet_PostCC", "PostDiet_PreCC_PreAbx",
+            "PostDiet_PostCC_PreAbx", "PostDiet_PostCC_PostAbx")
+cols_intv <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols_intv) <- c("NoInterv", levels)
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", 
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores_centered %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols_intv) +
+  scale_fill_manual(values = cols_intv)
+```
+
+
+```{r pca-intv, fig.height=6, fig.width=14}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Interval", eigs = pca.ihs$sdev^2) +
+  scale_color_manual(values = cols_intv) +
+  theme(legend.position = "right")
+```
+
+
+```{r pca-intv-centered-subj,  fig.height=4, fig.width=14}
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Subject", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  theme(legend.position = "right") 
+```
+
+
+```{r pca-intv-centered-abx, fig.height=4, fig.width=14}
+cols <- c("grey77", brewer.pal(4, "Set1"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Abx_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Abx_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidAbx"), 
+    aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") #+facet_wrap(~Subject)
+```
+
+```{r pca-intv-centered-diet, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(3, "Dark2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Diet_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Diet_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidDiet"), aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") #+  facet_wrap(~Subject)
+```
+
+```{r pca-intv-centered-cc, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(2, "Set2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$CC_Interval), "NoInterv")))
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.9) +
+  #scale_color_manual(values = cols) +
+  theme(legend.position = "right") #+  facet_wrap(~Group)
+```
+
+
+```{r pca-intv-centered-time, fig.height=6, fig.width=14}
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") #+facet_wrap(~Group)
+```
+
+Sparse PCA {#spase-pca .unnumbered}
+------------------------------
+
+
+```{r}
+var.exp <- c(sparse_pca$prop.var.explained[1], 
+             diff(sparse_pca$prop.var.explained))
+
+ggplot(
+  data.frame(k = seq_along(sparse_pca$d),
+             eig = sparse_pca$d^2, 
+             percent.var.exp = 100* var.exp)) +
+  geom_bar(aes(x = k, y = percent.var.exp), stat = "identity")
+```
+
+```{r spca-group, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Group", eigs = spca_var) +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "right")
+```
+
+```{r spca-subj, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Subject", eigs = spca_var) +
+  #scale_color_manual(values = cols) +
+  theme(legend.position = "right")
+```
+
+
+```{r spca-intv, fig.height=7, fig.width=14}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(9))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Interval), "NoInterv")))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Interval", eigs = spca_var) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right")
+```
+
+```{r spca-loadings, fig.height=15, fig.width=15}
+plt <- plot_projection(
+  loadings, xname = "sPC1", yname = "sPC2", size = "sPC3",
+  color = "SEED3", eigs = spca_var, alpha = 0.5) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter((sPC1^2 + sPC2^2) > 0.01), 
+    aes(label = SEED4),
+    nudge_y = 0.002, size = 5) +
+  theme(legend.position = "bottom")
+print(plt)
+```
+
+```{r spca-subj-time, fig.height=10, fig.width=20, warning = FALSE}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2",
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
+```
+
+Centering the subjects
+
+
+```{r spca-intv-centered-abx, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(4, "Set1"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Abx_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Abx_Interval", eigs = spca_var, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidAbx"), 
+    aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right")# +  facet_wrap(~Group)
+```
+
+```{r spca-intv-centered-diet, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(3, "Dark2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Diet_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Diet_Interval", eigs = spca_var, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidDiet"), aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") #+  facet_wrap(~Group)
+```
+
+```{r spca-intv-centered-cc, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(2, "Set2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$CC_Interval), "NoInterv")))
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.9) +
+   scale_color_manual(values = cols) +
+  theme(legend.position = "right") #+  facet_wrap(~Group)
+```
+
+
+```{r spca-intv-centered-time, fig.height=6, fig.width=12}
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = spca_var, alpha = 0.5) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") #+   facet_wrap(~Group)
+```
+
+
+```{r sPC1, fig.height=10, fig.width=12}
+ggplot(loadings %>% filter(abs(sPC1) > 1e-2),
+       aes(y = SEED4, x = sPC1)) +
+  geom_jitter(
+    aes(color = SEED3),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom") +
+  guides(color = guide_legend(ncol=3, override.aes = list(size=3)))
+
+```
+
+
+```{r sPC2, fig.height=10, fig.width=12}
+ggplot(loadings %>% filter(abs(sPC2) > 1e-2),
+       aes(x = SEED4, y = sPC2)) +
+  geom_jitter(
+    aes(color = SEED3),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom") +
+  guides(color = guide_legend(ncol=3, override.aes = list(size=3)))
+
+
+```
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+
