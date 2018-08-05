@@ -52,6 +52,7 @@ for (f in processed_files) {
 }
 
 input_files <- input_files[argv$start_ix:argv$end_ix]
+print(input_files)
 
 ###############################################################################
 ## Loop over input, performing profiling one file at a time

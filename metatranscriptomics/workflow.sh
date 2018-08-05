@@ -47,20 +47,21 @@ extra_blat=false
 index_db=false
 
 ## STEPS TO RUN ----------
-TRIM=true
-MERGE_PAIRS=true
-QUAL_FLTR=true
-RM_DUPL=true
-RM_VECTOR=true
-RM_HOST=true
-RM_rRNA=true
-REREPLICATION=true
-TAX_CLASS=true
-ASSEMBLE=true
-GENOME_ANN=true
-PROT_ANN=true
-DIAMOND_REFSEQ=true
-DIAMOND_SEED=true
+TRIM=false #true
+MERGE_PAIRS=false #true
+QUAL_FLTR=false #true
+RM_DUPL=false #true
+RM_VECTOR=false #true
+RM_HOST=false #true
+RM_rRNA=false #true
+REREPLICATION=false #true
+TAX_CLASS=false #true
+ASSEMBLE=false #true
+GENOME_ANN=false #true
+PROT_ANN=false #true
+DIAMOND_REFSEQ=false
+DIAMOND_SEED=false
+DIAMOND_UNIREF=true
 DIAMOND_COUNT=true
 
 ## HELP DOCS ----------
@@ -237,7 +238,7 @@ mkdir -p $OUTPUT_DIR/main
 mkdir -p $OUTPUT_DIR/QC
 mkdir -p $OUTPUT_DIR/trimmed/
 mkdir -p $OUTPUT_DIR/unique/
-mkdir -p $OUTPUT_DIR/dmnd_tmp/
+mkdir -p $OUTPUT_DIR/dmnd_tmp/${base}/
 mkdir -p $OUTPUT_DIR/counts/
 
 if [ $PROT_ANN ] || [ $DIAMOND_REFSEQ ] || [ $DIAMOND_SEED ]; then
@@ -844,14 +845,14 @@ if $PROT_ANN && [ ! -s $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout ]; then
         -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_contigs_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_nr_contigs.dmdout \
-        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 1 --sensitive
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp/${base} -k 1 --sensitive
 
     $DIAMOND blastx --id 85 --query-cover 65 --min-score 60 \
         --threads $n_threads \
         -d $REF_DIR/nr \
         -q $OUTPUT_DIR/assembled/${base}_unassembled_unmapped.fq \
         -o $OUTPUT_DIR/diamond/${base}_nr_unassembled.dmdout \
-        -f 6 -t $OUTPUT_DIR/dmnd_tmp -k 1 --sensitive
+        -f 6 -t $OUTPUT_DIR/dmnd_tmp/${base} -k 1 --sensitive
     
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -880,7 +881,7 @@ if $DIAMOND_REFSEQ && [ ! -s $OUTPUT_DIR/diamond/${base}_refseq.dmdout ]; then
         -d $REF_DIR/RefSeq_bac \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_refseq.dmdout \
-        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+        -t $OUTPUT_DIR/dmnd_tmp/${base} -f 6 -k 1 --sensitive
 
     # $DIAMOND blastx -p $n_threads -d $REF_DIR/RefSeq_bac \
     #     -q $infile \
@@ -914,7 +915,7 @@ if $DIAMOND_SEED && [ ! -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
         -d $REF_DIR/subsys_db \
         -q $infile \
         -o $OUTPUT_DIR/diamond/${base}_seed.dmdout \
-        -t $OUTPUT_DIR/dmnd_tmp -f 6 -k 1 --sensitive
+        -t $OUTPUT_DIR/dmnd_tmp/${base} -f 6 -k 1 --sensitive
 
     end=`date +%s`
     runtime=$(((end-start)/60))
@@ -924,6 +925,34 @@ if $DIAMOND_SEED && [ ! -s $OUTPUT_DIR/diamond/${base}_seed.dmdout ]; then
         $OUTPUT_DIR/time/${base}_time.log
 fi
 
+
+if $DIAMOND_UNIREF && [ ! -s $OUTPUT_DIR/diamond/${base}_uniref.dmdout ]; then
+    echo =======================================================================
+    echo UniRef100 annotation with DIAMOND ...
+
+    if [ $rna_samples ]; then
+        infile=$OUTPUT_DIR/main/${base}_mRNA.fq
+    else
+        infile=$OUTPUT_DIR/main/${base}_fltr.fq
+    fi
+
+    start=`date +%s`
+    # Align with UniRef100 database
+    $DIAMOND blastx --threads $n_threads \
+        -d $REF_DIR/uniref100 \
+        -q $infile \
+        -o $OUTPUT_DIR/diamond/${base}_uniref.dmdout \
+        -t $OUTPUT_DIR/dmnd_tmp/${base} -f 6 -k 1 --sensitive
+
+    end=`date +%s`
+    runtime=$(((end-start)/60))
+    echo "DIAMOND UniRef gene annotation: $runtime min" >> \
+        $OUTPUT_DIR/time/${base}_time.log
+    echo ========================================== >> \
+        $OUTPUT_DIR/time/${base}_time.log
+fi
+
+
 if $DIAMOND_COUNT; then
     echo =======================================================================
     echo Aggregate DIAMOND results and count reads...
@@ -931,6 +960,7 @@ if $DIAMOND_COUNT; then
     mkdir -p $OUTPUT_DIR/counts/dmnd_RefSeq/
     mkdir -p $OUTPUT_DIR/counts/dmnd_NR/
     mkdir -p $OUTPUT_DIR/counts/dmnd_SEED/
+    mkdir -p $OUTPUT_DIR/counts/dmnd_UniRef/
 
     start=`date +%s`
     if [ ! -s $OUTPUT_DIR/counts/dmnd_RefSeq/${base}_refseq_abund.csv ] && \
@@ -975,6 +1005,17 @@ if $DIAMOND_COUNT; then
             $REF_DIR/subsys_db.tsv \
             -outfile $OUTPUT_DIR/counts/dmnd_SEED/${base}_seed_abund.csv
         echo Completed counting of the SEED  anotated reads!
+    fi
+    
+    if [ ! -s $OUTPUT_DIR/counts/dmnd_UniRef/${base}_uniref_abund.csv ] && \
+    [ -s $OUTPUT_DIR/diamond/${base}_uniref.dmdout ];
+    then
+        echo Diamond UniRef results aggregation ...
+        python $PYSCRIPT_DIR/reads_counter.py \
+            $OUTPUT_DIR/diamond/${base}_uniref.dmdout \
+            $REF_DIR/uniref100.tsv \
+            -outfile $OUTPUT_DIR/counts/dmnd_UniRef/${base}_uniref_abund.csv
+        echo Completed counting of the UniRef anotated reads!
     fi
     
     end=`date +%s`
