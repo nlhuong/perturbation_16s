@@ -108,10 +108,10 @@ ggplot(
 ```{r}
 sample_data(diet)$type <- with(sample_data(diet), 
   memisc::cases(
-    Diet_RelDay < 0      -> "PreDiet",
-    Diet_RelDay < 7      -> "MidDiet",
-    Diet_RelDay < 30     -> "PostDiet",
-    Diet_RelDay >= 30    -> "Recovery"
+    Diet_RelDay < 0                      -> "PreDiet",
+    Diet_RelDay < 7 & Diet_RelDay >= 0   -> "MidDiet",
+    Diet_RelDay < 40 & Diet_RelDay >= 7  -> "PostDiet",
+    Diet_RelDay >= 40                    -> "Recovery"
   )
 )
 ```
@@ -178,10 +178,11 @@ Cross Validation
 
 ```{r}
 set.seed(0)
-diet.treedacv = treedacv(response = sample_data(diet)$type,
-    predictors = t(otu_table(diet)),
-    tree = phy_tree(diet),
-    folds = 4, pvec = seq(10, 150, by = 10))
+diet.treedacv = treedacv(
+  response = sample_data(diet)$type,
+  predictors = t(otu_table(diet)),
+  tree = phy_tree(diet),
+  folds = 10, pvec = seq(10, 200, by = 10))
 diet.treedacv
 ```
 
@@ -190,18 +191,17 @@ diet.treedacv
 plot(diet.treedacv)
 ```
 
-```{r}
-out.treeda.11 = treeda(response = sample_data(AntibioticPhyloseq)$type,
-    predictors = otu_table(AntibioticPhyloseq),
-    tree = phy_tree(AntibioticPhyloseq), p = 11)
-out.treeda.11 
+```{r, eval = FALSE}
+diet.treeda.opt = treeda(
+  response = sample_data(diet)$type,
+  predictors = t(otu_table(diet)),
+  tree = phy_tree(diet), p = #fill in)
+diet.treeda.opt 
 ```
 
-```{r, eval = FALSE}
+```{r, eval = saveRES}
 save(list = c("diet.treedacv", "diet"), file = resfile)
 ```
-
-
 
 
 
@@ -209,15 +209,17 @@ save(list = c("diet.treedacv", "diet"), file = resfile)
 
 ```{r}
 diet_change <- subset_samples(diet, type %in%  c("PostDiet", "PreDiet")) 
+diet_change <- subset_taxa(diet_change, taxa_sums(diet_change) > 0)
+diet_change
 ```
 
 
 ```{r}
 diet.treeda = treeda(
-  response = diet_change@sam_data$type,
+  response = sample_data(diet_change)$type,
   predictors = t(otu_table(diet_change)),
   tree = phy_tree(diet_change), 
-  p = 50)
+  p = 150)
 beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 ```
 
@@ -235,7 +237,7 @@ ggplot(data.frame(sample_data(diet_change),
 
 ```{r}
 nTaxa <- 10
-taxtab <- data.frame(tax_table(diet_change))
+taxtab <- data.frame(as(tax_table(diet_change), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   group_by(Family) %>%
   summarise(Freq = n()) %>%
@@ -248,57 +250,266 @@ taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
 
 
 ```{r}
-p <- plot_coefficients(diet.treeda, color = taxtab$family)
-grid::grid.draw(p)
+plot_coefficients(diet.treeda, color = taxtab$family)
 ```
 
 
 
-Cros Validation
+Cross Validation
 
 ```{r}
 set.seed(0)
-out.treedacv = treedacv(
+diet_change.treedacv = treedacv(
   response = sample_data(diet_change)$type,
-  predictors = asinh(t(otu_table(diet_change))),
+  predictors = t(otu_table(diet_change)),
   tree = phy_tree(diet_change),
-  folds = 4, pvec = seq(10, 150, by = 10))
-out.treedacv
+  folds = 10, pvec = seq(10, 200, by = 10))
+diet_change.treedacv
 ```
 
 
 ```{r}
-plot(out.treedacv)
+plot(diet_change.treedacv)
 ```
 
-```{r}
-out.treeda.11 = treeda(response = sample_data(AntibioticPhyloseq)$type,
-    predictors = otu_table(AntibioticPhyloseq),
-    tree = phy_tree(AntibioticPhyloseq), p = 11)
-out.treeda.11 
+```{r, eval = FALSE}
+diet_change.treeda.opt = treeda(
+  response = sample_data(diet_change)$type,
+  predictors = otu_table(diet_change),
+  tree = phy_tree(diet_change), p = # fill inn)
+diet_change.treeda.opt 
 ```
 
 
+```{r, eval = saveRES}
+save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change"), file = resfile)
+```
 
 
 
 ## Response to Antibiotics
 
-```{r exp-design-all, fig.width=10, fig.height=15}
-ggplot(df2plot) +
+```{r}
+minTaxaSum <- 5
+abx <- subset_samples(ps_norm, grepl("Abx", Group))
+abx <- subset_samples(abx, 
+  !grepl("MidDiet", Diet_Interval) & !grepl("PreDiet", Diet_Interval) &
+    !grepl("PreCC", CC_Interval))
+
+abx <- subset_taxa(abx, taxa_sums(abx) > minTaxaSum)
+abx_SMP <- data.frame(abx@sam_data) %>%
+  mutate(Samp_Date = as.Date(Samp_Date))
+abx
+```
+
+```{r exp-design, fig.width=8, fig.height=8}
+new_intv_levs <- unique(abx_SMP$Interval)
+colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(new_intv_levs)-2)
+colors <- c("grey57", "red", colors)
+names(colors) <- c("NoInterv", "MidAbx", "PostDiet_PreAbx", 
+                   "PostDiet_PostAbx", "PostDiet_PostCC_PreAbx", 
+                   "PostDiet_PostCC_PostAbx", "PostAbx", "UnpAbx")
+ggplot(
+  abx_SMP, aes(y = Subject, x = Abx_RelDay)) +
   geom_point(
-      pch = 124,
-      aes(y = Subject, x = Samp_Date, color = Interval,
-          fill = Interval, size = modality_count)
-    ) +
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
     facet_grid(Group ~ ., scales = "free", space = "free") +
     scale_color_manual(values = colors) +
-    scale_size_continuous(range = c(5, 10)) +
     theme(legend.direction = "horizontal", legend.box = "vertical",
-          strip.text.y = element_text(angle=0)) +
-    guides(color = guide_legend(override.aes = list(size=5)),
-           size = guide_legend(override.aes = list(color="black")))
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
 ```
+
+
+### Multiple Classes
+
+```{r}
+sample_data(abx)$type <- with(sample_data(abx), 
+  memisc::cases(
+    Abx_RelDay < 0                    -> "PreAbx",
+    Abx_RelDay < 7 & Abx_RelDay >=0   -> "MidAbx",
+    Abx_RelDay < 40 & Abx_RelDay >= 7 -> "PostAbx",
+    Abx_RelDay >= 40                  -> "Recovery"
+  )
+)
+```
+
+```{r}
+table(sample_data(abx)$type)
+```
+
+
+```{r}
+nTaxa <- 10
+taxtab <- data.frame(as(tax_table(abx), "matrix"), stringsAsFactors = FALSE)
+freq_family <- taxtab %>%
+  filter(!is.na(Family)) %>%
+  group_by(Family) %>%
+  summarise(Freq = n()) %>%
+  arrange(desc(Freq))
+taxa_levels <- unique(
+  c(freq_family$Family[1:nTaxa], taxtab$Family[abs(beta) > 1e-6]))
+taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
+```
+
+
+```{r}
+abx.treeda.mult = treeda(
+  response = sample_data(abx)$type,
+  predictors = t(otu_table(abx)),
+  tree = phy_tree(abx), p = 50)
+beta <- as.numeric(abx.treeda.mult$leafCoefficients$beta)
+```
+
+```{r}
+abx.treeda.mult
+```
+
+```{r}
+ggplot(data.frame(sample_data(abx), projections = abx.treeda.mult$projections)) +
+  geom_point(aes(x = Subject, y = projections.1, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+ggplot(data.frame(sample_data(abx), projections = abx.treeda.mult$projections)) +
+  geom_point(aes(x = Subject, y = projections.2, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+ggplot(data.frame(sample_data(abx), projections = abx.treeda.mult$projections)) +
+  geom_point(aes(x = Subject, y = projections.3, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+plot_coefficients(abx.treeda.mult, color = rep(taxtab$family, 3))
+```
+
+
+
+Cross Validation
+
+```{r}
+set.seed(0)
+abx.treedacv = treedacv(
+  response = sample_data(abx)$type,
+  predictors = t(otu_table(abx)),
+  tree = phy_tree(diet),
+  folds = 10, pvec = seq(10, 200, by = 10))
+abx.treedacv
+```
+
+
+```{r}
+plot(abx.treedacv)
+```
+
+```{r, eval = FALSE}
+abx.treeda.opt = treeda(
+  response = sample_data(diet)$type,
+  predictors = t(otu_table(diet)),
+  tree = phy_tree(diet), p = #fill in)
+abx.treeda.opt 
+```
+
+```{r, eval = saveRES}
+save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change",
+              "abx.treedacv", "abx"), 
+     file = resfile)
+```
+
+
+
+### Two classes only
+
+```{r}
+abx_change <- subset_samples(abx, type %in%  c("PostAbx", "PreAbx")) 
+abx_change <- subset_taxa(abx_change, taxa_sums(abx_change) > 0)
+abx_change
+```
+
+
+```{r}
+abx.treeda = treeda(
+  response = sample_data(abx_change)$type,
+  predictors = t(otu_table(abx_change)),
+  tree = phy_tree(abx_change), 
+  p = 50)
+beta <- as.numeric(diet.treeda$leafCoefficients$beta)
+```
+
+```{r}
+abx.treeda
+```
+
+```{r}
+ggplot(data.frame(sample_data(abx_change), 
+                  projections = abx.treeda$projections)) +
+  geom_point(aes(x = Subject, y = projections, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+nTaxa <- 10
+taxtab <- data.frame(as(tax_table(abx_change), "matrix"), stringsAsFactors = FALSE)
+freq_family <- taxtab %>%
+  group_by(Family) %>%
+  summarise(Freq = n()) %>%
+  filter(!is.na(Family)) %>%
+  arrange(desc(Freq))
+taxa_levels <- unique(
+  c(freq_family$Family[1:nTaxa], taxtab$Family[abs(beta) > 1e-6]))
+taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
+```
+
+
+```{r}
+plot_coefficients(abx.treeda, color = taxtab$family)
+```
+
+
+
+Cross Validation
+
+```{r}
+set.seed(0)
+abx_change.treedacv = treedacv(
+  response = sample_data(abx_change)$type,
+  predictors = t(otu_table(abx_change)),
+  tree = phy_tree(abx_change),
+  folds = 10, pvec = seq(10, 200, by = 10))
+abx_change.treedacv
+```
+
+
+```{r}
+plot(abx_change.treedacv)
+```
+
+```{r, eval = FALSE}
+abx_change.treeda.opt = treeda(
+  response = sample_data(abx_change)$type,
+  predictors = t(otu_table(abx_change)),
+  tree = phy_tree(abx_change), p = #fill in)
+abx_change.treeda.opt 
+```
+
+```{r, eval = saveRES}
+save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change",
+              "abx.treedacv", "abx", "abx_change.treedacv", "abx_change"), 
+     file = resfile)
+```
+
+
+
+
+
 
 
 
