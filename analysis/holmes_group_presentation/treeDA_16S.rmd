@@ -1,0 +1,317 @@
+---
+title: "Resilience Study 16S data: tree Discriminant Analysis"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/treeDA/", 
+  dev='png') 
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+#rm(list = ls())
+library("DESeq2")
+library("viridis")
+library("RColorBrewer")
+library("ggplot2")
+library("dplyr")
+library("phyloseq")
+library("treeDA")
+library("adaptiveGPCA")
+
+datadir <- "/scratch/PI/sph/resilience/"
+curdir <- getwd()
+resfile <- "results/treeDA_res16S.rda"
+source('utils.R')
+
+theme_set(theme_bw())
+theme_update(
+   panel.border = element_rect(size = 0.5),
+   legend.position = "bottom",
+   text = element_text(size = 15),
+   strip.background = element_blank()
+)
+```
+
+
+```{r}
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+
+resfile <- "results/ordinate_16S.rda"
+load(resfile)
+```
+
+```{r}
+dds <- phyloseq_to_deseq2(ps, design = ~ 1)
+dds <- estimateSizeFactors(dds, type = "poscounts")
+norm_counts <- counts(dds, normalized = TRUE)
+ps_norm <- ps
+otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+```
+
+
+# Tree Discriminant Analysis
+
+## Response to Diet
+
+```{r}
+minTaxaSum <- 5
+diet <- subset_samples(ps_norm, grepl("Diet", Group))
+diet <- subset_samples(
+  diet, !grepl("MidAbx", Abx_Interval) & !grepl("PostAbx", Abx_Interval) &
+    !grepl("PostCC", CC_Interval))
+
+diet <- subset_taxa(diet, taxa_sums(diet) > minTaxaSum)
+diet_SMP <- data.frame(diet@sam_data) %>%
+  mutate(Samp_Date = as.Date(Samp_Date))
+```
+
+```{r exp-design, fig.width=8, fig.height=8}
+new_intv_levs <- unique(diet_SMP$Interval)
+colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(new_intv_levs)-2)
+colors <- c("grey57", "red", colors)
+names(colors) <- c("NoInterv", "MidDiet", "PostDiet_PreAbx", "PostDiet_PreCC",
+                   "PostDiet_PreCC_PreAbx")
+ggplot(
+  diet_SMP, aes(y = Subject, x = Diet_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+### Multiple Classes
+
+```{r}
+sample_data(diet)$type <- with(sample_data(diet), 
+  memisc::cases(
+    Diet_RelDay < 0      -> "PreDiet",
+    Diet_RelDay < 7      -> "MidDiet",
+    Diet_RelDay < 30     -> "PostDiet",
+    Diet_RelDay >= 30    -> "Recovery"
+  )
+)
+```
+
+```{r}
+table(sample_data(diet)$type)
+```
+
+
+```{r}
+nTaxa <- 10
+taxtab <- data.frame(as(tax_table(diet), "matrix"), stringsAsFactors = FALSE)
+freq_family <- taxtab %>%
+  filter(!is.na(Family)) %>%
+  group_by(Family) %>%
+  summarise(Freq = n()) %>%
+  arrange(desc(Freq))
+taxa_levels <- unique(
+  c(freq_family$Family[1:nTaxa], taxtab$Family[abs(beta) > 1e-6]))
+taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
+```
+
+
+```{r}
+diet.treeda.mult = treeda(
+  response = sample_data(diet)$type,
+  predictors = t(otu_table(diet)),
+  tree = phy_tree(diet), p = 50)
+beta <- as.numeric(diet.treeda.mult$leafCoefficients$beta)
+```
+
+```{r}
+diet.treeda.mult
+```
+
+```{r}
+ggplot(data.frame(sample_data(diet), projections = diet.treeda.mult$projections)) +
+  geom_point(aes(x = Subject, y = projections.1, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+ggplot(data.frame(sample_data(diet), projections = diet.treeda.mult$projections)) +
+  geom_point(aes(x = Subject, y = projections.2, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+ggplot(data.frame(sample_data(diet), projections = diet.treeda.mult$projections)) +
+  geom_point(aes(x = Subject, y = projections.3, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+plot_coefficients(diet.treeda.mult, color = rep(taxtab$family, 3))
+```
+
+
+
+
+Cross Validation
+
+```{r}
+set.seed(0)
+diet.treedacv = treedacv(response = sample_data(diet)$type,
+    predictors = t(otu_table(diet)),
+    tree = phy_tree(diet),
+    folds = 4, pvec = seq(10, 150, by = 10))
+diet.treedacv
+```
+
+
+```{r}
+plot(diet.treedacv)
+```
+
+```{r}
+out.treeda.11 = treeda(response = sample_data(AntibioticPhyloseq)$type,
+    predictors = otu_table(AntibioticPhyloseq),
+    tree = phy_tree(AntibioticPhyloseq), p = 11)
+out.treeda.11 
+```
+
+```{r, eval = FALSE}
+save(list = c("diet.treedacv", "diet"), file = resfile)
+```
+
+
+
+
+
+### Two classes only
+
+```{r}
+diet_change <- subset_samples(diet, type %in%  c("PostDiet", "PreDiet")) 
+```
+
+
+```{r}
+diet.treeda = treeda(
+  response = diet_change@sam_data$type,
+  predictors = t(otu_table(diet_change)),
+  tree = phy_tree(diet_change), 
+  p = 50)
+beta <- as.numeric(diet.treeda$leafCoefficients$beta)
+```
+
+```{r}
+diet.treeda
+```
+
+```{r}
+ggplot(data.frame(sample_data(diet_change), 
+                  projections = diet.treeda$projections)) +
+  geom_point(aes(x = Subject, y = projections, color = type)) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+nTaxa <- 10
+taxtab <- data.frame(tax_table(diet_change))
+freq_family <- taxtab %>%
+  group_by(Family) %>%
+  summarise(Freq = n()) %>%
+  filter(!is.na(Family)) %>%
+  arrange(desc(Freq))
+taxa_levels <- unique(
+  c(freq_family$Family[1:nTaxa], taxtab$Family[abs(beta) > 1e-6]))
+taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
+```
+
+
+```{r}
+p <- plot_coefficients(diet.treeda, color = taxtab$family)
+grid::grid.draw(p)
+```
+
+
+
+Cros Validation
+
+```{r}
+set.seed(0)
+out.treedacv = treedacv(
+  response = sample_data(diet_change)$type,
+  predictors = asinh(t(otu_table(diet_change))),
+  tree = phy_tree(diet_change),
+  folds = 4, pvec = seq(10, 150, by = 10))
+out.treedacv
+```
+
+
+```{r}
+plot(out.treedacv)
+```
+
+```{r}
+out.treeda.11 = treeda(response = sample_data(AntibioticPhyloseq)$type,
+    predictors = otu_table(AntibioticPhyloseq),
+    tree = phy_tree(AntibioticPhyloseq), p = 11)
+out.treeda.11 
+```
+
+
+
+
+
+## Response to Antibiotics
+
+```{r exp-design-all, fig.width=10, fig.height=15}
+ggplot(df2plot) +
+  geom_point(
+      pch = 124,
+      aes(y = Subject, x = Samp_Date, color = Interval,
+          fill = Interval, size = modality_count)
+    ) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    scale_size_continuous(range = c(5, 10)) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=0)) +
+    guides(color = guide_legend(override.aes = list(size=5)),
+           size = guide_legend(override.aes = list(color="black")))
+```
+
+
+
+```{r}
+
+```
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+
