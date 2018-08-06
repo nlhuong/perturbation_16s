@@ -41,7 +41,10 @@ datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
 resfile <- "results/treeDA_res16S.rda"
 source('utils.R')
+saveRES <- TRUE
+```
 
+```{r}
 theme_set(theme_bw())
 theme_update(
    panel.border = element_rect(size = 0.5),
@@ -51,13 +54,10 @@ theme_update(
 )
 ```
 
-
 ```{r}
 processed_datafile <- "results/processed_physeq.rda"
 load(processed_datafile)
-
-resfile <- "results/ordinate_16S.rda"
-load(resfile)
+load("results/ordinate_16S.rda")
 ```
 
 ```{r}
@@ -122,6 +122,14 @@ table(sample_data(diet)$type)
 
 
 ```{r}
+diet.treeda.mult = treeda(
+  response = sample_data(diet)$type,
+  predictors = t(otu_table(diet)),
+  tree = phy_tree(diet), p = 50)
+beta <- as.numeric(diet.treeda.mult$leafCoefficients$beta)
+```
+
+```{r}
 nTaxa <- 10
 taxtab <- data.frame(as(tax_table(diet), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
@@ -132,15 +140,6 @@ freq_family <- taxtab %>%
 taxa_levels <- unique(
   c(freq_family$Family[1:nTaxa], taxtab$Family[abs(beta) > 1e-6]))
 taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
-```
-
-
-```{r}
-diet.treeda.mult = treeda(
-  response = sample_data(diet)$type,
-  predictors = t(otu_table(diet)),
-  tree = phy_tree(diet), p = 50)
-beta <- as.numeric(diet.treeda.mult$leafCoefficients$beta)
 ```
 
 ```{r}
@@ -220,7 +219,6 @@ diet.treeda = treeda(
   predictors = t(otu_table(diet_change)),
   tree = phy_tree(diet_change), 
   p = 150)
-beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 ```
 
 ```{r}
@@ -237,6 +235,7 @@ ggplot(data.frame(sample_data(diet_change),
 
 ```{r}
 nTaxa <- 10
+beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 taxtab <- data.frame(as(tax_table(diet_change), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   group_by(Family) %>%
@@ -340,8 +339,17 @@ table(sample_data(abx)$type)
 ```
 
 
+
+```{r}
+abx.treeda.mult = treeda(
+  response = sample_data(abx)$type,
+  predictors = t(otu_table(abx)),
+  tree = phy_tree(abx), p = 50)
+```
+
 ```{r}
 nTaxa <- 10
+beta <- as.numeric(abx.treeda.mult$leafCoefficients$beta)
 taxtab <- data.frame(as(tax_table(abx), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   filter(!is.na(Family)) %>%
@@ -353,14 +361,6 @@ taxa_levels <- unique(
 taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
 ```
 
-
-```{r}
-abx.treeda.mult = treeda(
-  response = sample_data(abx)$type,
-  predictors = t(otu_table(abx)),
-  tree = phy_tree(abx), p = 50)
-beta <- as.numeric(abx.treeda.mult$leafCoefficients$beta)
-```
 
 ```{r}
 abx.treeda.mult
@@ -440,7 +440,6 @@ abx.treeda = treeda(
   predictors = t(otu_table(abx_change)),
   tree = phy_tree(abx_change), 
   p = 50)
-beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 ```
 
 ```{r}
@@ -457,6 +456,7 @@ ggplot(data.frame(sample_data(abx_change),
 
 ```{r}
 nTaxa <- 10
+beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 taxtab <- data.frame(as(tax_table(abx_change), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   group_by(Family) %>%
