@@ -1,0 +1,293 @@
+---
+title: "Resilience Study 16S data: recovery after perturbation"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/treeDA/", 
+  dev='png') 
+```
+
+```{r setup, warning=FALSE, message=FALSE}
+#rm(list = ls())
+library("DESeq2")
+library("viridis")
+library("RColorBrewer")
+library("ggplot2")
+library("dplyr")
+library("phyloseq")
+
+datadir <- "/scratch/PI/sph/resilience/"
+curdir <- getwd()
+source('utils.R')
+```
+
+```{r}
+theme_set(theme_bw())
+theme_update(
+   panel.border = element_rect(size = 0.5),
+   legend.position = "bottom",
+   text = element_text(size = 15),
+   strip.background = element_blank()
+)
+```
+
+
+```{r}
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+load( "results/ordinate_16S.rda")
+```
+
+
+
+```{r}
+dds <- phyloseq_to_deseq2(ps, design = ~ 1)
+dds <- estimateSizeFactors(dds, type = "poscounts")
+norm_counts <- counts(dds, normalized = TRUE)
+ps_norm <- ps
+otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+```
+
+```{r}
+cols_itv <- c("grey57", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols_itv) <- c("NoInterv", setdiff(unique(SMP$Interval), "NoInterv"))
+```
+
+
+# Distances
+
+
+## Jaccard
+
+
+```{r, eval = FALSE}
+jaccardD <- dist(t(as(otu_table(ps), "matrix")), "binary")
+save(list = c("pca.ihs", "sparse_pca",
+              "rtsne.norm.ihs", "rtsne.centered.ihs", "rtsne.bray.ihs", 
+              "brayD.ihs", "jaccardD",
+              "pp", "out.agpca",
+              "scores", "loadings", "scores_centered"),
+     file =  "results/ordinate_16S.rda")
+```
+
+```{r}
+jaccD.df <- reshape2::melt(as.matrix(jaccardD), varnames = c("S1", "S2")) %>%
+  mutate(S1 = as.character(S1),
+         S2 = as.character(S2))
+jaccD.df <- jaccD.df %>%
+  left_join(SMP, by = c("S1" = "Meas_ID")) %>%
+  left_join(SMP, by = c("S2" = "Meas_ID"), suffix = c(".S1", ".S2")) %>%
+  filter(Subject.S1 == Subject.S2)
+```
+
+
+## UniFrac
+
+```{r, eval = FALSE}
+doParallel::registerDoParallel(cores = 8)
+unifracD <- phyloseq::UniFrac(ps, parallel=FALSE, fast=TRUE)
+save(list = c("pca.ihs", "sparse_pca",
+              "rtsne.norm.ihs", "rtsne.centered.ihs", "rtsne.bray.ihs", 
+              "brayD.ihs", "jaccardD", "unifracD"
+              "pp", "out.agpca",
+              "scores", "loadings", "scores_centered"),
+     file =  "results/ordinate_16S.rda")
+```
+
+```{r}
+unifraD.df <- reshape2::melt(
+  as.matrix(unifracD), varnames = c("S1", "S2"),
+  value.name = "unifrac") %>%
+  mutate(S1 = as.character(S1),
+         S2 = as.character(S2))
+```
+
+## Bray Curtis
+
+```{r, eval = FALSE}
+# Transform counts to not "over-weight" highly abundant taxa
+ps_asinh <- transform_sample_counts(ps, function(x) {asinh(x)})
+brayD.ihs <- phyloseq::distance(ps_asinh, method = "bray")
+```
+
+
+```{r}
+brayD.df <- reshape2::melt(
+  as.matrix(brayD.ihs), varnames = c("S1", "S2"),
+  value.name = "bray") %>%
+  mutate(S1 = as.character(S1),
+         S2 = as.character(S2))
+```
+
+
+```{r}
+distDF <- jaccD.df %>%
+  rename(jaccard = value) %>%
+  left_join(brayD.df) %>%
+  left_join(unifraD.df)
+```
+
+```{r}
+rm(brayD.df, unifraD.df, brayD.ihs, jaccardD, unifracD)
+```
+
+
+# Recovery Time
+
+## All Samples
+
+```{r}
+# Diet Abx
+
+all_subjects <- distDF %>% 
+  rename(Subject = Subject.S1) %>%
+  filter(Interval.S1 == "NoInterv") %>%
+  select(Subject, S1, S2, starts_with("Interval"), bray, jaccard) %>%
+  group_by(Subject, S2, Interval.S1, Interval.S2) %>%
+  summarise(
+    mean_jaccard = mean(jaccard),
+    mean_bray = mean(bray)) %>%
+  left_join(SMP %>% 
+              select(Meas_ID, DaysFromStart, Interval, Group, 
+                     contains("_RelDay"), contains("_Interval")),
+            by = c("S2" = "Meas_ID")) %>%
+  arrange(Subject, DaysFromStart) 
+
+```
+
+
+```{r diet_abx_resilience, fig.width=10, fig.height=10}
+ggplot(all_subjects %>%
+         filter(Group == "Diet_Abx") %>%
+         arrange(Subject, DaysFromStart) ,
+       aes(x = mean_bray, y = mean_jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Interval, alpha = Interval)) +
+  #scale_color_viridis() +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+
+```
+
+
+```{r diet_abx_resilience, fig.width=10, fig.height=10}
+ggplot(all_subjects %>%
+         filter(grepl("Abx", Group), Diet_Interval == "PostDiet") %>%
+         arrange(Subject, Abx_RelDay) ,
+       aes(x = mean_bray, y = mean_jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Abx_Interval)) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+```
+
+
+## Response to Diet
+
+```{r}
+minTaxaSum <- 5
+diet <- subset_samples(ps_norm, grepl("Diet", Group))
+diet <- subset_samples(
+  diet, !grepl("MidAbx", Abx_Interval) & !grepl("PostAbx", Abx_Interval) &
+    !grepl("PostCC", CC_Interval))
+
+diet <- subset_taxa(diet, taxa_sums(diet) > minTaxaSum)
+diet_SMP <- data.frame(diet@sam_data) %>%
+  mutate(Samp_Date = as.Date(Samp_Date))
+```
+
+```{r exp-design, fig.width=8, fig.height=8}
+new_intv_levs <- unique(diet_SMP$Interval)
+colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(new_intv_levs)-2)
+colors <- c("grey57", "red", colors)
+names(colors) <- c("NoInterv", "MidDiet", "PostDiet_PreAbx", "PostDiet_PreCC",
+                   "PostDiet_PreCC_PreAbx")
+ggplot(
+  diet_SMP, aes(y = Subject, x = Diet_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+
+## Response to Antibiotics
+
+```{r}
+minTaxaSum <- 5
+abx <- subset_samples(ps_norm, grepl("Abx", Group))
+abx <- subset_samples(abx, 
+  !grepl("MidDiet", Diet_Interval) & !grepl("PreDiet", Diet_Interval) &
+    !grepl("PreCC", CC_Interval))
+
+abx <- subset_taxa(abx, taxa_sums(abx) > minTaxaSum)
+abx_SMP <- data.frame(abx@sam_data) %>%
+  mutate(Samp_Date = as.Date(Samp_Date))
+abx
+```
+
+```{r exp-design, fig.width=8, fig.height=8}
+new_intv_levs <- unique(abx_SMP$Interval)
+colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(new_intv_levs)-2)
+colors <- c("grey57", "red", colors)
+names(colors) <- c("NoInterv", "MidAbx", "PostDiet_PreAbx", 
+                   "PostDiet_PostAbx", "PostDiet_PostCC_PreAbx", 
+                   "PostDiet_PostCC_PostAbx", "PostAbx", "UnpAbx")
+ggplot(
+  abx_SMP, aes(y = Subject, x = Abx_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+```
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+

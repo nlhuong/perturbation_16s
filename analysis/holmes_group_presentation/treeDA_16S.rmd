@@ -41,7 +41,10 @@ datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
 resfile <- "results/treeDA_res16S.rda"
 source('utils.R')
+saveRES <- FALSE
+```
 
+```{r}
 theme_set(theme_bw())
 theme_update(
    panel.border = element_rect(size = 0.5),
@@ -51,13 +54,10 @@ theme_update(
 )
 ```
 
-
 ```{r}
 processed_datafile <- "results/processed_physeq.rda"
 load(processed_datafile)
-
-resfile <- "results/ordinate_16S.rda"
-load(resfile)
+load("results/ordinate_16S.rda")
 ```
 
 ```{r}
@@ -122,6 +122,14 @@ table(sample_data(diet)$type)
 
 
 ```{r}
+diet.treeda.mult = treeda(
+  response = sample_data(diet)$type,
+  predictors = t(otu_table(diet)),
+  tree = phy_tree(diet), p = 50)
+beta <- as.numeric(diet.treeda.mult$leafCoefficients$beta)
+```
+
+```{r}
 nTaxa <- 10
 taxtab <- data.frame(as(tax_table(diet), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
@@ -132,15 +140,6 @@ freq_family <- taxtab %>%
 taxa_levels <- unique(
   c(freq_family$Family[1:nTaxa], taxtab$Family[abs(beta) > 1e-6]))
 taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
-```
-
-
-```{r}
-diet.treeda.mult = treeda(
-  response = sample_data(diet)$type,
-  predictors = t(otu_table(diet)),
-  tree = phy_tree(diet), p = 50)
-beta <- as.numeric(diet.treeda.mult$leafCoefficients$beta)
 ```
 
 ```{r}
@@ -176,7 +175,7 @@ plot_coefficients(diet.treeda.mult, color = rep(taxtab$family, 3))
 
 Cross Validation
 
-```{r}
+```{r, eval =  saveRES}
 set.seed(0)
 diet.treedacv = treedacv(
   response = sample_data(diet)$type,
@@ -188,7 +187,7 @@ diet.treedacv
 
 
 ```{r}
-plot(diet.treedacv)
+# plot(diet.treedacv)
 ```
 
 ```{r, eval = FALSE}
@@ -199,7 +198,7 @@ diet.treeda.opt = treeda(
 diet.treeda.opt 
 ```
 
-```{r, eval = saveRES}
+```{r, eval = FALSE}
 save(list = c("diet.treedacv", "diet"), file = resfile)
 ```
 
@@ -220,7 +219,6 @@ diet.treeda = treeda(
   predictors = t(otu_table(diet_change)),
   tree = phy_tree(diet_change), 
   p = 150)
-beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 ```
 
 ```{r}
@@ -237,6 +235,7 @@ ggplot(data.frame(sample_data(diet_change),
 
 ```{r}
 nTaxa <- 10
+beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 taxtab <- data.frame(as(tax_table(diet_change), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   group_by(Family) %>%
@@ -257,7 +256,7 @@ plot_coefficients(diet.treeda, color = taxtab$family)
 
 Cross Validation
 
-```{r}
+```{r, eval = FALSE}
 set.seed(0)
 diet_change.treedacv = treedacv(
   response = sample_data(diet_change)$type,
@@ -268,7 +267,7 @@ diet_change.treedacv
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 plot(diet_change.treedacv)
 ```
 
@@ -281,7 +280,7 @@ diet_change.treeda.opt
 ```
 
 
-```{r, eval = saveRES}
+```{r, eval = FALSE}
 save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change"), file = resfile)
 ```
 
@@ -340,8 +339,17 @@ table(sample_data(abx)$type)
 ```
 
 
+
+```{r}
+abx.treeda.mult = treeda(
+  response = sample_data(abx)$type,
+  predictors = t(otu_table(abx)),
+  tree = phy_tree(abx), p = 50)
+```
+
 ```{r}
 nTaxa <- 10
+beta <- as.numeric(abx.treeda.mult$leafCoefficients$beta)
 taxtab <- data.frame(as(tax_table(abx), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   filter(!is.na(Family)) %>%
@@ -353,14 +361,6 @@ taxa_levels <- unique(
 taxtab$family <- factor(taxtab$Family, levels = taxa_levels)
 ```
 
-
-```{r}
-abx.treeda.mult = treeda(
-  response = sample_data(abx)$type,
-  predictors = t(otu_table(abx)),
-  tree = phy_tree(abx), p = 50)
-beta <- as.numeric(abx.treeda.mult$leafCoefficients$beta)
-```
 
 ```{r}
 abx.treeda.mult
@@ -394,7 +394,7 @@ plot_coefficients(abx.treeda.mult, color = rep(taxtab$family, 3))
 
 Cross Validation
 
-```{r}
+```{r, eval = FALSE}
 set.seed(0)
 abx.treedacv = treedacv(
   response = sample_data(abx)$type,
@@ -417,7 +417,7 @@ abx.treeda.opt = treeda(
 abx.treeda.opt 
 ```
 
-```{r, eval = saveRES}
+```{r, eval = FALSE}
 save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change",
               "abx.treedacv", "abx"), 
      file = resfile)
@@ -440,7 +440,6 @@ abx.treeda = treeda(
   predictors = t(otu_table(abx_change)),
   tree = phy_tree(abx_change), 
   p = 50)
-beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 ```
 
 ```{r}
@@ -457,6 +456,7 @@ ggplot(data.frame(sample_data(abx_change),
 
 ```{r}
 nTaxa <- 10
+beta <- as.numeric(diet.treeda$leafCoefficients$beta)
 taxtab <- data.frame(as(tax_table(abx_change), "matrix"), stringsAsFactors = FALSE)
 freq_family <- taxtab %>%
   group_by(Family) %>%
@@ -477,7 +477,7 @@ plot_coefficients(abx.treeda, color = taxtab$family)
 
 Cross Validation
 
-```{r}
+```{r, eval = FALSE}
 set.seed(0)
 abx_change.treedacv = treedacv(
   response = sample_data(abx_change)$type,
@@ -500,7 +500,7 @@ abx_change.treeda.opt = treeda(
 abx_change.treeda.opt 
 ```
 
-```{r, eval = saveRES}
+```{r, eval = FALSE}
 save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change",
               "abx.treedacv", "abx", "abx_change.treedacv", "abx_change"), 
      file = resfile)
