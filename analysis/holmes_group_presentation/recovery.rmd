@@ -26,8 +26,8 @@ knitr::opts_chunk$set(
   dev='png') 
 ```
 
-```{r setup, warning=FALSE, message=FALSE}
-#rm(list = ls())
+```{r warning=FALSE, message=FALSE}
+rm(list = ls())
 library("DESeq2")
 library("viridis")
 library("RColorBrewer")
@@ -38,7 +38,12 @@ library("phyloseq")
 datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
 source('utils.R')
+
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+load("results/dist_df.rda")
 ```
+
 
 ```{r}
 theme_set(theme_bw())
@@ -48,33 +53,41 @@ theme_update(
    text = element_text(size = 15),
    strip.background = element_blank()
 )
-```
-
-
-```{r}
-processed_datafile <- "results/processed_physeq.rda"
-load(processed_datafile)
-load( "results/ordinate_16S.rda")
-```
-
-
-
-```{r}
-dds <- phyloseq_to_deseq2(ps, design = ~ 1)
-dds <- estimateSizeFactors(dds, type = "poscounts")
-norm_counts <- counts(dds, normalized = TRUE)
-ps_norm <- ps
-otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
-```
-
-```{r}
 cols_itv <- c("grey57", colorRampPalette(brewer.pal(9, "Set1"))(12))
 names(cols_itv) <- c("NoInterv", setdiff(unique(SMP$Interval), "NoInterv"))
 ```
 
 
+```{r}
+# dds <- phyloseq_to_deseq2(ps, design = ~ 1)
+# dds <- estimateSizeFactors(dds, type = "poscounts")
+# norm_counts <- counts(dds, normalized = TRUE)
+# ps_norm <- ps
+# otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+```
+
+
+# Experiment
+
+```{r exp-design, fig.width=10, fig.height=10}
+ggplot(
+  SMP, aes(y = Subject, x = DaysFromStart)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 4 , override.aes = list(size=3, pch = 16)))
+```
+
+
 # Distances
 
+```{r, echo = FALSE, eval = FALSE}
+load( "results/ordinate_16S.rda")
+```
 
 ## Jaccard
 
@@ -89,13 +102,21 @@ save(list = c("pca.ihs", "sparse_pca",
      file =  "results/ordinate_16S.rda")
 ```
 
-```{r}
+```{r, eval = FALSE}
+keep_cols <- c(
+  "Meas_ID", "Subject", "Interval",
+  "Samp_Type", "Samp_Date", "Samp_Time",
+  "Diet_Interval", "CC_Interval", "Abx_Interval",
+  "Diet_RelDay", "CC_RelDay", "Abx_RelDay",
+  "DaysFromStart", "Sequencing_Run", "SampleDepth")
+
 jaccD.df <- reshape2::melt(as.matrix(jaccardD), varnames = c("S1", "S2")) %>%
   mutate(S1 = as.character(S1),
          S2 = as.character(S2))
 jaccD.df <- jaccD.df %>%
-  left_join(SMP, by = c("S1" = "Meas_ID")) %>%
-  left_join(SMP, by = c("S2" = "Meas_ID"), suffix = c(".S1", ".S2")) %>%
+  left_join(SMP %>% select(keep_cols), by = c("S1" = "Meas_ID")) %>%
+  left_join(SMP %>% select(keep_cols), by = c("S2" = "Meas_ID"), 
+            suffix = c(".S1", ".S2")) %>%
   filter(Subject.S1 == Subject.S2)
 ```
 
@@ -113,7 +134,7 @@ save(list = c("pca.ihs", "sparse_pca",
      file =  "results/ordinate_16S.rda")
 ```
 
-```{r}
+```{r, eval = FALSE}
 unifraD.df <- reshape2::melt(
   as.matrix(unifracD), varnames = c("S1", "S2"),
   value.name = "unifrac") %>%
@@ -130,7 +151,7 @@ brayD.ihs <- phyloseq::distance(ps_asinh, method = "bray")
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 brayD.df <- reshape2::melt(
   as.matrix(brayD.ihs), varnames = c("S1", "S2"),
   value.name = "bray") %>%
@@ -139,19 +160,313 @@ brayD.df <- reshape2::melt(
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 distDF <- jaccD.df %>%
   rename(jaccard = value) %>%
-  left_join(brayD.df) %>%
-  left_join(unifraD.df)
+  left_join(brayD.df) %>% 
+  # left_join(unifraD.df) %>%
+  left_join(
+    SMP %>%
+      select(Meas_ID, Subject, Group:Real_First_Sample_Date), 
+    by = c("S1" = "Meas_ID"))
+
+distDF <- distDF %>%
+  select(
+    setdiff(colnames(distDF), c("bray", "jaccard", "unifrac")),
+    c("bray", "jaccard", "unifrac"))
 ```
+
+```{r, eval = FALSE}
+save(list = c("distDF", "brayD.ihs", "jaccardD", "unifracD"), file = "results/dist_df.rda")
+```
+
 
 ```{r}
 rm(brayD.df, unifraD.df, brayD.ihs, jaccardD, unifracD)
 ```
 
 
-# Recovery Time
+# Recovery After Perturbations
+
+
+## Response to Diet
+
+
+```{r diet-samples, fig.width=9, fig.height=7}
+ggplot( 
+  SMP %>%
+    filter(
+      grepl("Diet", Group),
+      !grepl("MidAbx", Abx_Interval),
+      !grepl("PostAbx", Abx_Interval),
+      !grepl("PostCC", CC_Interval)), 
+  aes(y = Subject, x = Diet_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r}
+diet_response <- distDF %>% 
+  filter(
+    grepl("Diet", Group),
+    Diet_RelDay.S1 >= -7,
+    Diet_RelDay.S1 < 0 ,
+    !grepl("MidAbx", Abx_Interval.S2),
+    !grepl("PostAbx", Abx_Interval.S2),
+    !grepl("PostCC", CC_Interval.S2)) 
+
+diet_response <- get_responses(diet_response, dist_cols = c("bray", "jaccard")) 
+diet_response <- recovery_stats(
+  diet_response, relday_col = "Diet_RelDay.S2", 
+  fac = 1.2, thresh_num_days_below = 5, perturb_day = 4
+)
+```
+
+```{r diet-response, fig.width=10, fig.height=10}
+ggplot(diet_response, aes(x = bray, y = jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Diet_Interval.S2)) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 1 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r diet-response-over-time, warning=FALSE, fig.width=10, fig.height=10}
+p1 <- ggplot(
+  diet_response, 
+  aes(x = Diet_RelDay.S2, y = jaccard, color = Diet_Interval.S2)) +
+  geom_path(aes(group = Subject), alpha = 0.7) +
+  geom_hline(
+    yintercept = mean(diet_response$jacc_thresh, na.rm = TRUE)) +
+  geom_point(alpha = 0.7) +
+    geom_point(
+    data = diet_response %>% filter(Diet_RelDay.S2 > jaccard_recov_time), 
+    color = "red") +
+  guides(color = guide_legend(nrow = 1, override.aes = list(size=3, pch = 16)))
+
+p2 <- ggplot(
+  diet_response, 
+  aes(x = Diet_RelDay.S2, y = bray, color = Diet_Interval.S2)) +
+  geom_path(aes(group = Subject), alpha = 0.7) +
+  geom_hline(
+    yintercept =  mean(diet_response$bray_thresh, na.rm = TRUE)) +
+  geom_point(alpha = 0.7) +
+  geom_point(
+    data = diet_response %>% filter(Diet_RelDay.S2 > bray_recov_time), 
+    color = "red") + 
+  guides(color = guide_legend(nrow = 1, override.aes = list(size=3, pch = 16)))
+
+gridExtra::grid.arrange(p1, p2, ncol = 1)
+```
+
+
+## Response to Colon Cleanout
+
+
+```{r cc-samples, fig.width=9, fig.height=7}
+ggplot( 
+  SMP %>%
+    filter(
+      grepl("CC", Group),
+      !grepl("MidDiet", Diet_Interval),
+      !grepl("PreDiet", Diet_Interval),
+      !grepl("MidAbx", Abx_Interval),
+      !grepl("PostAbx", Abx_Interval)), 
+  aes(y = Subject, x = CC_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r}
+cc_response <- distDF %>% 
+  filter(
+    grepl("CC", Group),
+    CC_RelDay.S1 >= -7,
+    CC_RelDay.S1 < 0 ,
+    !grepl("MidDiet", Diet_Interval.S2),
+    !grepl("PreDiet", Diet_Interval.S2),
+    !grepl("MidAbx", Abx_Interval.S2),
+    !grepl("PostAbx", Abx_Interval.S2))
+
+cc_response <- get_responses(cc_response, dist_cols = c("bray", "jaccard")) 
+cc_response <- recovery_stats(
+  cc_response, relday_col = "CC_RelDay.S2", fac = 1.2)
+
+```
+
+```{r cc-response, fig.width=10, fig.height=10}
+ggplot(cc_response, aes(x = bray, y = jaccard)) +
+  geom_path() +
+  geom_point(aes(color = CC_Interval.S2)) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 1 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r cc-response-over-time, warning=FALSE, fig.width=10, fig.height=10}
+p1 <- ggplot(
+  cc_response, 
+  aes(x = CC_RelDay.S2, y = jaccard, color = CC_Interval.S2)) +
+  geom_path(aes(group = Subject), alpha = 0.7) +
+  geom_hline(
+    yintercept = mean(cc_response$jacc_thresh, na.rm = TRUE)) +
+  geom_point(alpha = 0.7) +
+    geom_point(
+    data = cc_response %>% filter(CC_RelDay.S2 > jaccard_recov_time), 
+    color = "red") +
+  guides(color = guide_legend(nrow = 1, override.aes = list(size=3, pch = 16)))
+
+p2 <- ggplot(
+  cc_response, 
+  aes(x = CC_RelDay.S2, y = bray, color = CC_Interval.S2)) +
+  geom_path(aes(group = Subject), alpha = 0.7) +
+  geom_hline(
+    yintercept =  mean(cc_response$bray_thresh, na.rm = TRUE)) +
+  geom_point(alpha = 0.7) +
+  geom_point(
+    data = cc_response %>% filter(CC_RelDay.S2 > bray_recov_time), 
+    color = "red") + 
+  guides(color = guide_legend(nrow = 1, override.aes = list(size=3, pch = 16)))
+
+gridExtra::grid.arrange(p1, p2, ncol = 1)
+```
+
+## Response to Antibiotics
+
+```{r abx-samples, fig.width=9, fig.height=7}
+ggplot( 
+  SMP %>%
+    filter(
+      grepl("Abx", Group),
+      !grepl("MidDiet", Diet_Interval),
+      !grepl("PreDiet", Diet_Interval),
+      !grepl("PreCC", CC_Interval)), 
+  aes(y = Subject, x = Abx_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r}
+abx_response <- distDF %>% 
+  filter(
+    grepl("Abx", Group),
+    Abx_RelDay.S1 >= -7,
+    Abx_RelDay.S1 < 0 ,
+    !grepl("MidDiet", Diet_Interval.S2),
+    !grepl("PreDiet", Diet_Interval.S2),
+    !grepl("PreCC", CC_Interval.S2))
+
+abx_response <- get_responses(abx_response, dist_cols = c("bray", "jaccard")) 
+abx_response <- recovery_stats(
+  abx_response, relday_col = "Abx_RelDay.S2", fac = 1.5)
+
+```
+
+```{r abx-response, fig.width=10, fig.height=10}
+ggplot(abx_response, aes(x = bray, y = jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Abx_Interval.S2)) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 1 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r abx-response-over-time, warning=FALSE, fig.width=10, fig.height=10}
+p1 <- ggplot(
+  abx_response, 
+  aes(x = Abx_RelDay.S2, y = jaccard, color = Abx_Interval.S2)) +
+  geom_path(aes(group = Subject), alpha = 0.7) +
+  geom_hline(
+    yintercept = mean(abx_response$jacc_thresh, na.rm = TRUE)) +
+  geom_point(alpha = 0.7) +
+    geom_point(
+    data = abx_response %>% filter(Abx_RelDay.S2 > jaccard_recov_time), 
+    color = "red") +
+  guides(color = guide_legend(nrow = 1, override.aes = list(size=3, pch = 16)))
+
+p2 <- ggplot(
+  abx_response, 
+  aes(x = Abx_RelDay.S2, y = bray, color = Abx_Interval.S2)) +
+  geom_path(aes(group = Subject), alpha = 0.7) +
+  geom_hline(
+    yintercept =  mean(abx_response$bray_thresh, na.rm = TRUE)) +
+  geom_point(alpha = 0.7) +
+  geom_point(
+    data = abx_response %>% filter(Abx_RelDay.S2 > bray_recov_time), 
+    color = "red") + 
+  guides(color = guide_legend(nrow = 1, override.aes = list(size=3, pch = 16)))
+
+gridExtra::grid.arrange(p1, p2, ncol = 1)
+```
+
+
+```{r}
+compare_recov_time <- diet_response %>%
+  select("Subject", "jaccard_recov_time", "bray_recov_time") %>%
+  distinct() %>%
+  left_join(abx_response %>% 
+              filter(Subject %in% intersect_subjects) %>%
+              select("Subject", "jaccard_recov_time", "bray_recov_time") %>%
+              distinct(), 
+            by = c("Subject"),
+            suffix = c(".diet", ".abx")) %>%
+  left_join(cc_response %>% 
+              filter(Subject %in% intersect_subjects) %>%
+              select("Subject", "jaccard_recov_time", "bray_recov_time") %>%
+              rename("jaccard_recov_time.cc" = "jaccard_recov_time",
+                     "bray_recov_time.cc" = "bray_recov_time") %>%
+              distinct(), 
+            by = c("Subject")) 
+```
+
+
+```{r, fig.width=10, fig.height=8}
+plt.lst <- list()
+for(dist in c("bray", "jaccard")) {
+  for(perturb1 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+    for(perturb2 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+      if(perturb1 >= perturb2) {next}
+      
+      plt.lst[[paste0(dist, "_", perturb1, "_", perturb2)]] <- 
+        ggplot(compare_recov_time,
+               #%>%
+               # filter_at(.vars = paste0("metric_", c(perturb1, perturb2)),
+               #           .vars_predicate = any_vars((.) == "bray")),
+               aes_string(x = paste0(dist, "_recov_time.", perturb1), 
+                          y = paste0(dist, "_recov_time.", perturb2))) +
+        geom_text(aes(label = Subject)) +
+        ggtitle(paste0(dist, "_", perturb1, "_", perturb2)) +
+        xlab(perturb1) + ylab(perturb2)
+    }  
+  }
+}
+
+library(gridExtra)
+do.call("grid.arrange", c(plt.lst, ncol=3))
+
+```
+
 
 ## All Samples
 
@@ -200,80 +515,6 @@ ggplot(all_subjects %>%
   facet_wrap(~ Subject, scales = "free") +
   guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
 ```
-
-
-## Response to Diet
-
-```{r}
-minTaxaSum <- 5
-diet <- subset_samples(ps_norm, grepl("Diet", Group))
-diet <- subset_samples(
-  diet, !grepl("MidAbx", Abx_Interval) & !grepl("PostAbx", Abx_Interval) &
-    !grepl("PostCC", CC_Interval))
-
-diet <- subset_taxa(diet, taxa_sums(diet) > minTaxaSum)
-diet_SMP <- data.frame(diet@sam_data) %>%
-  mutate(Samp_Date = as.Date(Samp_Date))
-```
-
-```{r exp-design, fig.width=8, fig.height=8}
-new_intv_levs <- unique(diet_SMP$Interval)
-colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(new_intv_levs)-2)
-colors <- c("grey57", "red", colors)
-names(colors) <- c("NoInterv", "MidDiet", "PostDiet_PreAbx", "PostDiet_PreCC",
-                   "PostDiet_PreCC_PreAbx")
-ggplot(
-  diet_SMP, aes(y = Subject, x = Diet_RelDay)) +
-  geom_point(
-      aes(color = Interval, fill = Interval), 
-      pch = 124, size = 3) +
-    facet_grid(Group ~ ., scales = "free", space = "free") +
-    scale_color_manual(values = colors) +
-    theme(legend.direction = "horizontal", legend.box = "vertical",
-          strip.text.y = element_text(angle=270, size = 10)) +
-    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
-```
-
-
-
-## Response to Antibiotics
-
-```{r}
-minTaxaSum <- 5
-abx <- subset_samples(ps_norm, grepl("Abx", Group))
-abx <- subset_samples(abx, 
-  !grepl("MidDiet", Diet_Interval) & !grepl("PreDiet", Diet_Interval) &
-    !grepl("PreCC", CC_Interval))
-
-abx <- subset_taxa(abx, taxa_sums(abx) > minTaxaSum)
-abx_SMP <- data.frame(abx@sam_data) %>%
-  mutate(Samp_Date = as.Date(Samp_Date))
-abx
-```
-
-```{r exp-design, fig.width=8, fig.height=8}
-new_intv_levs <- unique(abx_SMP$Interval)
-colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(new_intv_levs)-2)
-colors <- c("grey57", "red", colors)
-names(colors) <- c("NoInterv", "MidAbx", "PostDiet_PreAbx", 
-                   "PostDiet_PostAbx", "PostDiet_PostCC_PreAbx", 
-                   "PostDiet_PostCC_PostAbx", "PostAbx", "UnpAbx")
-ggplot(
-  abx_SMP, aes(y = Subject, x = Abx_RelDay)) +
-  geom_point(
-      aes(color = Interval, fill = Interval), 
-      pch = 124, size = 3) +
-    facet_grid(Group ~ ., scales = "free", space = "free") +
-    scale_color_manual(values = colors) +
-    theme(legend.direction = "horizontal", legend.box = "vertical",
-          strip.text.y = element_text(angle=270, size = 10)) +
-    guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
-```
-
-
-
-
-
 
 
 

@@ -68,5 +68,55 @@ plot_coefficients <- function (out.treeda,
   invisible(p)
 }
 
+get_responses <- function(dist_df, dist_cols = c("bray", "jaccard")) {
+  group_cols <- dist_df %>%
+    select(-ends_with("S1"),  -dist_cols) %>%
+    colnames()
+  
+  dist_df <- dist_df %>%
+    group_by_at(group_cols) %>%
+    summarise_at(
+      .vars = dist_cols,
+      .funs = mean) %>%
+    arrange(Subject, DaysFromStart.S2) 
+}
 
 
+recovery_stats <- function(response_df, relday_col, 
+                           perturb_day = 4, fac = 1.2,
+                           thresh_num_days_below = 5,
+                           dist_cols = c("jaccard", "bray")) {
+  
+  subject_nointv_thresh <- response_df %>%
+    filter_at(.vars = relday_col, any_vars((.) < -7 )) %>%
+    group_by(Subject) %>%
+    summarise(jaccard = mean(jaccard), bray = mean(bray))
+  
+  response_df <- response_df %>% 
+    as_data_frame() %>%
+    left_join(subject_nointv_thresh, 
+              by = "Subject", suffix = c("", "_thresh")) 
+  
+  recov_time <- response_df %>% 
+    as_data_frame() %>%
+    filter_at(.vars = relday_col, any_vars((.) > perturb_day))
+  
+  for(dname in dist_cols){
+    dist_recov_time <- recov_time %>%
+      mutate(
+        below_thresh = (.)[[dname]] < fac * (.)[[paste0(dname, "_thresh")]]) %>%
+      filter(below_thresh) %>%
+      arrange_at(.vars = c("Subject", relday_col)) %>%
+      group_by(Subject) %>%
+      mutate(num_below_after = cumsum(below_thresh)) %>%
+      group_by(Subject) %>%
+      filter(num_below_after >= thresh_num_days_below) %>%
+      summarise_at(.vars = relday_col, .funs = min)
+    colnames(dist_recov_time) <- c("Subject", paste0(dname, "_recov_time"))
+    
+    response_df <- response_df %>%
+      left_join(dist_recov_time)
+  }
+  
+  return(response_df)
+}
