@@ -41,8 +41,7 @@ datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
 resfile <- "results/treeDA_res16S.rda"
 source('utils.R')
-saveRES <- FALSE
-
+saveRES <- TRUE
 ```
 
 ```{r}
@@ -176,7 +175,7 @@ plot_coefficients(diet.treeda.mult, color = rep(taxtab$family, 3))
 
 Cross Validation
 
-```{r, eval =  saveRES}
+```{r}
 set.seed(0)
 diet.treedacv = treedacv(
   response = sample_data(diet)$type,
@@ -188,7 +187,7 @@ diet.treedacv
 
 
 ```{r}
-# plot(diet.treedacv)
+plot(diet.treedacv)
 ```
 
 ```{r, eval = FALSE}
@@ -199,7 +198,7 @@ diet.treeda.opt = treeda(
 diet.treeda.opt 
 ```
 
-```{r, eval = FALSE}
+```{r, eval = saveRES}
 save(list = c("diet.treedacv", "diet"), file = resfile)
 ```
 
@@ -257,7 +256,7 @@ plot_coefficients(diet.treeda, color = taxtab$family)
 
 Cross Validation
 
-```{r, eval = FALSE}
+```{r}
 set.seed(0)
 diet_change.treedacv = treedacv(
   response = sample_data(diet_change)$type,
@@ -268,7 +267,7 @@ diet_change.treedacv
 ```
 
 
-```{r, eval = FALSE}
+```{r}
 plot(diet_change.treedacv)
 ```
 
@@ -281,7 +280,7 @@ diet_change.treeda.opt
 ```
 
 
-```{r, eval = FALSE}
+```{r, eval = saveRES}
 save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change"), file = resfile)
 ```
 
@@ -395,7 +394,7 @@ plot_coefficients(abx.treeda.mult, color = rep(taxtab$family, 3))
 
 Cross Validation
 
-```{r, eval = FALSE}
+```{r}
 set.seed(0)
 abx.treedacv = treedacv(
   response = sample_data(abx)$type,
@@ -418,7 +417,7 @@ abx.treeda.opt = treeda(
 abx.treeda.opt 
 ```
 
-```{r, eval = FALSE}
+```{r, eval = saveRES}
 save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change",
               "abx.treedacv", "abx"), 
      file = resfile)
@@ -478,7 +477,7 @@ plot_coefficients(abx.treeda, color = taxtab$family)
 
 Cross Validation
 
-```{r, eval = FALSE}
+```{r}
 set.seed(0)
 abx_change.treedacv = treedacv(
   response = sample_data(abx_change)$type,
@@ -501,7 +500,7 @@ abx_change.treeda.opt = treeda(
 abx_change.treeda.opt 
 ```
 
-```{r, eval = FALSE}
+```{r, eval = saveRES}
 save(list = c("diet.treedacv", "diet", "diet_change.treedacv", "diet_change",
               "abx.treedacv", "abx", "abx_change.treedacv", "abx_change"), 
      file = resfile)
