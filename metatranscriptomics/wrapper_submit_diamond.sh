@@ -14,7 +14,7 @@ PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics
 #do
 
 #SUBDIR=Arati_R_plate_11
-SUBDIR=Relman_RNAseq_17
+SUBDIR=Relman_RNAseq_18
 
 IN=${1:-$PI_BASE_DIR/raw/$SUBDIR}
 OUT=${2:-$PI_BASE_DIR/processed/$SUBDIR}

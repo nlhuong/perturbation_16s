@@ -21,6 +21,7 @@ for(subj in subject_list) {
     )
 }
 unifrac_df <- plyr::ldply(unifrac_list, .id = "Subject")
+colnames(unifrac_df) <- c("Subject", "S1", "S2", "unifrac")
 save(list = c("unifrac_list", "unifrac_df"), file = "results/unifrac_dist.rda")
 
 
