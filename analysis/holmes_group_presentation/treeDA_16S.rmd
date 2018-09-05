@@ -476,7 +476,9 @@ df <- plts$df %>%
         Genus = ifelse(is.na(taxtab$Genus), "", taxtab$Genus),
         org.name = paste(Genus, Species),
         predictor.names = ifelse(org.name == " ", predictor.names, org.name)) %>%
-  filter(abs(value) > 0.005)
+  filter(abs(value) > 0.002)
+
+df <- df[!duplicated(df[, c("value", "predictor.names")]),]
 
 coef.plot <- plts$coef.plot +
   ggrepel::geom_text_repel(
@@ -651,7 +653,57 @@ coef.plot
 
 
 
+```{r}
+thresh <- 1e-3
+non_zero_taxa <- taxtab %>% 
+  rownames_to_column("Seq_ID") %>%
+  select(-Seq) %>% 
+  filter(abs(beta) > thresh) %>%
+  arrange(desc(abs(beta)))
+X <- t(asinh(as(otu_table(abx), "matrix")))
+X <- sweep(X, 2, STATS = colMeans(X), FUN = "-")
+sds <- apply(X, 2, sd)
+sds[sds == 0] <- 1
+X <- sweep(X, 2, STATS = sds, FUN = "/")
 
+DF <- data.frame(t(X)) %>%
+  rownames_to_column("Seq_ID") %>%
+  filter(Seq_ID %in% non_zero_taxa$Seq_ID) %>%
+  gather(Meas_ID, abundance, -Seq_ID) %>%
+  left_join(
+    non_zero_taxa %>%
+      select(Seq_ID:Species, family)) %>%
+  left_join(abx_SMP) %>%
+  mutate(
+    Abx_Interval = factor(
+      Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx")))
+
+DF_reference <- DF %>%
+  filter(Abx_RelDay >= -7, Abx_RelDay < 0) %>%
+  group_by(Seq_ID, Subject) %>%
+  summarise(
+    reference_abundance = mean(abundance),
+    Freq = n(),
+    subj_seq_abund_sd = sqrt(sum((abundance-reference_abundance)^2)/(Freq-1)),
+    subj_seq_abund_sd = ifelse(subj_seq_abund_sd == 0, 1, subj_seq_abund_sd)
+  )
+
+DF <- DF %>%
+  left_join(DF_reference) %>%
+  mutate(
+    abundance_centered = abundance - reference_abundance,
+    abundance_centered_scaled = abundance_centered/subj_seq_abund_sd)
+
+```
+
+```{r}
+freq_genus <- non_zero_taxa %>%
+  filter(!is.na(Genus)) %>%
+  group_by(Genus) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+freq_genus
+```
 
 ### Multiple Classes
 
