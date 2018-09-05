@@ -38,6 +38,7 @@ plot_coefficients <- function (out.treeda,
                                ladderize = TRUE, 
                                tree.height = 2) 
 {
+  predictor.names <- colnames(out.treeda$input$predictors)
   tr = out.treeda$input$tree
   if (remove.bl) {
     tr$edge.length = rep(1, length(tr$edge.length))
@@ -50,6 +51,7 @@ plot_coefficients <- function (out.treeda,
   colnames(coef) = paste("Axis", 1:ncol(coef))
   df = data.frame(coef, leaf.position)
   df = reshape2::melt(df, id.vars = "leaf.position")
+  df$predictor.names <- predictor.names 
   coef.plot = ggplot(df) +
     facet_grid(variable ~ .) + 
     ylab("Coefficient value") + 
@@ -66,6 +68,7 @@ plot_coefficients <- function (out.treeda,
                             print = FALSE)
   grid::grid.draw(p)
   invisible(p)
+  return(list("df" = df, "coef.plot" = coef.plot, "tree.plot" = tree.plot))
 }
 
 get_responses <- function(dist_df, dist_cols = c("bray", "jaccard")) {
