@@ -1,0 +1,327 @@
+---
+title: "Resilience Study 16S data: tree Discriminant Analysis"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/treeDA/", 
+  dev='png') 
+```
+
+```{r warning=FALSE, message=FALSE}
+#rm(list = ls())
+library("DESeq2")
+library("phyloseq")
+library("fdapace")
+library("viridis")
+library("RColorBrewer")
+library("ggplot2")
+library("tidyverse")
+
+
+datadir <- "/scratch/PI/sph/resilience/"
+curdir <- getwd()
+resfile <- "results/treeDA_res16S.rda"
+source('utils.R')
+saveRES <- TRUE
+load("results/ps_objects.rda")
+
+taxtab <- data.frame(
+  as(ps_norm@tax_table, "matrix"), stringsAsFactors = FALSE) %>%
+  select(-Seq) %>%
+  rownames_to_column("Seq_ID") 
+```
+
+```{r}
+theme_set(theme_bw())
+theme_update(
+   panel.border = element_rect(size = 0.5),
+   legend.position = "bottom",
+   text = element_text(size = 15),
+   strip.background = element_blank()
+)
+```
+
+
+# Load data
+
+
+```{r, eval = FALSE}
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+
+dds <- phyloseq_to_deseq2(ps, design = ~ 1)
+dds <- estimateSizeFactors(dds, type = "poscounts")
+norm_counts <- counts(dds, normalized = TRUE)
+ps_norm <- ps
+otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+ps_norm
+```
+
+## Filter data
+
+```{r, eval = FALSE}
+diet <- subset_samples(ps_norm, grepl("Diet", Group))
+diet <- subset_samples(
+  diet, !grepl("MidAbx", Abx_Interval) & !grepl("PostAbx", Abx_Interval) &
+    !grepl("PostCC", CC_Interval))
+
+# Filter taxa that occurs at minTaxaSum in at least minNoSubj subjects
+minTaxaSum <- 5; minTaxaPrev <- 3; minNoSubj <- 3
+ASVsum <- data.frame(t(as(otu_table(diet), "matrix"))) %>%
+  mutate(Subject = diet@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+ASVprev <- data.frame(t(as(otu_table(diet), "matrix")) > 0) %>%
+  mutate(Subject = diet@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+
+keepASV <- data.frame(
+  Seq_ID = colnames(ASVsum),
+  abundant = colSums(ASVsum >= minTaxaSum) >= minNoSubj, 
+  prevalent = colSums(ASVprev >= minTaxaPrev) >= minNoSubj) %>%
+  filter(abundant, prevalent)
+
+diet <- prune_taxa(keepASV$Seq_ID, diet)
+sample_data(diet)$type <- with(
+  sample_data(diet), 
+  memisc::cases(
+    Diet_RelDay < -15                    -> "Ancient",
+    Diet_RelDay < 0 & Diet_RelDay >= -15 -> "PreDiet",
+    Diet_RelDay < 5 & Diet_RelDay >= 0   -> "MidDiet",
+    Diet_RelDay < 15 & Diet_RelDay >= 5  -> "PostDiet",
+    Diet_RelDay >= 15                    -> "Recovery"
+  )
+)
+```
+
+
+```{r, eval = FALSE}
+## Abx Samples ----------------------------------------------------------------
+abx <- subset_samples(ps_norm, grepl("Abx", Group))
+abx <- subset_samples(
+  abx, 
+  !grepl("MidDiet", Diet_Interval) & !grepl("PreDiet", Diet_Interval) &
+  !grepl("PreCC", CC_Interval))
+
+# Filter taxa that occurs at minTaxaSum in at least minNoSubj subjects
+minTaxaSum <- 10; minTaxaPrev <- 3; minNoSubj <- 3
+ASVsum <- data.frame(t(as(otu_table(abx), "matrix"))) %>%
+  mutate(Subject = abx@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+ASVprev <- data.frame(t(as(otu_table(abx), "matrix")) > 0) %>%
+  mutate(Subject = abx@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+
+keepASV <- data.frame(
+  Seq_ID = colnames(ASVsum),
+  abundant = colSums(ASVsum >= minTaxaSum) >= minNoSubj, 
+  prevalent = colSums(ASVprev >= minTaxaPrev) >= minNoSubj) %>%
+  filter(abundant, prevalent)
+
+abx <- prune_taxa(keepASV$Seq_ID, abx)
+
+sample_data(abx)$type <- with(
+  sample_data(abx), 
+    memisc::cases(
+      Abx_RelDay < -20                   -> "Ancient",
+      Abx_RelDay < 0 & Abx_RelDay >= -20 -> "PreAbx",
+      Abx_RelDay < 7 & Abx_RelDay >= 0   -> "MidAbx",
+      Abx_RelDay < 30 & Abx_RelDay >= 7  -> "PostAbx",
+      Abx_RelDay >= 30                   -> "Recovery"
+    )
+)
+rm(keepASV, ASVprev, ASVsum)
+save(list = c("ps", "ps_norm", "dds", "diet", "abx"), 
+     file = "results/ps_objects.rda")
+
+```
+
+
+# Antibiotics
+
+```{r}
+# Deal with measurements taken multiple times in one day for a subject
+duplicated_meas <- data.frame(abx@sam_data) %>%
+  select(Meas_ID, Subject, Abx_RelDay, Samp_Date, Samp_Time) %>%
+  group_by(Subject, Abx_RelDay) %>%
+  filter(n() > 1)
+duplicated_meas
+```
+
+
+```{r}
+abx_SMP <- data.frame(abx@sam_data) %>%
+  mutate(
+    Abx_RelDay = ifelse(Meas_ID == "M2243", 68.5, Abx_RelDay),
+    Abx_RelDay = ifelse(Meas_ID == "M7886", -48.5, Abx_RelDay))
+
+```
+
+
+```{r}
+nTop <- 20
+abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
+  rownames_to_column("Seq_ID") %>%
+  gather(Meas_ID, abundance, -Seq_ID) %>%
+  left_join(abx_SMP) %>%
+  left_join(taxtab) %>%
+  mutate(
+    Abx_Interval = factor(
+      Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) %>%
+  filter(Abx_RelDay >= -100, Abx_RelDay <= 100)
+
+# Most variable ASVs:
+abx_seq_variability <- abx.rsv %>%
+  group_by(Seq_ID, Subject) %>%
+  summarise(
+    variability = sd(abundance)) %>%
+  group_by(Seq_ID) %>%
+  summarise(mean_variability = mean(variability)) %>%
+  arrange(desc(mean_variability))
+
+abx.rsv <- abx.rsv %>%
+  filter(Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)])
+```
+
+```{r}
+# nTop <- 20
+# 
+# abx.genus <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
+#   rownames_to_column("Seq_ID") %>%
+#   gather(Meas_ID, abundance, -Seq_ID) %>%
+#   left_join(taxtab %>% select(Seq_ID, Genus)) %>%
+#   filter(!is.na(Genus)) %>%
+#   group_by(Meas_ID, Genus) %>%
+#   summarise(abundance = mean(abundance, na.rm = TRUE)) %>%
+#   left_join(taxtab %>% select(Seq_ID, Phylum:Genus)) %>%
+#   left_join(data.frame(abx@sam_data)) %>%
+#   mutate(
+#     Abx_Interval = factor(Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) 
+#   
+# abx_genus_variability <- abx.genus %>%
+#   group_by(Genus, Subject) %>%
+#   summarise(
+#     variability = sd(abundance)) %>%
+#   group_by(Genus) %>%
+#   summarise(mean_variability = mean(variability)) %>%
+#   arrange(desc(mean_variability))
+# 
+# abx.genus <- abx.genus %>%
+#   filter(Genus %in% abx_genus_variability$Genus[seq_len(nTop)])
+```
+
+
+```{r, fig.width=10, fig.height=20}
+ggplot(data = abx.rsv,
+   aes(x = Abx_RelDay, y = abundance)
+  ) +
+  geom_line(
+    aes(group = Subject, color = Abx_Interval),
+    alpha = 0.3, lwd = 1
+  ) +
+  geom_smooth(lwd = 2) +
+  facet_grid(Seq_ID ~ ., scales = "free") 
+```
+
+
+```{r fig.width=10, fig.height=20}
+# ggplot(data = abx.rsv %>% filter(Subject == "EAY"),
+#    aes(x = Abx_RelDay, y = abundance)
+#   ) +
+#   geom_line(
+#     aes(group = Subject, color = Abx_Interval),
+#     alpha = 1, lwd = 1
+#   ) +
+#   facet_grid(Seq_ID ~ ., scales = "free") 
+```
+
+```{r}
+seq <- "Seq3"
+abx.rsv <- abx.rsv %>%
+  arrange(Seq_ID, Subject, Abx_RelDay)
+
+y_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
+  abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["abundance"]])
+t_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
+  abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["Abx_RelDay"]])
+fpca_dense <- FPCA(y_lst, t_lst)
+```
+
+```{r}
+plot(fpca_dense)
+```
+
+```{r}
+CreatePathPlot(fpca_dense, main = "GCV bandwidth",  pch = 16)
+```
+
+```{r}
+fit <- fitted(fpca_dense, derOptns = list(p = 0))
+rownames(fit) <- unique(abx.rsv$Subject)
+colnames(fit) <- fpca_dense$workGrid 
+```
+
+```{r}
+df <- reshape2::melt(fit, varnames = c("Subject", "Abx_RelDay"),
+                     value.name = "abundance")
+ggplot(df, aes(x = Abx_RelDay, y = abundance)) +
+  geom_line(aes(group = Subject))
+  
+```
+
+```{r}
+fit <- fitted(fpca_dense, K = 2, derOptns = list(p = 1))
+rownames(fit) <- unique(abx.rsv$Subject)
+colnames(fit) <- fpca_dense$workGrid 
+```
+
+```{r}
+df <- reshape2::melt(fit, varnames = c("Subject", "Abx_RelDay"),
+                     value.name = "abundance")
+ggplot(df, aes(x = Abx_RelDay, y = abundance)) +
+  geom_line(aes(group = Subject))
+  
+```
+
+
+
+# Diet
+
+
+```{r}
+diet.long <- data.frame(asinh(as(otu_table(diet), "matrix"))) %>%
+  rownames_to_column("Seq_ID") %>%
+  gather(Meas_ID, abundance, -Seq_ID) %>%
+  left_join(data.frame(diet@sam_data)) %>%
+  left_join(taxtab) %>%
+  mutate(
+    Diet_Interval = factor(Diet_Interval, levels = c("PreDiet", "MidDiet", "PostDiet")))
+```
+
+
+```{r}
+sessionInfo()
+```
+

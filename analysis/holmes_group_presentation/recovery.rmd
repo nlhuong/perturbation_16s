@@ -280,7 +280,7 @@ gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
 ## Response to Colon Cleanout
 
 
-```{r cc-samples, fig.width=9, fig.height=5}
+```{r cc-samples, fig.width=9, fig.height=7}
 ggplot( 
   SMP %>%
     filter(
@@ -366,6 +366,7 @@ p3 <- plot_betadiver_over_time(
 
 gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
 ```
+
 
 ## Response to Antibiotics
 
@@ -685,6 +686,61 @@ for(dist in c("bray", "jaccard", "unifrac")) {
 
 do.call("grid.arrange", c(plt.lst, ncol=3))
 ```
+
+```
+
+
+## All Samples
+
+```{r}
+# Diet Abx
+
+all_subjects <- distDF %>% 
+  rename(Subject = Subject.S1) %>%
+  filter(Interval.S1 == "NoInterv") %>%
+  select(Subject, S1, S2, starts_with("Interval"), bray, jaccard) %>%
+  group_by(Subject, S2, Interval.S1, Interval.S2) %>%
+  summarise(
+    mean_jaccard = mean(jaccard),
+    mean_bray = mean(bray)) %>%
+  left_join(SMP %>% 
+              select(Meas_ID, DaysFromStart, Interval, Group, 
+                     contains("_RelDay"), contains("_Interval")),
+            by = c("S2" = "Meas_ID")) %>%
+  arrange(Subject, DaysFromStart) 
+
+```
+
+
+```{r diet_abx_resilience, fig.width=10, fig.height=10}
+ggplot(all_subjects %>%
+         filter(Group == "Diet_Abx") %>%
+         arrange(Subject, DaysFromStart) ,
+       aes(x = mean_bray, y = mean_jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Interval, alpha = Interval)) +
+  #scale_color_viridis() +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+
+```
+
+
+```{r diet_abx_resilience, fig.width=10, fig.height=10}
+ggplot(all_subjects %>%
+         filter(grepl("Abx", Group), Diet_Interval == "PostDiet") %>%
+         arrange(Subject, Abx_RelDay) ,
+       aes(x = mean_bray, y = mean_jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Abx_Interval)) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+```
+
+
+
+
 
 ```{r}
 sessionInfo()
