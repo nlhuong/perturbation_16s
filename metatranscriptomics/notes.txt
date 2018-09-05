@@ -1,0 +1,74 @@
+
+1. Ask Les what are the Adapters for our study.
+2. We have Paired-ends files how different is it to run the pipeline?
+
+3. STEP 5 removing rRNA sequences --> 2_(...).py script needed editing to work with
+python 3, as SeqRecord type from Biopython is not hashable anymore, instead of set()
+we used a python  dictionary.
+
+this step cmsearch also takes a very long time, maybe we can use another software
+e.g. SortMeRNA in one in SAMSA2.
+
+4. Setting up Kaiju database issues makeDB.sh -r didn't create the kaiju_db.fmi
+(possibly) too long time? Check if all the files are downloaded from RefSeq
+in ./genomes folder. rerunning makeDB.sh -r --noDL -t 25. Note that
+makeDB.sh must have been eddited so that -t 25 actually allow user changing
+the number of threads used to extract the gz files in ./genomes
+
+Making a database is verryyyy long the BWT part (mkbwt) seem to not work in 
+parallel eventhough -n option is submitted.
+
+5. Step 6_(...).py division range(len(sys.arg) - 5 /3) float type not compatible
+with python3. Results of BWA annotation:
+538 reads were mapped from mouse1_contigs.fasta
+0 reads were mapped from mouse1_unassembled.fastq
+Sequences mapped to 36 genes.
+
+6.
+
+
+
+
+Extracting file taxdump.tar.gz
+Creating directory genomes/
+Extracting protein sequences from downloaded files...
+Creating Borrows-Wheeler transform...
+# infilename= kaiju_db.faa
+# outfilename= kaiju_db
+# Alphabet= ACDEFGHIKLMNPQRSTVWY
+# nThreads= 25
+# length= 0.000000
+# checkpoint= 3
+# caseSens=OFF
+# revComp=OFF
+# term= *
+# revsort=OFF
+# help=OFF
+Sequences read time = 93.240000s
+SLEN 10399162357
+NSEQ 32159057
+ALPH *ACDEFGHIKLMNPQRSTVWY
+SA NCHECK=0
+Sorting done,  time = 10140.420000s
+Creating FM-Index...
+# filenm= kaiju_db
+# removecmd= NULL (null)
+# help=OFF
+Reading BWT from file kaiju_db.bwt ... DONE
+BWT of length 10109730834 has been read with 32159057 sequencs, alphabet=*ACDEFGHIKLMNPQRSTVWY
+Reading suffix array from file kaiju_db.sa ... DONE
+Writing BWT header and SA to file  kaiju_db.fmi ... DONE
+Constructing FM index
+10% ... 20% ... 30% ... 40% ... 50% ... 60% ... 70% ... 80% ... 90% ... 100% ... index2 done ...
+DONE
+Writing FM file index to file ... DONE
+
+  !!  You can now delete files kaiju_db.bwt and kaiju_db.sa  !!
+
+Done!
+Kaiju only needs the files kaiju_db.fmi, nodes.dmp, and names.dmp.
+The remaining files and the folder genomes/ can be deleted.
+
+
+
+
