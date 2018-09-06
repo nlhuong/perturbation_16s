@@ -1,0 +1,18 @@
+Relman_21
+> bash wrapper_submit.sh
+M3971_EAYsw_12r
+Submitted batch job 24949862
+
+> vim wrapper_submit_diamond.sh
+-----------------------------------
+Arati_9
+sh-ln01/metatranscriptomics
+> bash wrapper_submit_diamond.sh
+^AM1140_CAMsw_29r
+Submitted batch job 24949870
+M1154_CAMsw_43r
+Submitted batch job 24949871
+M1169_CANsw_21r
+Submitted batch job 24949875
+
+
