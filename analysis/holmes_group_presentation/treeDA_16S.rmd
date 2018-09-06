@@ -570,7 +570,7 @@ ggplot(
   facet_wrap(~ Seq_ID, scales = "free") 
 ```
 
-### Two classes only
+### Two classes only Pre vs Mid
 
 ```{r}
 abx_change <- subset_samples(

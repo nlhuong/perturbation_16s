@@ -159,6 +159,21 @@ save(list = c("ps", "ps_norm", "dds", "diet", "abx"),
 ```
 
 
+
+
+```{r fig.width=12, fig.height=15}
+ggplot(
+  data.frame(ps@sam_data), aes(y = Subject, x = Samp_Date)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    #scale_color_manual(values = colors) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+```
+
 # Antibiotics
 
 ```{r}
@@ -181,7 +196,6 @@ abx_SMP <- data.frame(abx@sam_data) %>%
 
 
 ```{r}
-nTop <- 20
 abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
   rownames_to_column("Seq_ID") %>%
   gather(Meas_ID, abundance, -Seq_ID) %>%
@@ -190,7 +204,8 @@ abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
   mutate(
     Abx_Interval = factor(
       Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) %>%
-  filter(Abx_RelDay >= -100, Abx_RelDay <= 100)
+  filter(Abx_RelDay >= -50, Abx_RelDay < 90) %>%           # limit the scope due to effect of other perturbations
+  arrange(Seq_ID, Subject, Abx_RelDay)
 
 # Most variable ASVs:
 abx_seq_variability <- abx.rsv %>%
@@ -201,8 +216,10 @@ abx_seq_variability <- abx.rsv %>%
   summarise(mean_variability = mean(variability)) %>%
   arrange(desc(mean_variability))
 
-abx.rsv <- abx.rsv %>%
-  filter(Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)])
+# Filter data if want to run faster
+# nTop <- 20
+# abx.rsv <- abx.rsv %>%
+#   filter(Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)])
 ```
 
 ```{r}
@@ -234,20 +251,25 @@ abx.rsv <- abx.rsv %>%
 
 
 ```{r, fig.width=10, fig.height=20}
-ggplot(data = abx.rsv,
+nTop <- 20
+ggplot(data = abx.rsv %>%
+  filter(Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)]),
    aes(x = Abx_RelDay, y = abundance)
   ) +
   geom_line(
     aes(group = Subject, color = Abx_Interval),
-    alpha = 0.3, lwd = 1
+    alpha = 0.3, lwd = 0.7
   ) +
-  geom_smooth(lwd = 2) +
+  geom_smooth(lwd = 1.5) +
   facet_grid(Seq_ID ~ ., scales = "free") 
 ```
 
+## Functional Data Analysis
 
 ```{r fig.width=10, fig.height=20}
-# ggplot(data = abx.rsv %>% filter(Subject == "EAY"),
+# ggplot(data = abx.rsv %>% 
+#   filter(Subject == "EAY", 
+#          Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)])),
 #    aes(x = Abx_RelDay, y = abundance)
 #   ) +
 #   geom_line(
@@ -258,15 +280,13 @@ ggplot(data = abx.rsv,
 ```
 
 ```{r}
-seq <- "Seq3"
-abx.rsv <- abx.rsv %>%
-  arrange(Seq_ID, Subject, Abx_RelDay)
+seq <- "Seq10"
 
 y_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
   abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["abundance"]])
 t_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
   abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["Abx_RelDay"]])
-fpca_dense <- FPCA(y_lst, t_lst)
+fpca_dense <- FPCA(y_lst, t_lst, optns = list(nRegGrid = 100))
 ```
 
 ```{r}
@@ -292,6 +312,7 @@ ggplot(df, aes(x = Abx_RelDay, y = abundance)) +
 ```
 
 ```{r}
+# First derivative
 fit <- fitted(fpca_dense, K = 2, derOptns = list(p = 1))
 rownames(fit) <- unique(abx.rsv$Subject)
 colnames(fit) <- fpca_dense$workGrid 
@@ -303,6 +324,92 @@ df <- reshape2::melt(fit, varnames = c("Subject", "Abx_RelDay"),
 ggplot(df, aes(x = Abx_RelDay, y = abundance)) +
   geom_line(aes(group = Subject))
   
+```
+
+
+```{r}
+# (...) - a list options of options to fdapace()
+fda_pca <- function(df.long, time_column, value_column, replicate_column,
+                    feat_column = NULL, parallel = FALSE, ncores = 1, ...){
+  require(dplyr)
+  if (!time_column %in% colnames(df.long)) {
+    stop("'df.long' does not have", time_column, "as time column.")
+  }
+  if (!value_column %in% colnames(df.long)) {
+    stop("'df.long' does not have", value_column, "as value column.")
+  }
+  if (!replicate_column %in% colnames(df.long)) {
+    stop("'df.long' does not have", replicate_column, "as replicate id column.")
+  }
+  if (all(!is.null(feat_column), !feat_column %in% colnames(df.long))) {
+    stop("'df.long' does not have", feat_column, "as feature id column.")
+  }
+  if(!is.null(feat_column)){
+    features <- unique(df.long[[feat_column]])
+  } else {
+    feat_column <- "Feature_ID"
+    features <- df.long[[feat_column]] <- "Feat1"
+  }
+  if(parallel) {
+    require(doParallel)
+    ncores <- min(ncores, detectCores())
+    registerDoParallel(ncores)
+    res <- foreach(feat=features) %dopar% {
+      fit_fdapca(df.long, time_column, value_column, replicate_column, feat_column, feat, ...)
+    }
+  } else {
+    res <- lapply(features, function(feat) {
+      print(feat)
+      fit_fdapca(df.long, time_column, value_column, replicate_column, feat_column, feat, ...)
+    })
+  }
+  names(res) <- features
+  return(res)
+}
+
+
+fit_fdapca <- function(df, time_column, value_column, replicate_column, feat_column, feat, ...){
+  if(!is.null(feat)) {
+    df <- df %>% 
+      filter_at(.vars = feat_column, any_vars((.) == feat))
+  }
+  y_lst <- plyr::dlply(df, replicate_column, function(x) x[[value_column]])
+  t_lst <- plyr::dlply(df, replicate_column, function(x) x[[time_column]])
+  feat_fpca <- fdapace::FPCA(y_lst, t_lst, optns = ...)
+  return(feat_fpca)
+}
+
+get_fpca_means <- function(object_lst, feature_name){
+  plyr::ldply(object_lst, .fun = function(obj) {
+    mu <- data.frame(t(obj[["mu"]]))
+    colnames(mu) <- obj$workGrid
+  }, .id = feature_name)
+}
+
+get_fpca_fits <- function(object_lst, derivative_order = 0, ...){
+  derOptns <- (...)
+  derOptns$p <- derivative_order
+  plyr::ldply(object_lst, function(obj) {
+    selectedK <- ifelse(derivative_order == 0, NULL, fdapace::SelectK(obj))
+    fit <- fitted(obj, K = selectedK, derOptns = derOptns)
+    fit <- data.frame("Replicate_ID" = names(obj$xiVar), fit) 
+    colnames(fit) <- obj$workGrid 
+  }, .id = feature_name)
+}
+
+```
+
+
+```{r}
+fpca_lst <- fda_pca(
+  abx.rsv, 
+  time_column = "Abx_RelDay",
+  value_column = "abundance", 
+  replicate_column = "Subject",
+  feat_column = "Seq_ID", 
+  parallel = TRUE, ncores = 12)
+
+mu_df <- get_fpca_means(fpca_lst, feature_name = "Seq_ID")
 ```
 
 
