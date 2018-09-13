@@ -1,5 +1,5 @@
 ---
-title: "Resilience Study 16S data: tree Discriminant Analysis"
+title: "Resilience Study 16S data: Functional Data Analysis"
 author: 
   - name: Lan Huong Nguyen
     affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
@@ -40,7 +40,7 @@ library("tidyverse")
 datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
 resfile <- "results/treeDA_res16S.rda"
-source('utils.R')
+source('../utils.R')
 saveRES <- TRUE
 load("results/ps_objects.rda")
 
@@ -77,42 +77,6 @@ ps_norm
 ```
 
 ## Filter data
-
-```{r, eval = FALSE}
-diet <- subset_samples(ps_norm, grepl("Diet", Group))
-diet <- subset_samples(
-  diet, !grepl("MidAbx", Abx_Interval) & !grepl("PostAbx", Abx_Interval) &
-    !grepl("PostCC", CC_Interval))
-
-# Filter taxa that occurs at minTaxaSum in at least minNoSubj subjects
-minTaxaSum <- 5; minTaxaPrev <- 3; minNoSubj <- 3
-ASVsum <- data.frame(t(as(otu_table(diet), "matrix"))) %>%
-  mutate(Subject = diet@sam_data$Subject) %>%
-  group_by(Subject) %>%
-  summarise_all(sum)
-ASVprev <- data.frame(t(as(otu_table(diet), "matrix")) > 0) %>%
-  mutate(Subject = diet@sam_data$Subject) %>%
-  group_by(Subject) %>%
-  summarise_all(sum)
-
-keepASV <- data.frame(
-  Seq_ID = colnames(ASVsum),
-  abundant = colSums(ASVsum >= minTaxaSum) >= minNoSubj, 
-  prevalent = colSums(ASVprev >= minTaxaPrev) >= minNoSubj) %>%
-  filter(abundant, prevalent)
-
-diet <- prune_taxa(keepASV$Seq_ID, diet)
-sample_data(diet)$type <- with(
-  sample_data(diet), 
-  memisc::cases(
-    Diet_RelDay < -15                    -> "Ancient",
-    Diet_RelDay < 0 & Diet_RelDay >= -15 -> "PreDiet",
-    Diet_RelDay < 5 & Diet_RelDay >= 0   -> "MidDiet",
-    Diet_RelDay < 15 & Diet_RelDay >= 5  -> "PostDiet",
-    Diet_RelDay >= 15                    -> "Recovery"
-  )
-)
-```
 
 
 ```{r, eval = FALSE}
@@ -161,19 +125,6 @@ save(list = c("ps", "ps_norm", "dds", "diet", "abx"),
 
 
 
-```{r fig.width=12, fig.height=15}
-ggplot(
-  data.frame(ps@sam_data), aes(y = Subject, x = Samp_Date)) +
-  geom_point(
-      aes(color = Interval, fill = Interval), 
-      pch = 124, size = 3) +
-    facet_grid(Group ~ ., scales = "free", space = "free") +
-    #scale_color_manual(values = colors) +
-    theme(legend.direction = "horizontal", legend.box = "vertical",
-          strip.text.y = element_text(angle=270, size = 10)) +
-    guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
-```
-
 # Antibiotics
 
 ```{r}
@@ -204,7 +155,7 @@ abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
   mutate(
     Abx_Interval = factor(
       Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) %>%
-  filter(Abx_RelDay >= -50, Abx_RelDay < 90) %>%           # limit the scope due to effect of other perturbations
+  filter(Abx_RelDay >= -40, Abx_RelDay <= 70) %>%           # limit the scope due to effect of other perturbations
   arrange(Seq_ID, Subject, Abx_RelDay)
 
 # Most variable ASVs:
@@ -217,9 +168,9 @@ abx_seq_variability <- abx.rsv %>%
   arrange(desc(mean_variability))
 
 # Filter data if want to run faster
-# nTop <- 20
-# abx.rsv <- abx.rsv %>%
-#   filter(Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)])
+nTop <- 20
+abx.rsv.subset <- abx.rsv %>%
+  filter(Seq_ID %in% abx_seq_variability$Seq_ID[seq_len(nTop)])
 ```
 
 ```{r}
@@ -279,15 +230,89 @@ ggplot(data = abx.rsv %>%
 #   facet_grid(Seq_ID ~ ., scales = "free") 
 ```
 
+
+
+
 ```{r}
-seq <- "Seq10"
+seq <- "Seq125"
+thresh <- 0; num_nonzero <- 10
 
 y_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
   abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["abundance"]])
 t_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
   abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["Abx_RelDay"]])
-fpca_dense <- FPCA(y_lst, t_lst, optns = list(nRegGrid = 100))
+names(y_lst) <- names(t_lst) <- unique(abx.rsv$Subject)
+idx_constant <- sapply(y_lst, function(y){all(y == y[1])})
+idx <- sapply(y_lst, function(y){sum(y > thresh) > num_nonzero})
+#idx <- !(idx_constant | idx_zero)
+y_lst <- y_lst[idx]
+t_lst <- t_lst[idx]
+
+fpca_dense <- FPCA(
+  y_lst, t_lst,
+  optns = list( methodMuCovEst ='smooth', FVEthreshold= 0.90, methodBwCov = 'GCV', methodBwMu = 'GCV' ))
+#fpca_clust <- FClust(y_lst, t_lst, k = 2)
+
 ```
+
+```{r}
+k <- 2
+xiData <- as.data.frame(fpca_dense$xiEst)
+clusterObj <- EMCluster::emcluster(xiData, EMCluster::em.EM(
+  xiData, nclass = k, EMC = EMCluster::.EMControl()), assign.class = TRUE, 
+  EMC = EMCluster::.EMControl())
+clustConf = clusterObj$class
+```
+
+
+
+```{r}
+fit_fdapca <- function(
+  df, time_column, value_column, replicate_column,
+  feat_column, feat, num_nonzero = 10, thresh = 0, 
+  cluster = FALSE, K = 2, fpca_optns = NULL, fclust_optns = NULL){
+  if(!is.null(feat)) {
+    df <- df %>% 
+      filter_at(.vars = feat_column, any_vars((.) == feat))
+  }
+  y_lst <- plyr::dlply(df, replicate_column, function(x) x[[value_column]])
+  t_lst <- plyr::dlply(df, replicate_column, function(x) x[[time_column]])
+  idx <- sapply(y_lst, function(y){sum(abs(y) > thresh) >= num_nonzero})
+  feat_res <- NULL
+  if(sum(idx) > 0) {
+    y_lst <- y_lst[idx]
+    t_lst <- t_lst[idx]
+    if(cluster) {
+      feat_res <- fdapace::FClust(
+        y_lst, t_lst, k = K, optnsFPCA = fpca_optns, optnsCS = fclust_optns)
+    } else {
+      if(is.null(fpca_optns)) fpca_optns <- list()
+      feat_res <- fdapace::FPCA(y_lst, t_lst, optns = fpca_optns)
+    }
+  }
+  feat_res
+}
+
+```
+
+
+```{r}
+fpca_seq <- fit_fdapca(
+  abx.rsv, 
+  time_column = "Abx_RelDay",
+  value_column = "abundance", 
+  replicate_column = "Subject",
+  feat_column = "Seq_ID", 
+  feat = "Seq125",
+  cluster = TRUE, fpca_optns = list(), fclust_optns = NULL)
+```
+
+```{r}
+CreatePathPlot(fpca_dense, K=2, showObs=FALSE, 
+               lty=1, xlab = 'Days relative to Abx', ylab = 'abundance')
+grid()
+```
+
 
 ```{r}
 plot(fpca_dense)
@@ -298,17 +323,54 @@ CreatePathPlot(fpca_dense, main = "GCV bandwidth",  pch = 16)
 ```
 
 ```{r}
-fit <- fitted(fpca_dense, derOptns = list(p = 0))
-rownames(fit) <- unique(abx.rsv$Subject)
-colnames(fit) <- fpca_dense$workGrid 
+CreateOutliersPlot(fpca_dense, optns = list(K = 3, variant = 'KDE'))
 ```
 
 ```{r}
-df <- reshape2::melt(fit, varnames = c("Subject", "Abx_RelDay"),
-                     value.name = "abundance")
-ggplot(df, aes(x = Abx_RelDay, y = abundance)) +
-  geom_line(aes(group = Subject))
+CreateFuncBoxPlot(fpca_dense, xlab = 'Abx_RelDay', ylab = 'Normalized VST abundance', optns = list(K =5, variant='bagplot'))
+```
+
+
+```{r}
+fit <- fitted(fpca_dense, derOptns = list(p = 0))
+rownames(fit) <- names(fpca_dense$xiVar)
+colnames(fit) <- fpca_dense$workGrid 
+```
+
+```{r, fig.width=10, fig.height=10}
+df <- reshape2::melt(
+  fit, varnames = c("Subject", "Abx_RelDay"), value.name = "abundance")
+ggplot(
+  df, 
+  aes(x = Abx_RelDay, y = abundance)) +
+  geom_line(aes(group = Subject, color = Subject)) +
+  geom_point(
+    data = abx.rsv %>% filter(Seq_ID == seq), 
+    aes(x = Abx_RelDay, y = abundance, color = Subject)
+  ) +
+  geom_text(
+    data = df %>% filter(Abx_RelDay == -50), 
+    aes(x = Abx_RelDay, y = abundance, color = Subject, label = Subject)
+  ) +
+  geom_text(
+    data = df %>% filter(Abx_RelDay == 70), 
+    aes(x = Abx_RelDay, y = abundance, color = Subject, label = Subject)
+  )
   
+```
+
+
+
+```{r, fig.width=10, fig.height=5}
+subj <- "EBN"
+ggplot(
+  df %>% filter(Subject == subj), 
+  aes(x = Abx_RelDay, y = abundance)) +
+  geom_line(aes(group = Subject, color = Subject)) +
+  geom_point(
+    data = abx.rsv %>% filter(Seq_ID == seq) %>% filter(Subject == subj),
+    aes(x = Abx_RelDay, y = abundance, color = Subject)
+  ) 
 ```
 
 ```{r}
@@ -325,110 +387,3 @@ ggplot(df, aes(x = Abx_RelDay, y = abundance)) +
   geom_line(aes(group = Subject))
   
 ```
-
-
-```{r}
-# (...) - a list options of options to fdapace()
-fda_pca <- function(df.long, time_column, value_column, replicate_column,
-                    feat_column = NULL, parallel = FALSE, ncores = 1, ...){
-  require(dplyr)
-  if (!time_column %in% colnames(df.long)) {
-    stop("'df.long' does not have", time_column, "as time column.")
-  }
-  if (!value_column %in% colnames(df.long)) {
-    stop("'df.long' does not have", value_column, "as value column.")
-  }
-  if (!replicate_column %in% colnames(df.long)) {
-    stop("'df.long' does not have", replicate_column, "as replicate id column.")
-  }
-  if (all(!is.null(feat_column), !feat_column %in% colnames(df.long))) {
-    stop("'df.long' does not have", feat_column, "as feature id column.")
-  }
-  if(!is.null(feat_column)){
-    features <- unique(df.long[[feat_column]])
-  } else {
-    feat_column <- "Feature_ID"
-    features <- df.long[[feat_column]] <- "Feat1"
-  }
-  if(parallel) {
-    require(doParallel)
-    ncores <- min(ncores, detectCores())
-    registerDoParallel(ncores)
-    res <- foreach(feat=features) %dopar% {
-      fit_fdapca(df.long, time_column, value_column, replicate_column, feat_column, feat, ...)
-    }
-  } else {
-    res <- lapply(features, function(feat) {
-      print(feat)
-      fit_fdapca(df.long, time_column, value_column, replicate_column, feat_column, feat, ...)
-    })
-  }
-  names(res) <- features
-  return(res)
-}
-
-
-fit_fdapca <- function(df, time_column, value_column, replicate_column, feat_column, feat, ...){
-  if(!is.null(feat)) {
-    df <- df %>% 
-      filter_at(.vars = feat_column, any_vars((.) == feat))
-  }
-  y_lst <- plyr::dlply(df, replicate_column, function(x) x[[value_column]])
-  t_lst <- plyr::dlply(df, replicate_column, function(x) x[[time_column]])
-  feat_fpca <- fdapace::FPCA(y_lst, t_lst, optns = ...)
-  return(feat_fpca)
-}
-
-get_fpca_means <- function(object_lst, feature_name){
-  plyr::ldply(object_lst, .fun = function(obj) {
-    mu <- data.frame(t(obj[["mu"]]))
-    colnames(mu) <- obj$workGrid
-  }, .id = feature_name)
-}
-
-get_fpca_fits <- function(object_lst, derivative_order = 0, ...){
-  derOptns <- (...)
-  derOptns$p <- derivative_order
-  plyr::ldply(object_lst, function(obj) {
-    selectedK <- ifelse(derivative_order == 0, NULL, fdapace::SelectK(obj))
-    fit <- fitted(obj, K = selectedK, derOptns = derOptns)
-    fit <- data.frame("Replicate_ID" = names(obj$xiVar), fit) 
-    colnames(fit) <- obj$workGrid 
-  }, .id = feature_name)
-}
-
-```
-
-
-```{r}
-fpca_lst <- fda_pca(
-  abx.rsv, 
-  time_column = "Abx_RelDay",
-  value_column = "abundance", 
-  replicate_column = "Subject",
-  feat_column = "Seq_ID", 
-  parallel = TRUE, ncores = 12)
-
-mu_df <- get_fpca_means(fpca_lst, feature_name = "Seq_ID")
-```
-
-
-
-# Diet
-
-
-```{r}
-diet.long <- data.frame(asinh(as(otu_table(diet), "matrix"))) %>%
-  rownames_to_column("Seq_ID") %>%
-  gather(Meas_ID, abundance, -Seq_ID) %>%
-  left_join(data.frame(diet@sam_data)) %>%
-  left_join(taxtab) %>%
-  mutate(
-    Diet_Interval = factor(Diet_Interval, levels = c("PreDiet", "MidDiet", "PostDiet")))
-```
-
-
-```{r}
-sessionInfo()
-```
-

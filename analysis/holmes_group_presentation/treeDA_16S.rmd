@@ -40,7 +40,7 @@ library("adaptiveGPCA")
 datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
 resfile <- "results/treeDA_res16S.rda"
-source('utils.R')
+source('../utils.R')
 saveRES <- TRUE
 ```
 
@@ -448,6 +448,7 @@ taxtab <- data.frame(
   beta = beta,
   as(tax_table(abx_change), "matrix"), 
   stringsAsFactors = FALSE)
+
 freq_family <- taxtab %>%
   group_by(Family) %>%
   summarise(Freq = n()) %>%

@@ -37,7 +37,7 @@ library("phyloseq")
 
 datadir <- "/scratch/PI/sph/resilience/"
 curdir <- getwd()
-source('utils.R')
+source('../utils.R')
 
 processed_datafile <- "results/processed_physeq.rda"
 load(processed_datafile)
