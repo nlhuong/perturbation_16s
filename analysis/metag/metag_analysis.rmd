@@ -1,0 +1,287 @@
+---
+title: "MetaGenomics Data Analysis"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+rm(list = ls())
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/", 
+  dev='png') 
+```
+
+```{r warning=FALSE, message=FALSE}
+library("viridis")
+library("RColorBrewer")
+library("readxl")
+library("tidyverse")
+library("feather")
+source('../utils.R')
+
+datadir <- "/scratch/PI/sph/resilience/"
+resfile <- "results/treeDA_res16S.rda"
+curdir <- getwd()
+```
+
+```{r}
+theme_set(theme_bw())
+theme_update(text = element_text(15))
+```
+
+
+Study Design {#study-design .unnumbered}
+========================================
+
+
+```{r, eval = FALSE}
+# loading sample info
+smpinfo_file <- file.path(datadir, "sample_info/Mapping_File_10June2018.xlsx") 
+
+# Measurement Information
+meas <- read_xlsx(smpinfo_file, sheet = "Meas")
+colnames(meas) <- meas[1, ]
+meas <- meas[-1, ] %>%
+  rename(Samp_ID = SampID) %>%
+  select(Meas_ID:Meas_Type)
+```
+
+```{r, eval = FALSE}
+# Sample Information
+interv_levs <- c("NoInterv", 
+                 "PreDiet", "MidDiet", "PostDiet", 
+                 "PreCC", "MidCC", "PostCC", 
+                 "PreAbx", "MidAbx", "PostAbx", "UnpAbx")
+
+samp <- read_xlsx(smpinfo_file, "Samp", skip = 1) 
+samp <- samp %>%
+  filter(Samp_Type != "ExtrCont") %>%
+  mutate(
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "Midabx","MidAbx", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs),
+    Interval = paste0(Diet_Interval, "_", CC_Interval, "_", Abx_Interval)) %>%
+  select(Samp_ID:Abx_Interval, Interval) 
+  
+
+samp <- samp %>%
+  mutate(
+    Interval = gsub("NoInterv_NoInterv_NoInterv", "NoInterv", Interval),
+    Interval = gsub("NoInterv_", "", Interval),
+    Interval = gsub("_NoInterv", "", Interval),
+    Interval = ifelse(!grepl("Post", Interval) & !grepl("Mid", Interval) &
+                      !grepl("UnpAbx", Interval),
+                      "NoInterv", Interval),
+    Interval = ifelse(grepl("MidAbx", Interval), "MidAbx", Interval),
+    Interval = ifelse(grepl("MidDiet", Interval), "MidDiet", Interval),
+    Interval = ifelse(grepl("MidCC", Interval), "MidCC", Interval)
+  ) 
+
+new_intv_levs <- unique(samp$Interval) 
+samp <- samp %>%
+  mutate(
+    Interval = factor(Interval, new_intv_levs)
+  )
+
+# Fix date issues
+samp <- samp %>% 
+  mutate(
+    Samp_Date = as.Date(as.numeric(samp$Samp_Date), origin="1899-12-30")
+  )
+# NA corrsepond to NA_QC negative control samples
+```
+
+```{r, eval = FALSE}
+# Subject Data
+subj_data <- read_xlsx(
+  smpinfo_file, sheet = "SubjNoRagged", skip = 1) 
+subj_data <- subj_data[-1, ] %>%
+  mutate_at(
+    .vars = select(subj_data, contains("Date")) %>% colnames(),
+    .funs = function(x) {as.Date(as.numeric(x), origin="1899-12-30")}
+  ) %>%
+  mutate(
+    CC = ifelse(!is.na(CC_Date), "CC", NA),
+    Diet = ifelse(!is.na(Diet_StartDate), "Diet", NA),
+    Abx = ifelse(!is.na(Abx_StartDate), "Abx", NA),
+    Group = sapply(1:nrow(.), function(i) {
+    z <- c(CC[i], Diet[i], Abx[i])
+    z <- paste(z[!is.na(z)], collapse = "_")
+    if(z == "") z <- "NoIntv"
+    return(z)
+  })) %>%
+  select(Subject, Group, 
+         First_Sample_Date, CC_Date, Diet_StartDate, Abx_StartDate,
+         Age:BMI)
+head(subj_data)
+```
+
+```{r eval = FALSE}
+meas_info <- meas %>%
+  left_join(samp) %>%
+  left_join(subj_data) 
+write.csv(meas_info, "./meas_info.csv")
+
+```
+
+```{r}
+meas_info <- read.csv("./meas_info.csv", row.names = 1)
+```
+
+
+
+```{r}
+smp_modality_count <- meas_info %>%
+  select(Meas_ID, Samp_ID, Meas_Type) %>%
+  group_by(Samp_ID) %>%
+  summarise(
+    modalities = paste0(unique(Meas_Type), collapse = "_"),
+    modality_count = n()
+  ) %>%
+  mutate(
+    modalities = ifelse(modalities == "MetaT_MetaG_16S", "16S_MetaG_MetaT",  modalities)
+  )
+  
+df2plot <- meas_info %>%
+  filter(Meas_Type %in% c("16S", "MetaG", "MetaT")) %>%
+  left_join(smp_modality_count) %>% 
+  select(Meas_ID, Samp_ID, Subject, Samp_Date, Meas_Type, 
+         Group, Interval, modalities, modality_count) %>%
+  mutate(Samp_Date = as.Date(Samp_Date)) %>%
+  filter(!grepl("NA", Subject))
+```
+
+```{r exp-design, fig.width=10, fig.height=12}
+colors <- colorRampPalette(brewer.pal(8, "Set3"))(length(new_intv_levs)-2)
+colors <- c("grey57", "red", colors)
+names(colors) <- c("NoInterv", "UnpAbx", 
+                   setdiff(new_intv_levs, c("NoInterv", "UnpAbx")))
+ggplot(df2plot %>% filter(Group != "Abx")) +
+  geom_point(
+      pch = 124,
+      aes(y = Subject, x = Samp_Date, color = Interval,
+          fill = Interval, size = modality_count)
+    ) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = colors) +
+    scale_size_continuous(range = c(5, 10)) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=0)) +
+    guides(color = guide_legend(override.aes = list(size=5)),
+           size = guide_legend(override.aes = list(color="black"))) +
+  theme(legend.position = "bottom")
+```
+
+```{r exp-design-group, fig.width=10, fig.height = 4}
+for(gr in unique(df2plot$Group)) {
+  plt <- ggplot(df2plot %>% filter(Group == gr)) +
+    geom_point(
+      pch = 124,
+      aes(y = Subject, x = Samp_Date, color = Interval,
+          fill = Interval, size = modality_count)
+    ) +
+    #facet_grid(Group ~ ., scales = "free", space = "free") +
+    #scale_fill_manual(values = colors) +
+    scale_color_manual(values = colors) +
+    scale_size_continuous(range = c(5, 10)) +
+    theme(
+      legend.position = "right", 
+      legend.direction = "vertical", 
+      legend.box = "vertical", 
+      axis.text.x = element_text(angle=25, vjust = 0.1)) +
+    guides(color = guide_legend(override.aes = list(size=10)))
+  print(plt + ggtitle(gr))
+}
+
+```
+
+
+
+Load MetaGenomics Data {#load-metag-coverage .unnumbered}
+=========================================================
+
+```{r}
+metagReadfile <- file.path(datadir, "metagenomics/merged/gene_reads.feather")
+metagreads <- read_feather(metagReadfile) %>%
+  mutate(genus = str_extract(species, "[^_]+")) %>%
+  select( genus, species, gene_id, starts_with("M"))
+metagreads[is.na(metagreads)] <- 0 
+```
+
+```{r}
+metag_meas_info <- meas_info %>% 
+  filter(Meas_ID %in% colnames(metagreads))
+```
+
+
+```{r}
+# There are data for 11 subjects
+table(metag_meas_info$Subject)
+```
+
+
+```{r}
+metag_meas_info %>% 
+  select(Subject, Group) %>%
+  distinct() %>%
+  group_by(Group) %>% 
+  summarise(count = n())
+```
+
+
+```{r}
+statsMetaGfile <- file.path(datadir, "metagenomics/stats/all_samples_stats.csv")
+statsMetaG <- read.csv(statsMetaGfile, stringsAsFactors = FALSE) %>%
+  mutate(input = input_fwd) %>%
+  select(Meas_ID, batch, input, input_fwd:annotated) %>%
+  filter(startsWith(Meas_ID, prefix = "M")) %>%
+  mutate(
+    batch = gsub(".*\\/", "", batch),
+    batch = gsub("\\.(.*)", "", batch)
+)
+```
+
+```{r}
+smp_depth_metag <- data.frame(
+  metag_pangenome = colSums(metagreads %>% select(-genus, -species, -gene_id))
+  ) %>%
+  rownames_to_column("Meas_ID")
+
+statsMetaG <- statsMetaG %>%
+  left_join(smp_depth_metag) %>%
+  rename(metag_marker_genes = annotated)
+```
+
+```{r}
+statsMetaG %>% filter(is.na(metag_pangenome))
+statsMetaG <- statsMetaG %>%
+  mutate(input = input_fwd) %>%
+  filter(!is.na(metag_pangenome))
+```
+
+
+```{r}
+all_reads <- colSums(statsMetaG %>% select(-Meas_ID, -batch))
+(total_reads_coverage_metaG <- 100*all_reads/all_reads[1])
+```

@@ -155,7 +155,7 @@ abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
   mutate(
     Abx_Interval = factor(
       Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) %>%
-  filter(Abx_RelDay >= -40, Abx_RelDay <= 70) %>%           # limit the scope due to effect of other perturbations
+  filter(Abx_RelDay >= -40, Abx_RelDay <= 80) %>%   # limit the scope due to effect of other perturbations
   arrange(Seq_ID, Subject, Abx_RelDay)
 
 # Most variable ASVs:
@@ -200,6 +200,19 @@ abx.rsv.subset <- abx.rsv %>%
 #   filter(Genus %in% abx_genus_variability$Genus[seq_len(nTop)])
 ```
 
+```{r, fig.width=10, fig.height=5}
+nTop <- 20
+ggplot(data = abx.rsv %>%
+  filter(Seq_ID == feat), #%in% abx_seq_variability$Seq_ID[seq_len(nTop)]),
+   aes(x = Abx_RelDay, y = abundance)
+  ) +
+  geom_line(
+    aes(group = Subject, color = Abx_Interval),
+    alpha = 0.3, lwd = 0.7
+  ) +
+  geom_smooth(lwd = 1.5) +
+  facet_grid(Seq_ID ~ ., scales = "free") 
+```
 
 ```{r, fig.width=10, fig.height=20}
 nTop <- 20
@@ -230,20 +243,69 @@ ggplot(data = abx.rsv %>%
 #   facet_grid(Seq_ID ~ ., scales = "free") 
 ```
 
+```{r}
+time_limit <- function(FUN, time.limit, ...) {
+  results <- NULL
+  results <- R.utils::withTimeout(
+    {FUN(...)}, substitute = FALSE, timeout = time.limit, 
+    onTimeout="warning")
+  return(results)
+}
+
+fit_fdapca <- function(
+  df, time_column, value_column, replicate_column,
+  feat_column = NULL, feat = NULL,
+  cluster = FALSE, cmethod = "EMCluster", K = 2, filter = TRUE,
+  thresh = 0, num_nonzero = 10, clust_min_num_replicate = 10,
+  fpca_optns = NULL, fclust_optns = NULL, time.limit = 300){
+  if(!is.null(feat) & !is.null(feat_column)) {
+    df <- df %>% filter_at(.vars = feat_column, any_vars((.) == feat))
+  }
+  y_lst <- plyr::dlply(df, replicate_column, function(x) x[[value_column]])
+  t_lst <- plyr::dlply(df, replicate_column, function(x) x[[time_column]])
+  if (filter){
+    idx <- sapply(y_lst, function(y){sum(abs(y) > thresh) >= num_nonzero})
+    y_lst <- y_lst[idx]
+    t_lst <- t_lst[idx]
+  }  
+  if (length(y_lst) == 0) return(NULL)
+  feat_res <- NULL
+  if(cluster & (length(y_lst) >= clust_min_num_replicate)) {
+    feat_res <- time_limit(fdapace::FClust, time.limit,
+      Ly = y_lst, Lt = t_lst, k = K, optnsFPCA = fpca_optns, optnsCS = fclust_optns)
+  } 
+  if(is.null(feat_res)) {
+    if(is.null(fpca_optns)) fpca_optns <- list()
+    if (length(y_lst) < clust_min_num_replicate) {
+      fpca_optns$dataType <- 'Sparse'
+    }
+    feat_res <- fdapace::FPCA(y_lst, t_lst, optns = fpca_optns)
+    if(cluster){
+      feat_res <- list(
+        "cluster" = rep(1, length(y_lst)), 
+        "fpca" = feat_res, 
+        "clusterObj" = NULL)
+    }
+  }
+  feat_res
+}
+```
+
 
 
 
 ```{r}
-seq <- "Seq125"
 thresh <- 0; num_nonzero <- 10
 
-y_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
-  abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["abundance"]])
-t_lst <- lapply(unique(abx.rsv$Subject), function(subj) 
-  abx.rsv %>% filter(Seq_ID == seq, Subject == subj) %>% .[["Abx_RelDay"]])
-names(y_lst) <- names(t_lst) <- unique(abx.rsv$Subject)
+seq <- "Seq394"
+
+y_lst <- lapply(unique(abx.rsv.subset$Subject), function(subj) 
+  abx.rsv.subset %>% filter(Seq_ID == seq, Subject == subj) %>% .[["abundance"]])
+t_lst <- lapply(unique(abx.rsv.subset$Subject), function(subj) 
+  abx.rsv.subset %>% filter(Seq_ID == seq, Subject == subj) %>% .[["Abx_RelDay"]])
+names(y_lst) <- names(t_lst) <- unique(abx.rsv.subset$Subject)
 idx_constant <- sapply(y_lst, function(y){all(y == y[1])})
-idx <- sapply(y_lst, function(y){sum(y > thresh) > num_nonzero})
+idx <- sapply(y_lst, function(y){sum(y > thresh) >= num_nonzero})
 #idx <- !(idx_constant | idx_zero)
 y_lst <- y_lst[idx]
 t_lst <- t_lst[idx]
@@ -251,7 +313,7 @@ t_lst <- t_lst[idx]
 fpca_dense <- FPCA(
   y_lst, t_lst,
   optns = list( methodMuCovEst ='smooth', FVEthreshold= 0.90, methodBwCov = 'GCV', methodBwMu = 'GCV' ))
-#fpca_clust <- FClust(y_lst, t_lst, k = 2)
+fpca_clust <- FClust(y_lst, t_lst, k = 2)
 
 ```
 

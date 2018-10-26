@@ -1,7 +1,7 @@
 # (...) - a list options of options to fdapace()
 fda_pca <- function(df.long, time_column, value_column, replicate_column,
                     feat_column = NULL, parallel = FALSE, ncores = 1, 
-                    num_nonzero = 10, thresh = 0, 
+                    num_nonzero = 10, thresh = 0, clust_min_num_replicate = 15,
                     cluster = FALSE, cmethod = "EMCluster", K = 2, 
                     fpca_optns = NULL, fclust_optns = NULL){
   require(dplyr)
@@ -28,17 +28,21 @@ fda_pca <- function(df.long, time_column, value_column, replicate_column,
     ncores <- min(ncores, detectCores())
     registerDoParallel(ncores)
     res <- foreach(feat=features) %dopar% {
-      fit_fdapca(df.long, time_column, value_column, replicate_column, 
-                 feat_column, feat, num_nonzero = num_nonzero, thresh = thresh,  
+      fit_fdapca(df.long, time_column, value_column, 
+                 replicate_column, feat_column, feat, 
                  cluster = cluster, cmethod = cmethod, K = K, 
+                 num_nonzero = num_nonzero, thresh = thresh,  
+                 clust_min_num_replicate = clust_min_num_replicate, 
                  fpca_optns = fpca_optns, fclust_optns = fclust_optns)
     }
   } else {
     res <- lapply(features, function(feat) {
       cat("Processing feature: ", feat, "...\n")
-      fit_fdapca(df.long, time_column, value_column, replicate_column, 
-                 feat_column, feat, num_nonzero = num_nonzero, thresh = thresh,  
+      fit_fdapca(df.long, time_column, value_column, 
+                 replicate_column, feat_column, feat, 
                  cluster = cluster, cmethod = cmethod, K = K, 
+                 num_nonzero = num_nonzero, thresh = thresh,  
+                 clust_min_num_replicate = clust_min_num_replicate, 
                  fpca_optns = fpca_optns, fclust_optns = fclust_optns)
     })
   }
@@ -49,8 +53,9 @@ fda_pca <- function(df.long, time_column, value_column, replicate_column,
 
 fit_fdapca <- function(
   df, time_column, value_column, replicate_column,
-  feat_column = NULL, feat = NULL, num_nonzero = 10, thresh = 0, 
-  cluster = FALSE, cmethod = "EMCluster", K = 2, 
+  feat_column = NULL, feat = NULL,
+  cluster = FALSE, cmethod = "EMCluster", K = 2, filter = TRUE,
+  thresh = 0, num_nonzero = 10, clust_min_num_replicate = 15,
   fpca_optns = NULL, fclust_optns = NULL){
   if(!is.null(feat) & !is.null(feat_column)) {
     df <- df %>% 
@@ -58,17 +63,27 @@ fit_fdapca <- function(
   }
   y_lst <- plyr::dlply(df, replicate_column, function(x) x[[value_column]])
   t_lst <- plyr::dlply(df, replicate_column, function(x) x[[time_column]])
-  idx <- sapply(y_lst, function(y){sum(abs(y) > thresh) >= num_nonzero})
-  feat_res <- NULL
-  if(sum(idx) > 0) {
+  if (filter){
+    idx <- sapply(y_lst, function(y){sum(abs(y) > thresh) >= num_nonzero})
     y_lst <- y_lst[idx]
     t_lst <- t_lst[idx]
-    if(cluster) {
-      feat_res <- fdapace::FClust(
-        y_lst, t_lst, k = K, optnsFPCA = fpca_optns, optnsCS = fclust_optns)
-    } else {
-      if(is.null(fpca_optns)) fpca_optns <- list()
-      feat_res <- fdapace::FPCA(y_lst, t_lst, optns = fpca_optns)
+  }  
+  if(length(y_lst) == 0) return(NULL)
+  feat_res <- NULL
+  if(cluster & (length(y_lst) >= clust_min_num_replicate)) {
+    feat_res <- try(fdapace::FClust(
+      y_lst, t_lst, k = K, optnsFPCA = fpca_optns, optnsCS = fclust_optns))
+  } else {
+    if(is.null(fpca_optns)) {
+      fpca_optns <- list()
+    } 
+    if (length(y_lst) < clust_min_num_replicate) {
+      fpca_optns$dataType <- 'Sparse'
+    }
+    feat_res <- fdapace::FPCA(y_lst, t_lst, optns = fpca_optns)
+    if(cluster){
+      feat_res <- list("cluster" = rep(1, length(y_lst)), 
+                       "fpca" = feat_res, "clusterObj" = NULL)
     }
   }
   feat_res
@@ -131,5 +146,40 @@ fpca_fit <- function(obj, derOptns = list(p = 0)) {
   return(fit)
 }
 
+
+get_recovery_stats <- function(
+  df, replicate_column = "Subject",
+  stab_tol =1e-3, tolerance = 1.5, n_contigeous = 3){
+  df$replicate <- df[[replicate_column]]
+  df_lst <- lapply(unique(df$replicate), function(r){
+    df_rep <- df %>% 
+      filter(replicate == r) %>%
+      mutate(
+        sd_prior_value = sd(value[time <= -10]),
+        diff = value - mean(value[time < -10]),
+        stab = abs(deriv) < stab_tol) %>%
+      arrange(time)
+    df_rep$stab <- sapply(1:nrow(df_rep), function(i) {
+      if(df_rep$time[i] <= 0) return(FALSE) 
+      all(df_rep$stab[i:(min(nrow(df_rep), i+n_contigeous-1))]) 
+    })
+    df_rep <- df_rep %>%
+      mutate(
+        diff_max = diff[which.max(abs(diff))], 
+        diff_t40 = diff[which.min(abs(time - 40))],
+        slope_t4 = deriv[which.min(abs(time - 4))],
+        stabilization_time = ifelse(any(stab), min(time[stab]), NA),
+        stable = time >= stabilization_time,
+        reach_stability = any(stable),
+        recovered = stable & (abs(diff) < tolerance*sd_prior_value),
+        recovery_time = ifelse(any(recovered), min(time[recovered]), NA),
+        recovered = time >= recovery_time,
+        recovery = any(recovered)
+      )
+    return(df_rep)
+  })
+  df_recov <- plyr::ldply(df_lst, function(x) x)
+  return(df_recov)  
+}
 
 

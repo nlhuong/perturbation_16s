@@ -1,5 +1,5 @@
 export MEM=8G
-export NCPU=3
+export NCPU=10
 
 export BASE_DIR=$SCRATCH/Projects/perturbation_16s
 export PI_BASE_DIR=$PI_SCRATCH/resilience/metatranscriptomics

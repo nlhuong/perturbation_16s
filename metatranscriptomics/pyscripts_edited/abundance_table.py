@@ -120,19 +120,29 @@ if __name__ == "__main__":
         refseq_dir = os.path.join(count_dir, "dmnd_RefSeq") 
         nr_dir = os.path.join(count_dir, "dmnd_NR") 
         seed_dir = os.path.join(count_dir, "dmnd_SEED") 
+        uniref_dir = os.path.join(count_dir, "dmnd_UniRef")
         refseq_files = glob.glob(refseq_dir + "/*") 
         nr_contig_files = glob.glob(nr_dir + "/*_nr_contigs_abund.csv") 
         nr_unassembled_files = glob.glob(nr_dir + "/*_nr_unassembled_abund.csv") 
         seed_files = glob.glob(seed_dir + "/*") 
-    
+        uniref_files = glob.glob(uniref_dir + "/*")
+           
+ 
     outfile = args.outfile.split(".")[0]
-    print('Processing RefSeq aligned abundances...')
-    generate_table(refseq_files, outfile + "_refseq") 
-    print('Processing contigs NR aligned abundances...')
-    generate_table(nr_contig_files, outfile + "_nr_contigs") 
-    print('Processing unassembled NR aligned abundances...')
-    generate_table(nr_unassembled_files, outfile + "_nr_unassembled")
-    print('Processing SEED aligned abundances...')
-    generate_table(seed_files, outfile + "_seed")
+    if (len(glob.glob(outfile + '_refseq_*')) == 0):
+        print('Processing RefSeq aligned abundances...')
+        generate_table(refseq_files, outfile + "_refseq") 
+    if (len(glob.glob(outfile + '_nr_contigs_*')) == 0):
+        print('Processing contigs NR aligned abundances...')
+        generate_table(nr_contig_files, outfile + "_nr_contigs") 
+    if (len(glob.glob(outfile + '_nr_unassembled_*')) == 0):
+        print('Processing unassembled NR aligned abundances...')
+        generate_table(nr_unassembled_files, outfile + "_nr_unassembled")
+    if (len(glob.glob(outfile + '_seed_*')) == 0):
+        print('Processing SEED aligned abundances...')
+        generate_table(seed_files, outfile + "_seed")
+    if (len(glob.glob(outfile + '_uniref_*')) == 0):
+        print('Processing SEED aligned abundances...')
+        generate_table(seed_files, outfile + "_uniref")
 
 

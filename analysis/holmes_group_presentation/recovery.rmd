@@ -227,7 +227,7 @@ diet_response <- get_responses(
 
 diet_response <- recovery_stats(
   diet_response, relday_col = "Diet_RelDay.S2", 
-  fac = 1.2, thresh_num_days_below = 3, perturb_days = 4
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4
 )
 ```
 
@@ -254,6 +254,10 @@ ggplot(diet_response, aes(x = bray, y = unifrac)) +
   scale_color_manual(values = diet_intv_cols) +
   guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
 ```
+
+
+
+
 
 ```{r diet-response-over-time, warning=FALSE, fig.width=10, fig.height=12}
 p1 <- plot_betadiver_over_time(
@@ -316,7 +320,7 @@ cc_response <- get_responses(
   cc_response, dist_cols = c("bray", "jaccard", "unifrac")) 
 cc_response <- recovery_stats(
   cc_response, relday_col = "CC_RelDay.S2",
-  fac = 1.2, thresh_num_days_below = 3, perturb_days = 4)
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4)
 
 ```
 
@@ -404,7 +408,7 @@ abx_response <- get_responses(abx_response,
                               dist_cols = c("bray", "jaccard", "unifrac")) 
 abx_response <- recovery_stats(
   abx_response, relday_col = "Abx_RelDay.S2", 
-  fac = 1.2, thresh_num_days_below = 3, perturb_days = 4) %>%
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4) %>%
   arrange(Subject, DaysFromStart.S2)
 
 ```
