@@ -71,7 +71,7 @@ plot_coefficients <- function (out.treeda,
   return(list("df" = df, "coef.plot" = coef.plot, "tree.plot" = tree.plot))
 }
 
-get_responses <- function(dist_df, dist_cols = c("bray", "jaccard")) {
+get_responses <- function(dist_df, dist_cols = c("bray", "jaccard", "unifrac")) {
   group_cols <- dist_df %>%
     select(-ends_with("S1"),  -dist_cols) %>%
     colnames()
@@ -88,12 +88,12 @@ get_responses <- function(dist_df, dist_cols = c("bray", "jaccard")) {
 recovery_stats <- function(response_df, relday_col, 
                            perturb_day = 4, fac = 1.2,
                            thresh_num_days_below = 5,
-                           dist_cols = c("jaccard", "bray")) {
+                           dist_cols = c("jaccard", "bray", "unifrac")) {
   
   subject_nointv_thresh <- response_df %>%
     filter_at(.vars = relday_col, any_vars((.) < -7 )) %>%
     group_by(Subject) %>%
-    summarise(jaccard = mean(jaccard), bray = mean(bray))
+    summarise_at(.vars = dist_cols, .funs = mean)
   
   response_df <- response_df %>% 
     as_data_frame() %>%
@@ -107,7 +107,7 @@ recovery_stats <- function(response_df, relday_col,
   for(dname in dist_cols){
     dist_recov_time <- recov_time %>%
       mutate(
-        below_thresh = (.)[[dname]] < fac * (.)[[paste0(dname, "_thresh")]]) %>%
+        below_thresh = (.)[[dname]] < (fac * (.)[[paste0(dname, "_thresh")]])) %>%
       filter(below_thresh) %>%
       arrange_at(.vars = c("Subject", relday_col)) %>%
       group_by(Subject) %>%
@@ -122,4 +122,18 @@ recovery_stats <- function(response_df, relday_col,
   }
   
   return(response_df)
+}
+
+
+plot_betadiver_over_time <- function(
+  df, distname, rel_day, interval, recov_color = "red", size = 1) {
+  df$recov_time <- df[[paste0(distname, "_recov_time")]]
+  df$time <- df[[rel_day]]
+  ggplot(df, aes_string(x = rel_day, y = distname, color = interval)) +
+    geom_line(aes(group = Subject)) +
+    geom_point(
+      data = df %>% filter(time > recov_time),
+      color = recov_color, size = 1.5*size) + 
+    geom_point(size = size) + 
+    geom_hline(yintercept = mean(df %>% filter(time < -7) %>% .[[distname]]))
 }

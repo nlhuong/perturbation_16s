@@ -16,6 +16,7 @@ vignette: >
 
 
 ```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+rm(list = ls())
 library("BiocStyle")
 library("rmarkdown")
 options(width = 200, stringsAsFactors = FALSE) 
@@ -27,7 +28,6 @@ knitr::opts_chunk$set(
 ```
 
 ```{r warning=FALSE, message=FALSE}
-#rm(list = ls())
 library("DESeq2")
 library("viridis")
 library("RColorBrewer")
@@ -422,7 +422,7 @@ table(sample_data(abx_change)$type)
 ```
 
 ```{r}
-abx.treeda = treeda(
+abx.treeda = treeDA::treeda(
   response = sample_data(abx_change)$type,
   predictors = asinh(t(otu_table(abx_change))),
   tree = phy_tree(abx_change), 
