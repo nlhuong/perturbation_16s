@@ -9,6 +9,7 @@
 
 #setwd("perturbation_16s/amplicon/")
 rm(list = ls())
+setwd("~/MEGA/BIOSTATS GROUP/Projects/PerturbationStudy/perturbation_16s/")
 
 RUNPCA <- TRUE
 RUNAGPCA <- TRUE
@@ -18,9 +19,9 @@ PLOTPCA <- TRUE
 PLOTAGPCA <- TRUE
 PLOTTSNE <- TRUE
 
-path2data <- "../data/processed/"
-path2figs <- "../figs"
-path2out <- "../output"
+path2data <- "data/16S/phyloseq/"
+path2figs <- "figs"
+path2out <- "output"
 
 datafile <- "perturb_physeq_filtered_22Jan18.rds"
 group_file <- "study_arm"

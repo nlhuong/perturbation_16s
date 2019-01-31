@@ -13,4 +13,5 @@ analysis/*/figs/*
 *.html
 */*.html
 .Rproj.user
+*.Rproj
 **/*.Rhistory

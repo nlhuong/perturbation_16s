@@ -1,0 +1,174 @@
+---
+title: "16S Ordination"
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(Rtsne)
+library(RColorBrewer)
+library(gridExtra)
+library(phyloseq)
+library(viridis)
+
+theme_set(theme_bw())
+theme_update(text = element_text(size = 20))
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "./tsne_figs/", 
+  dev=c("png", "pdf")) 
+```
+
+
+# Load Data
+
+```{r}
+physeq_file <- "perturb_physeq_filtered_22Jan18.rds"
+ps <- readRDS(physeq_file)
+ps
+```
+
+
+
+```{r}
+# these subjects have too few samples
+remove_subjects <- c("AAA", "AAB", "AAN", "DAC", "NA_QC")
+ps <- subset_samples(ps, !Subject %in% remove_subjects)
+ps
+```
+
+## Filter taxa {#filter .unnumbered}
+
+We will filter out taxa which are not present in samples of at least two 
+distinct subjects.
+
+```{r}
+minTaxaSubjPrev <- 2
+# Compute prevalence across subjects
+num_subj_present <- function(physeq, subject_indicator = "Subject") {
+  smp <- data.frame(physeq@sam_data, stringsAsFactors = FALSE)
+  seqtab <- as(physeq@otu_table, "matrix")
+  sapply(1:ntaxa(physeq), function(i) {
+    subj.present <- smp[[subject_indicator]][seqtab[i, ] > 0]
+    length(unique(subj.present))})
+}
+subjects_prevalence <- num_subj_present(ps)
+
+# Filter taxa present in more than 1 subject
+ps <- subset_taxa(ps, subjects_prevalence >= minTaxaSubjPrev)
+ps
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  select(Subject, Group, First_Sample_Date, CC_Date, Diet_StartDate, 
+         Age, Gender, Height, Weight, BMI,
+         Waist_Circumference, Resting_Pulse, Blood_Pressure,
+         Test_Cholesterol_Glucose, Birth_Mode, BirthYear) %>%
+  distinct()
+```
+
+## Transform data
+
+```{r}
+# Transform counts to not "over-weight" highly abundant taxa
+psIHS <- transform_sample_counts(ps, function(x) { asinh(x) })
+```
+
+
+```{r, echo = FALSE}
+load("tsne_ihs_physeq_22Jan2018.rda")
+```
+
+
+# TSNE {#tsne .unnumbered}
+
+```{r, eval = FALSE}
+# set.seed(123)
+# brayD.ihs <- phyloseq::distance(psIHS, method = "bray")
+# 
+# bray.rtsne.ihs <- Rtsne::Rtsne(
+#     brayD.ihs, is_distance = TRUE, dims = 2, 
+#     pca = TRUE, eta = 1, exaggeration_factor = nsamples(ps)/10)
+# 
+# sample.scores <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
+#                        tsne.2.ihs = bray.rtsne.ihs$Y[, 2], SMP) 
+#
+# save(list = c("brayD.ihs", "bray.pcoa.ihs", "bray.rtsne.ihs", "sample.scores"), 
+#      file = "../data/16S/phyloseq/tsne_ihs_physeq_22Jan2018.rda")
+```
+
+
+```{r tsne-bray-subj, fig.height=10, fig.width=8}
+sample.scores %>%
+ggplot(
+    aes(tsne.1.ihs, tsne.2.ihs, fill = Subject)) +
+    geom_point(size = 4, alpha = 0.5, pch = 21, color = "white") + 
+    xlab("t-SNE 1") + ylab("t-SNE 2") +
+    coord_fixed() +
+    theme(legend.position = "bottom") 
+
+```
+
+
+```{r tsne-bray-subj-text, fig.height=10, fig.width=10}
+sample.scores %>%
+ggplot(
+    aes(tsne.1.ihs, tsne.2.ihs, color = Subject)) +
+    geom_text(aes(label = Subject), size = 6, alpha = 0.3) + 
+    xlab("t-SNE 1") + ylab("t-SNE 2") + coord_fixed() +
+    theme(legend.position = "none") 
+
+```
+
+
+```{r tsne-bray-time-text, fig.height=10, fig.width=10}
+sample.scores %>%
+ggplot(
+    aes(tsne.1.ihs, tsne.2.ihs, color = DayFromStart)) +
+    geom_text(aes(label = Subject), size = 6, alpha = 0.3) + 
+    xlab("t-SNE 1") + ylab("t-SNE 2") + coord_fixed() +
+    scale_color_viridis(name = "Days \nfrom start")
+
+```
+
+
+```{r tsne-bray-time, fig.height=10, fig.width=10}
+sample.scores %>%
+ggplot(
+    aes(tsne.1.ihs, tsne.2.ihs, fill = DayFromStart)) +
+    geom_point(size = 3, pch = 21, color = "white") + 
+    xlab("t-SNE 1") + ylab("t-SNE 2") + coord_fixed() +
+    scale_fill_viridis(name = "Days \nfrom start")
+
+```
+
+
+
+```{r tsne-bray-subj-time,  fig.height=30, fig.width=18}
+
+sample.scores %>%
+    arrange(Subject, Samp_Date) %>%
+ggplot(
+    aes(tsne.1.ihs, tsne.2.ihs, color = DayFromStart)) +
+    geom_point(size = 3) + 
+    xlab("t-SNE 1") + ylab("t-SNE 2") + 
+    theme(text = element_text(size = 30)) +
+    geom_path(
+        aes(group = Subject, color = DayFromStart), 
+        alpha = 0.8, lwd = 1) +
+    geom_point(
+        data = sample.scores %>% 
+            filter(Timeline != "typical"), 
+        aes(fill = Timeline),
+        size = 5, pch = 23, color = "black") +
+    facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+    scale_color_viridis() +
+    scale_fill_brewer(palette = "Oranges")
+```
+
