@@ -65,6 +65,7 @@ theme_update(
 
 
 ```{r, eval = FALSE}
+# processed_physeq.rda Copied from ../holmes_group_presentation
 processed_datafile <- "results/processed_physeq.rda"
 load(processed_datafile)
 
