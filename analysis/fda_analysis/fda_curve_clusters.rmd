@@ -1,0 +1,402 @@
+---
+title: "Resilience Study 16S data: FDA clustering results (slides for prof. Relman -- Hawaii)"
+author: 
+  - name: Lan Huong Nguyen
+affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+  toc_float: true
+df_print: paged
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/relman_hawaii_slides/", 
+  dev='png') 
+```
+
+```{r warning=FALSE, message=FALSE}
+#rm(list = ls())
+library("DESeq2")
+library("phyloseq")
+library("fdapace")
+library("viridis")
+library("RColorBrewer")
+library("ggplot2")
+library("tidyverse")
+
+theme_set(theme_bw())
+theme_update(
+   panel.border = element_rect(size = 0.5),
+   legend.position = "bottom",
+   text = element_text(size = 20),
+   strip.text = element_text(size = 20),
+   strip.background = element_blank()
+)
+
+datadir <- "/scratch/PI/sph/resilience/"
+resfile <- "results/treeDA_res16S.rda"
+curdir <- getwd()
+source('../utils.R')
+saveRES <- TRUE
+```
+
+
+# Load data
+
+```{r}
+# Object made in fda_package_testing.rmd and fclust.R
+load("results/ps_objects.rda")
+load("results/ps_objects.rda")
+load("results/abx_rsv_fpca.rda")
+load("results/abx_rsv_fclust.rda")
+load("results/abx_long_subset.rda")
+```
+
+
+
+```{r}
+# Clustering was performed on data fitted with smooth FPCA 
+# (different settings in 'abx_fclust' and  'abx_pca')
+abx_fclust_mu <- abx_fclust_mu %>%
+  mutate(Seq_ID = Feature_ID) %>%
+  left_join(taxtab)
+
+abx_fclust_subjFit <- abx_fclust_subjFit %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab)
+
+abx.rsv.subset <- abx.rsv.subset %>%
+  left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+```
+
+
+```{r}
+# Different settings in 'abx_fclust' and  'abx_pca'
+# we use 'abx_pca' fits because more PC (higher K than in abx_fclust)a are obtained fore these.
+abx_fpca_mu <- abx_fpca_mu %>%
+  mutate(Seq_ID = Feature_ID) %>%
+  left_join(taxtab)
+
+abx_fpca_subjFit <- abx_fpca_subjFit %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab) #%>% left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+
+abx_fpca_subjDeriv <- get_fpca_fits(abx_fpca, derOptns = list(p = 1))  %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab) #%>% left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+```
+
+
+```{r}
+# Clustering was performed on data fitted with smooth FPCA 
+# (different settings in 'abx_fclust' and  'abx_pca')
+abx_fclust_mu <- abx_fclust_mu %>%
+  mutate(Seq_ID = Feature_ID) %>%
+  left_join(taxtab)
+
+abx_fclust_subjFit <- abx_fclust_subjFit %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab)
+
+abx.rsv.subset <- abx.rsv.subset %>%
+  left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+```
+
+
+```{r}
+# Different settings in 'abx_fclust' and  'abx_pca'
+# we use 'abx_pca' fits because more PC (higher K than in abx_fclust)a are obtained fore these.
+abx_fpca_mu <- abx_fpca_mu %>%
+  mutate(Seq_ID = Feature_ID) %>%
+  left_join(taxtab)
+
+abx_fpca_subjFit <- abx_fpca_subjFit %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab) %>% 
+  left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+
+abx_fpca_subjDeriv <- get_fpca_fits(abx_fpca, derOptns = list(p = 1))  %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab) %>% 
+  left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+```
+
+
+
+# Curves clusters
+
+
+Bacteria with most difference before and after perturbation:
+
+```{r}
+min_num_subj  = 20
+top_mean_change <- abx_fpca_mu %>%
+  left_join(keep_rsv) %>%
+  filter(Freq >= min_num_subj) %>%
+  mutate(time_itv = ifelse(time < 0, "before", ifelse(time < 10, "during", "after"))) %>%
+  group_by(Feature_ID, OrgName, time_itv) %>%
+  summarize(mean_value = mean(value)) %>%
+  spread(key = time_itv, mean_value) %>%
+  mutate(delta = (after - before)) %>%
+  ungroup() %>% arrange(desc(abs(delta)))  %>% .[["Feature_ID"]]
+
+
+# most_change <- abx_fpca_subjFit %>%
+#   left_join(keep_rsv) %>%
+#   filter(Freq >= min_num_subj) %>%
+#   mutate(time_itv = ifelse(time < 0, "before", ifelse(time < 10, "during", "after"))) %>%
+#   group_by(Subject, Feature_ID, OrgName, time_itv) %>%
+#   summarize(mean_value = mean(value)) %>%
+#   spread(key = time_itv, mean_value) %>%
+#   ungroup() %>%
+#   mutate(delta = (after - before)/before) %>%
+#   group_by(Feature_ID, OrgName) %>%
+#   summarize(mean_delta = mean(abs(delta)), sd_delta = sd(abs(delta))) 
+# 
+# most_variability_in_change <- most_change %>%
+#   arrange(desc(sd_delta)) %>% .[["Feature_ID"]]
+# 
+# most_mean_change <- most_change %>%
+#   arrange(desc(mean_delta)) %>% .[["Feature_ID"]]
+
+```
+
+
+```{r}
+special_subjects <- abx_fpca_subjFit %>%
+  select(Subject, Feature_ID, Cluster) %>% distinct() %>%
+  filter(Feature_ID == "Seq112", Cluster == 2) %>% .[["Subject"]] 
+special_subjects
+length(special_subjects)
+
+abx_fpca_subjFit <- abx_fpca_subjFit %>%
+  mutate(Subject_Cluster = ifelse(Subject %in% special_subjects, "Recovery", "No_Recovery"))
+```
+
+
+
+```{r abx-top20-most-change,  fig.width=15, fig.height=12}
+seq2plot<- top_mean_change[1:20]
+ggplot(
+  abx_fpca_subjFit %>% 
+    filter(Seq_ID %in% seq2plot) %>%
+    mutate(Seq_ID = factor(Seq_ID, levels = seq2plot)), 
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Replicate_ID, color = Subject_Cluster, size = Subject_Cluster),
+    alpha = 0.7
+  ) +
+  # geom_point(
+  #   data = abx_fpca_subjFit %>% filter(Seq_ID %in% seq2plot),
+  #   aes(color = Subject_Cluster),
+  #   size = 0.3
+  # ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_fpca_mu %>% filter(Seq_ID %in% seq2plot),
+    color = "red", size = 1.5
+  ) +
+  scale_color_manual(values = c("grey20", "deepskyblue2")) +
+  scale_size_manual(values = c(0.5, 1)) +
+  facet_wrap(~ OrgName, scales = "free", ncol = 4) +
+  theme(strip.text = element_text(family="Helvetica-Narrow", size = 12)) +
+  scale_x_continuous(name = "Days relative to Abx start date", 
+                     breaks = seq(-40, 120, 20), labels =  seq(-40, 120, 20), 
+                     limits = c(NA, NA))
+```
+
+
+```{r abx-top10-most-change,  fig.width=15, fig.height=6}
+seq2plot<- top_mean_change[1:10]
+ggplot(
+  abx_fpca_subjFit %>% 
+    filter(Seq_ID %in% seq2plot) %>%
+    mutate(Seq_ID = factor(Seq_ID, levels = seq2plot)), 
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Replicate_ID, color = Subject_Cluster, size = Subject_Cluster),
+    alpha = 0.7
+  ) +
+  # geom_point(
+  #   data = abx_fpca_subjFit %>% filter(Seq_ID %in% seq2plot),
+  #   aes(color = Subject_Cluster),
+  #   size = 0.3
+  # ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_fpca_mu %>% filter(Seq_ID %in% seq2plot),
+    color = "red", size = 1.5
+  ) +
+  scale_color_manual(values = c("grey20", "deepskyblue2")) +
+  scale_size_manual(values = c(0.5, 1)) +
+  facet_wrap(~ OrgName, scales = "free", ncol = 5) +
+  theme(strip.text = element_text(family="Helvetica-Narrow", size = 12)) +
+  scale_x_continuous(name = "Days relative to Abx start date", 
+                     breaks = seq(-40, 120, 20), labels =  seq(-40, 120, 20), 
+                     limits = c(NA, NA))
+```
+
+
+
+
+```{r}
+SubjSMP <- data.frame(sample_data(abx)) %>%
+  mutate_at(.vars = vars(Age:BMI), .funs = as.numeric) %>%
+  select(Subject, Group, Age:BMI) %>%
+  mutate(Recovered = ifelse(Subject %in% special_subjects, "Recovery", "NoRecovery"))%>%
+  distinct()
+```
+
+
+
+
+```{r  fig.width=10, fig.height=5}
+df <- SubjSMP %>%
+  select(-Gender) %>%
+  gather(key = attribute, value = "value", Age:BMI)
+
+ggplot(df, aes(x = Recovered, y = value)) +
+  geom_boxplot() +
+  geom_text(aes(label = Subject), size=3,
+            position = position_jitter(height = 0, width = 0.1)) +
+  facet_wrap(~attribute, scales = "free", ncol = 4) +
+  ggpubr::stat_compare_means() 
+```
+
+
+# Microbe clusters
+
+Using mean response to Abx
+
+```{r}
+set.seed(123456)
+
+min_num_subj <- 5
+rsv_clust <- abx_fpca_mu %>%
+  left_join(keep_rsv) %>%
+  filter(Freq >= min_num_subj) %>%
+  select(-Freq) %>%
+  fit_fdapca(
+  "time", "value", "Feature_ID",
+  cluster = TRUE, K = 8)
+
+rsv_mean <- data.frame(
+  time = rsv_clust$fpca$workGrid,
+  value = rsv_clust$fpca$mu)
+
+rsv_fit <- fpca_fit(rsv_clust) %>%
+  mutate(Seq_ID = Replicate_ID) 
+
+rsv_deriv <- fpca_fit(rsv_clust, derOptns = list(p = 1)) %>%
+  mutate(Seq_ID = Replicate_ID)
+
+```
+
+
+
+
+
+
+```{r rsv-clusters-abx, fig.width=10, fig.height=6}
+ggplot(
+  rsv_fit, aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Seq_ID, color = Cluster),
+    size = 0.7, alpha = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  geom_smooth(color = "grey20") +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 4) +
+  scale_color_brewer(palette = "Set1")
+```
+
+
+```{r rsv-clusters-deriv-abx, fig.width=10, fig.height=6}
+ggplot(
+  rsv_deriv, aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Seq_ID, color = Cluster),
+    alpha = 0.5, size = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 4) +
+  scale_color_brewer(palette = "Set1")
+```
+
+
+
+```{r}
+top_rsv <- rsv_fit %>%
+  group_by(Replicate_ID, Cluster) %>%
+  summarise(mean_abnd = mean(value)) %>%
+  arrange(desc(mean_abnd)) %>%
+  left_join(taxtab %>% select(Seq_ID, OrgName, Species, Genus), 
+            by=c("Replicate_ID" = "Seq_ID"))
+
+
+
+top_genus <- top_rsv %>%
+  filter(!is.na(Genus)) %>%
+  group_by(Genus, Cluster) %>%
+  summarise(
+    mean_abnd = mean(mean_abnd),
+    prev = n()
+  ) %>%arrange(Cluster, -prev, -mean_abnd) 
+```
+
+```{r}
+n = 6; nclust = length(unique(top_genus$Cluster))
+df_top_genus <- top_genus %>% 
+  group_by(Cluster) %>% 
+  top_n(n, wt = prev*mean_abnd) %>%
+  arrange(Cluster, -prev, -mean_abnd) %>%
+  select(-mean_abnd, -prev) %>% ungroup() %>%
+  mutate(Cluster = paste0("Cluster", Cluster)) %>%
+  mutate(idx = rep(1:n, nclust)) %>%
+  spread(key = Cluster, Genus)
+df_top_genus
+```
+
+
+```{r}
+n = 10; nclust = length(unique(top_rsv$Cluster))
+df_top_rsv <- top_rsv %>% 
+  ungroup() %>%
+  select(OrgName, Cluster, mean_abnd) %>%
+  group_by(Cluster) %>% 
+  top_n(n, wt = mean_abnd) %>%
+  arrange(Cluster, mean_abnd) %>%
+  select(-mean_abnd) %>% ungroup() %>%
+  mutate(Cluster = paste0("Cluster", Cluster)) %>%
+  mutate(idx = rep(1:n, nclust)) %>%
+  spread(key = Cluster, OrgName)
+df_top_rsv
+```
+
+
+```{r}
+write.csv(df_top_rsv, file = "results/top_rsv_in_clusters.csv")
+write.csv(df_top_genus, file = "results/top_genera_in_clusters.csv")
+
+```
+
+
+
+
+```{r}
+sessionInfo()
+```
+
