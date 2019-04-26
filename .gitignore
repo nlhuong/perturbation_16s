@@ -15,3 +15,5 @@ analysis/*/figs/*
 .Rproj.user
 *.Rproj
 **/*.Rhistory
+**/*.err
+**/*.out

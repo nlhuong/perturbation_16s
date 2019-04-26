@@ -26,6 +26,7 @@ fda_pca <- function(df.long, time_column, value_column, replicate_column,
   if(parallel) {
     require(doParallel)
     ncores <- min(ncores, detectCores())
+    cat("Running on ", ncores, " cores...\n")
     registerDoParallel(ncores)
     res <- foreach(feat=features) %dopar% {
       fit_fdapca(df.long, time_column, value_column, 
