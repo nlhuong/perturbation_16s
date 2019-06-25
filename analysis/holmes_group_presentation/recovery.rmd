@@ -691,7 +691,6 @@ for(dist in c("bray", "jaccard", "unifrac")) {
 do.call("grid.arrange", c(plt.lst, ncol=3))
 ```
 
-```
 
 
 ## All Samples
