@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Setup
 
-```{r setup, message=FALSE}
+```{r, message=FALSE}
 library("phyloseq")
 library("RColorBrewer")
 library("tidyverse")
