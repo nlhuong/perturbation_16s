@@ -66,6 +66,7 @@ metabolon <- readRDS(file.path(datadir, "metabolome/assayData NA_filtered_and_im
 metat <- fread(file.path(datadir, "metatranscriptomic/counts/abund_seed_len_ratio.csv"))
 dim(metat)
 ```
+
 ```{r}
 gene_info <- fread(file.path(datadir, "metatranscriptomic/counts/gene_len_seed_raw.csv"))
 metat <- metat[, !c("SEED1", "SEED2", "SEED3", "SEED4"), with = FALSE]

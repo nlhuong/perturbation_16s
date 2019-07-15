@@ -1,0 +1,102 @@
+---
+title: "Figures for the manuscript"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Setup
+
+```{r, message=FALSE}
+library("phyloseq")
+library("RColorBrewer")
+library("tidyverse")
+library("data.table")
+library("readxl")
+datadir <- "../../data/"
+curdir <- getwd()
+```
+
+
+## Load data
+
+## Sample Info
+
+```{r}
+# Sample Information
+meas_info <- read_xlsx(
+  file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"),
+  "Meas", range = cell_cols(1:7))
+names(meas_info) <- meas_info[1, ]
+meas_info <- meas_info[-1, ] %>%
+  rename(Samp_ID = SampID)
+
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", 
+                 "PreCC", "MidCC","PostCC", "PreAbx", "MidAbx", "PostAbx")
+samp <- read_xlsx(
+  file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"),
+  "Samp", skip = 1) %>%
+  mutate(
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
+
+meas_info <- meas_info %>% select(Meas_ID, Samp_ID) %>%
+  left_join(samp)
+dim(meas_info)
+rm(samp)
+```
+
+
+```{r}
+head(meas_info)
+```
+ 
+## Amplicon 16S data
+
+```{r}
+list.files("../../data/16S/phyloseq/")
+```
+
+
+```{r}
+# File generated in /perturbation_16s/analysis/holmes_group_presentation/new_16S_analysis.rmd
+ps <- readRDS("../../data/16S/phyloseq/perturb_physeq_fltr2430_17Jul18.rds")
+ps
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  SMP %>%
+  select(Subject, Group, Age:BMI) %>%
+  distinct()
+```
+
+
+```{r}
+data.frame(ps@sam_data) %>%
+    select(Group, Subject) %>%
+    distinct() %>%
+    group_by(Group) %>%
+    summarise(subject_count = n())
+```
+
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```

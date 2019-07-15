@@ -14,6 +14,8 @@ vignette: >
   %\VignetteEngine{knitr::rmarkdown}
 ---
 
+Edited July 15th, 2019
+
 
 ```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
 library("BiocStyle")
@@ -31,13 +33,13 @@ knitr::opts_chunk$set(
 library("DESeq2")
 library("viridis")
 library("RColorBrewer")
-library("tidyverse")
 library("readxl")
 library("phyloseq")
-library("adaptiveGPCA")
-datadir <- "/scratch/PI/sph/resilience/"
+#library("adaptiveGPCA")
+datadir <-"../../data/"# "/scratch/PI/sph/resilience/"
 curdir <- getwd()
-source('utils.R')
+source('../utils.R')
+library("tidyverse")
 
 theme_set(theme_bw())
 theme_update(
@@ -70,7 +72,7 @@ Sample Information {#sample-info .unnumbered}
 
 ```{r, eval = FALSE}
 # loading sample info
-smpinfo_file <- file.path(datadir, "sample_info/Mapping_File_10June2018.xlsx") 
+smpinfo_file <- file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx") 
 
 # Measurement Information
 meas <- read_xlsx(smpinfo_file, sheet = "Meas")
@@ -136,7 +138,8 @@ subj_data <- read_excel(
   col_types = c("text", rep("date", 4), rep("guess", 864))
   )  %>%
   select(Subject, First_Sample_Date, CC_Date, Diet_StartDate, 
-         Abx_StartDate, Age:BMI)
+         Abx_StartDate, Age:Blood_Pressure, Blood_Type)
+subj_data <- subj_data[-1, ]
 head(subj_data)
 ```
 
@@ -144,11 +147,11 @@ head(subj_data)
 meas_info <- meas %>%
   left_join(samp) %>%
   left_join(subj_data) 
-write.csv(meas_info, "./meas_info_10June2018.csv")
+write.csv(meas_info, file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"))
 ```
 
 ```{r, eval = FALSE}
-meas_info <- read.csv("./meas_info_10June2018.csv", row.names = 1) %>%
+meas_info <- read.csv( file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"), row.names = 1) %>%
   mutate_at(.vars = vars(contains("Date")), 
             .funs = function(x) {as.Date(as.character(x), "%Y-%m-%d")}) 
 head(meas_info)
@@ -167,12 +170,12 @@ Fix one incorrect first sample date:
 meas_info <- meas_info %>%
   left_join(start_dates) %>%
   mutate(DaysFromStart = as.numeric(Samp_Date - Real_First_Sample_Date ))
-write.csv(meas_info, "./meas_info_10June2018.csv")
+write.csv(meas_info,  file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"))
 ```
 
 
 ```{r}
-meas_info <- read.csv("results/meas_info_10June2018.csv", row.names = 1) 
+meas_info <- read.csv( file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"), row.names = 1) 
 smp_modality_count <- meas_info %>%
   select(Meas_ID, Samp_ID, Meas_Type) %>%
   group_by(Samp_ID) %>%
@@ -276,6 +279,8 @@ psSilvaMult
 
 ```{r get-physeq-batches-5-6, eval = FALSE}
 # Bacthes 5-6
+# Copied from curie server in folder:
+# /relman02/data/relman/hmd/HMD_16S_V45/HMD_16S_5-6_annex/16S_5-6_DADA2_output/
 second_batches_dir <- file.path(datadir, "16S/Les_Results/16S_5-6_DADA2_output")
 
 psRDP2 <- readRDS(file.path(second_batches_dir, "phyloseq_RDP.rds"))
@@ -449,7 +454,7 @@ num_subj_present <- function(physeq, subject_indicator = "Subject") {
     subj.present <- smp[[subject_indicator]][seqtab[i, ] >= minPrevLevel]
     freq <- table(subj.present)
     sum(freq >= minNonZeroSamples)
-    #length(unique(subj.present))
+    #length(unique(subj.present))aDAMAD
   })
 }
 subjects_prevalence <- num_subj_present(ps)

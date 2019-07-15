@@ -1,0 +1,846 @@
+---
+title: "Response to perturbation across modalities"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(SummarizedExperiment)
+library(tidyverse)
+library(phyloseq)
+library(RColorBrewer)
+library(data.table)
+```
+
+# Load data
+
+## Sample Data
+
+```{r}
+# Sample Information
+meas_info <- readxl::read_xlsx(
+  "../../data/sample_info/Mapping_File_19Oct2018.xlsx", sheet = "Meas")
+names(meas_info) <- meas_info[1, ]
+meas_info <- meas_info[-1, ] %>%
+  rename(Samp_ID = SampID)
+
+interv_levs <- c("NoInterv", "PreDiet", "MidDiet", "PostDiet", 
+                 "PreCC", "MidCC","PostCC", "PreAbx", "MidAbx", "PostAbx")
+samp <- readxl::read_xlsx(
+  "../../data/sample_info/Mapping_File_19Oct2018.xlsx",
+  "Samp", skip = 1) %>%
+  mutate(
+    Diet_Interval = ifelse(Diet_Interval == "NA", "NoInterv", Diet_Interval),
+    CC_Interval = ifelse(CC_Interval == "NA", "NoInterv", CC_Interval),
+    Abx_Interval = ifelse(Abx_Interval == "NA", "NoInterv", Abx_Interval),
+    Diet_Interval = factor(Diet_Interval, interv_levs),
+    CC_Interval = factor(CC_Interval, interv_levs),
+    Abx_Interval = factor(Abx_Interval, interv_levs)
+  ) %>%
+  filter(Samp_Type != "ExtrCont")
+
+subj <- readxl::read_xlsx(
+  "../../data/sample_info/Mapping_File_19Oct2018.xlsx",
+  "Subj", skip = 1) 
+subj <- subj[-1, ] %>%
+    select(
+        Subject:Abx_StartDate, `Age...9`:Test_Cholesterol_Glucose,Blood_Type, Notes
+    )
+
+meas_info <- meas_info %>% select(Meas_ID:Meas_Type) %>%
+  left_join(samp) %>% left_join(subj)
+dim(meas_info)
+rm(samp)
+```
+
+
+## Metatranscriptomics 
+
+```{r, eval = FALSE}
+# metatranscriptomics aligned to SEED DB
+# This is the coverage abundance measure computed as the total number of bp aligned / length of the gene
+# metat <- fread("../../data/metatranscriptomic/counts/abund_seed_len_ratio.csv")
+# dim(metat)
+# 
+# gene_info <- fread("../../data/metatranscriptomic/counts/gene_len_seed_raw.csv")
+# #metat <- metat[, !c("Organism", "Function"), with = FALSE]
+# metat <- metat[, !c("SEED1", "SEED2", "SEED3", "SEED4"), with = FALSE]
+# metat <- metat[order(GeneID), ]
+# gene_info <- gene_info[order(GeneID), ]
+# identical(metat$GeneID, gene_info$GeneID)
+# dim(metat)
+# dim(gene_info)
+# 
+# rsum <- rowSums(metat[, !c("GeneID"), with = FALSE], na.rm = TRUE)
+# summary(rsum)
+# sum(rsum > 10)
+# 
+# metat <- metat[rsum>10, ]
+# dim(metat)
+# #saveRDS(metat, file = "../../data/metatranscriptomic/metat_seed_fltr16k.rds")
+```
+
+```{r}
+metat <- readRDS("../../data/metatranscriptomic/metat_seed_fltr16k.rds")
+gene_info <- fread("../../data/metatranscriptomic/counts/gene_len_seed_raw.csv")
+gene_info <- data.frame(gene_info) %>% filter(GeneID %in% metat$GeneID)
+```
+
+
+```{r}
+metat_meas_ids <- sapply(colnames(metat), function(x) strsplit(x, "_")[[1]][1])
+(sbj_metat <- meas_info %>% filter(Meas_ID %in% metat_meas_ids) %>% .[["Subject"]] %>% unique())
+
+# "EBF" NA    "DBU" "DBV" "EAY" "EAQ"
+```
+
+
+
+## Metagbolomics
+
+```{r}
+chosen_metabolites <- readRDS("../metab/chosen_mateboltes.rds")
+metabSE <- readRDS("../../data/metabolome/metabol_OrigScaled_SummarizedExp_fltr_imputed.rds")
+```
+
+
+
+## Amplicon
+
+```{r}
+# File generated in /perturbation_16s/analysis/holmes_group_presentation/new_16S_analysis.rmd
+ps <- readRDS("../../data/16S/phyloseq/perturb_physeq_fltr2430_17Jul18.rds")
+ps
+```
+
+```{r}
+ps <- subset_samples(ps, Subject %in% c("DBU", "DBV", "EBF", "EAY", "EAQ"))
+ps
+```
+
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  SMP %>%
+  select(Subject, Group, Age:BMI) %>%
+  distinct()
+```
+
+
+
+# Trends
+
+## ABX
+
+```{r}
+metabolites_abx_down <- plyr::ldply(
+  lapply(chosen_metabolites, function(x) 
+         data.frame(down = x$rel_day_abx$down$relevant_metabolites)), .id = "Subject") 
+
+metabolites_abx_up <- plyr::ldply(
+    lapply(chosen_metabolites, function(x) 
+         data.frame(up = x$rel_day_abx$up$relevant_metabolites)), .id = "Subject")
+
+metabolites_diet_down <- plyr::ldply(
+  lapply(chosen_metabolites, function(x) 
+         data.frame(down = x$rel_day_diet$down$relevant_metabolites)), .id = "Subject") 
+
+metabolites_diet_up <- plyr::ldply(
+    lapply(chosen_metabolites, function(x) 
+         data.frame(up = x$rel_day_diet$up$relevant_metabolites)), .id = "Subject")
+
+metabolites_cc_down <- plyr::ldply(
+  lapply(chosen_metabolites, function(x) 
+         data.frame(down = x$rel_day_CC$down$relevant_metabolites)), .id = "Subject") 
+
+metabolites_cc_up <- plyr::ldply(
+    lapply(chosen_metabolites, function(x) 
+         data.frame(up = x$rel_day_CC$up$relevant_metabolites)), .id = "Subject")
+
+```
+
+```{r}
+lst <- list(metabolites_abx_down, metabolites_abx_up)
+
+metab_response_abx_down = metabolites_abx_down %>%
+  left_join(data.frame(rowData(metabSE)) %>% select(`PATHWAY.SORTORDER`:`SUB.PATHWAY`)%>% rownames_to_column("identifier"),
+            by = c("down" = "identifier"))
+
+metab_response_abx_up = metabolites_abx_up %>%
+  left_join(data.frame(rowData(metabSE)) %>% select(`PATHWAY.SORTORDER`:`SUB.PATHWAY`)%>% rownames_to_column("identifier"),
+            by = c("up" = "identifier"))
+
+
+metab_response_cc_up = metabolites_cc_up %>%
+  left_join(data.frame(rowData(metabSE)) %>% select(`PATHWAY.SORTORDER`:`SUB.PATHWAY`)%>% rownames_to_column("identifier"), by = c("up" = "identifier"))
+
+metab_response_cc_down = metabolites_cc_down %>%
+  left_join(data.frame(rowData(metabSE)) %>% select(`PATHWAY.SORTORDER`:`SUB.PATHWAY`)%>% rownames_to_column("identifier") ,
+            by = c("down" = "identifier"))
+
+
+metab_response_diet_down = metabolites_diet_down %>%
+  left_join(data.frame(rowData(metabSE)) %>% select(`PATHWAY.SORTORDER`:`SUB.PATHWAY`)%>% rownames_to_column("identifier"),
+            by = c("down" = "identifier"))
+
+metab_response_diet_up = metabolites_diet_up %>%
+  left_join(data.frame(rowData(metabSE)) %>% select(`PATHWAY.SORTORDER`:`SUB.PATHWAY`)%>% rownames_to_column("identifier"),
+            by = c("up" = "identifier"))
+
+```
+
+```{r}
+assayData <- assay(metabSE) %>%  data.frame() %>% 
+    rownames_to_column("identifier")  %>%
+  gather(key = "SAMPLE.NAME", value = "abundance", contains("SFUN")) %>%
+  left_join(colData(metabSE) %>% data.frame() %>% select(SAMPLE.NAME:Abx_RelDay)%>%
+              mutate(SAMPLE.NAME = gsub("-", ".", SAMPLE.NAME))) 
+```
+
+```{r}
+knitr::kable(metab_response_abx_up)
+```
+
+
+```{r}
+
+count <- metab_response_abx_up %>%
+  select(up, BIOCHEMICAL, Subject) %>%
+  left_join(assayData, by = c("up" = "identifier", "Subject")) %>%
+  arrange(up, Subject, Abx_RelDay)
+
+ggplot(count %>%
+         filter(Abx_RelDay > -15, Abx_RelDay < 20),
+       aes(x = Abx_RelDay, y = asinh(abundance), color = up)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject)
+
+```
+
+```{r}
+knitr::kable(metab_response_abx_down)
+```
+
+
+```{r,fig.width=6, fig.height=3}
+
+
+count <- metab_response_abx_down %>%
+  select(down, BIOCHEMICAL, Subject) %>%
+  left_join(assayData, by = c("down" = "identifier", "Subject")) %>%
+  arrange(down, Subject, Abx_RelDay)
+
+ggplot(count %>%
+         filter(Abx_RelDay > -15, Abx_RelDay < 20),
+       aes(x = Abx_RelDay, y = asinh(abundance), color = down)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+colnames(metat) <- metat_meas_ids
+
+count_mean <- count %>% 
+    filter(Abx_RelDay > -15, Abx_RelDay < 20) %>%
+    group_by(Subject, Abx_RelDay) %>%
+    summarize(abundance = mean(abundance)) %>%
+    arrange(Subject, Abx_RelDay)
+
+metat_sub_to_plt <- list()
+top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    meas_info <- meas_info  %>%
+        mutate(Abx_RelDay = as.numeric(Abx_RelDay))
+    df <- meas_info %>%
+        filter(Meas_ID %in% metat_meas_ids, Subject == subj) %>%
+        filter(Abx_RelDay > -15, Abx_RelDay < 20) %>%
+        arrange(Abx_RelDay)
+
+    metat_sub <- data.frame(metat)[, c("GeneID", df$Meas_ID)]
+    metat_sub[is.na(metat_sub)] <- 0
+    
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(metat_sub[, -1], 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- gene_info %>%
+        filter(GeneID %in% metat_sub[order(-cor_metat)[1:10], 1])
+    top10_lst[[subj]] <- top10
+    
+    metat_sub_to_plt[[subj]] <- metat_sub %>%
+        filter(GeneID %in% top10$GeneID) %>%
+        gather(key = "Meas_ID", value = "abundance", -GeneID) %>%
+        left_join(meas_info %>% select(Meas_ID, Subject, Abx_RelDay))
+}
+
+metat_sub_to_plt <- do.call(rbind, metat_sub_to_plt) %>%
+    arrange(GeneID, Subject, Abx_RelDay)
+
+ggplot(metat_sub_to_plt,
+       aes(x = Abx_RelDay, y = asinh(abundance), color = GeneID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(top10_lst, knitr::kable)
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+
+count_mean <- count %>% 
+    filter(Abx_RelDay > -15, Abx_RelDay < 20) %>%
+    group_by(Subject, Abx_RelDay) %>%
+    summarize(abundance = mean(abundance)) %>%
+    arrange(Subject, Abx_RelDay)
+
+amplicon_sub_to_plt <- list()
+amp_top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    ps_sub <- subset_samples(ps, Subject == subj &
+                             Abx_RelDay %in% count_mean$Abx_RelDay) 
+    df <- sample_data(ps_sub) %>% arrange(Abx_RelDay)
+
+    subj_amplicon <- as(otu_table(ps_sub), "matrix")[, df$Meas_ID]
+    
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(subj_amplicon, 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- as(tax_table(ps_sub), "matrix") %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        select(SeqID, Family, Genus, Species) %>%
+        filter(SeqID %in% names(cor_metat)[order(-cor_metat)[1:10]])
+    
+    amp_top10_lst[[subj]] <- top10
+    
+    amplicon_sub_to_plt[[subj]] <- subj_amplicon %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        filter(SeqID %in% top10$SeqID) %>%
+        gather(key = "Meas_ID", value = "abundance", -SeqID) %>%
+        left_join(df %>% select(Meas_ID, Subject, Abx_RelDay))
+}
+
+amplicon_sub_to_plt <- do.call(rbind, amplicon_sub_to_plt) %>%
+    arrange(Subject, Abx_RelDay)
+
+ggplot(amplicon_sub_to_plt,
+       aes(x = Abx_RelDay, y = asinh(abundance), color = SeqID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(amp_top10_lst, knitr::kable)
+```
+
+
+
+
+## CC
+
+```{r}
+knitr::kable(metab_response_cc_up)
+```
+
+
+
+```{r,fig.width=6, fig.height=3}
+
+
+count <- metab_response_cc_up %>%
+  select(up, BIOCHEMICAL, Subject) %>%
+  left_join(assayData, by = c("up" = "identifier", "Subject")) %>%
+  arrange(up, Subject, Abx_RelDay)
+
+ggplot(count %>%
+         filter(CC_RelDay > -15, CC_RelDay < 20),
+       aes(x = CC_RelDay, y = asinh(abundance), color = up)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+colnames(metat) <- metat_meas_ids
+
+count_mean <- count %>% 
+    filter(CC_RelDay > -15, CC_RelDay < 20) %>%
+    group_by(Subject, CC_RelDay) %>%
+    summarize(abundance = mean(abundance)) %>%
+    arrange(Subject, CC_RelDay)
+
+metat_sub_to_plt <- list()
+top10_lst <- list()
+subj <- "DBV"
+for(subj in c("DBV", "DBU")) {
+    meas_info <- meas_info  %>%
+        mutate(CC_RelDay = as.numeric(CC_RelDay))
+    df <- meas_info %>%
+        filter(Meas_ID %in% metat_meas_ids, Subject == subj) %>%
+        filter(CC_RelDay > -15, CC_RelDay < 20) %>%
+        arrange(CC_RelDay)
+
+    metat_sub <- data.frame(metat)[, c("GeneID", df$Meas_ID)]
+    metat_sub[is.na(metat_sub)] <- 0
+    
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(metat_sub[, -1], 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- gene_info %>%
+        filter(GeneID %in% metat_sub[order(-cor_metat)[1:10], 1])
+    top10_lst[[subj]] <- top10
+    
+    metat_sub_to_plt[[subj]] <- metat_sub %>%
+        filter(GeneID %in% top10$GeneID) %>%
+        gather(key = "Meas_ID", value = "abundance", -GeneID) %>%
+        left_join(meas_info %>% select(Meas_ID, Subject, CC_RelDay))
+}
+
+metat_sub_to_plt <- do.call(rbind, metat_sub_to_plt) %>%
+    arrange(GeneID, Subject, CC_RelDay)
+
+ggplot(metat_sub_to_plt,
+       aes(x = CC_RelDay, y = asinh(abundance), color = GeneID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+```{r}
+lapply(top10_lst, knitr::kable)
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+amplicon_sub_to_plt <- list()
+amp_top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    ps_sub <- subset_samples(ps, Subject == subj &
+                             CC_RelDay %in% count_mean$CC_RelDay) 
+    df <- sample_data(ps_sub) %>% arrange(CC_RelDay)
+
+    subj_amplicon <- as(otu_table(ps_sub), "matrix")[, df$Meas_ID]
+    
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(subj_amplicon, 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- as(tax_table(ps_sub), "matrix") %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        select(SeqID, Family, Genus, Species) %>%
+        filter(SeqID %in% names(cor_metat)[order(-cor_metat)[1:10]])
+    
+    amp_top10_lst[[subj]] <- top10
+    
+    amplicon_sub_to_plt[[subj]] <- subj_amplicon %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        filter(SeqID %in% top10$SeqID) %>%
+        gather(key = "Meas_ID", value = "abundance", -SeqID) %>%
+        left_join(df %>% select(Meas_ID, Subject, CC_RelDay))
+}
+
+amplicon_sub_to_plt <- do.call(rbind, amplicon_sub_to_plt) %>%
+    arrange(Subject, CC_RelDay)
+
+ggplot(amplicon_sub_to_plt,
+       aes(x = CC_RelDay, y = asinh(abundance), color = SeqID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(amp_top10_lst, knitr::kable)
+```
+
+
+```{r}
+knitr::kable(metab_response_cc_down)
+```
+
+
+```{r,fig.width=6, fig.height=3}
+
+
+count <- metab_response_cc_down %>%
+  select(down, BIOCHEMICAL, Subject) %>%
+  left_join(assayData, by = c("down" = "identifier", "Subject")) %>%
+  arrange(down, Subject, Abx_RelDay)
+
+ggplot(count %>%
+         filter(CC_RelDay > -15, CC_RelDay < 20),
+       aes(x = CC_RelDay, y = asinh(abundance), color = down)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+colnames(metat) <- metat_meas_ids
+
+count_mean <- count %>% 
+    filter(CC_RelDay > -15, CC_RelDay < 20) %>%
+    group_by(Subject, CC_RelDay) %>%
+    summarize(abundance = mean(abundance)) %>%
+    arrange(Subject, CC_RelDay)
+
+metat_sub_to_plt <- list()
+top10_lst <- list()
+subj <- "DBV"
+for(subj in c("DBV", "DBU")) {
+    meas_info <- meas_info  %>%
+        mutate(CC_RelDay = as.numeric(CC_RelDay))
+    df <- meas_info %>%
+        filter(Meas_ID %in% metat_meas_ids, Subject == subj) %>%
+        filter(CC_RelDay > -15, CC_RelDay < 20) %>%
+        arrange(CC_RelDay)
+
+    metat_sub <- data.frame(metat)[, c("GeneID", df$Meas_ID)]
+    metat_sub[is.na(metat_sub)] <- 0
+    
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(metat_sub[, -1], 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- gene_info %>%
+        filter(GeneID %in% metat_sub[order(-cor_metat)[1:10], 1])
+    top10_lst[[subj]] <- top10
+    
+    metat_sub_to_plt[[subj]] <- metat_sub %>%
+        filter(GeneID %in% top10$GeneID) %>%
+        gather(key = "Meas_ID", value = "abundance", -GeneID) %>%
+        left_join(meas_info %>% select(Meas_ID, Subject, CC_RelDay))
+}
+
+metat_sub_to_plt <- do.call(rbind, metat_sub_to_plt) %>%
+    arrange(GeneID, Subject, CC_RelDay)
+
+ggplot(metat_sub_to_plt,
+       aes(x = CC_RelDay, y = asinh(abundance), color = GeneID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(top10_lst, knitr::kable)
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+amplicon_sub_to_plt <- list()
+amp_top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    ps_sub <- subset_samples(ps, Subject == subj &
+                             CC_RelDay %in% count_mean$CC_RelDay) 
+    df <- sample_data(ps_sub) %>% arrange(CC_RelDay)
+
+    subj_amplicon <- as(otu_table(ps_sub), "matrix")[, df$Meas_ID]
+    
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(subj_amplicon, 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- as(tax_table(ps_sub), "matrix") %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        select(SeqID, Family, Genus, Species) %>%
+        filter(SeqID %in% names(cor_metat)[order(-cor_metat)[1:10]])
+    
+    amp_top10_lst[[subj]] <- top10
+    
+    amplicon_sub_to_plt[[subj]] <- subj_amplicon %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        filter(SeqID %in% top10$SeqID) %>%
+        gather(key = "Meas_ID", value = "abundance", -SeqID) %>%
+        left_join(df %>% select(Meas_ID, Subject, CC_RelDay))
+}
+
+amplicon_sub_to_plt <- do.call(rbind, amplicon_sub_to_plt) %>%
+    arrange(Subject, CC_RelDay)
+
+ggplot(amplicon_sub_to_plt,
+       aes(x = CC_RelDay, y = asinh(abundance), color = SeqID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(amp_top10_lst, knitr::kable)
+```
+
+
+## Diet
+
+```{r}
+knitr::kable(metab_response_diet_up)
+```
+
+```{r,fig.width=8, fig.height=3}
+
+
+count <- metab_response_diet_up %>%
+  select(up, BIOCHEMICAL, Subject) %>%
+  left_join(assayData, by = c("up" = "identifier", "Subject")) %>%
+  arrange(up, Subject, Abx_RelDay)
+
+ggplot(count %>%
+         filter(Diet_RelDay > -15, Diet_RelDay < 20),
+       aes(x = Diet_RelDay, y = asinh(abundance), color = up)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=8, fig.height=3}
+colnames(metat) <- metat_meas_ids
+
+count_mean <- count %>% 
+    filter(Diet_RelDay > -15, Diet_RelDay < 20) %>%
+    group_by(Subject, Diet_RelDay) %>%
+    summarize(abundance = mean(abundance)) %>%
+    arrange(Subject, Diet_RelDay)
+
+metat_sub_to_plt <- list()
+top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    meas_info <- meas_info  %>%
+        mutate(Diet_RelDay = as.numeric(Diet_RelDay))
+    subj_mean_metab <- count_mean %>% filter(Subject == subj)
+    
+    df <- meas_info %>%
+        filter(Meas_ID %in% metat_meas_ids, Subject == subj) %>%
+        filter(Diet_RelDay %in% subj_mean_metab$Diet_RelDay) %>%
+        arrange(Diet_RelDay)
+
+    metat_sub <- data.frame(metat)[, c("GeneID", df$Meas_ID)]
+    metat_sub[is.na(metat_sub)] <- 0
+    
+     subj_mean_metab <- subj_mean_metab %>%
+         filter( Diet_RelDay %in% df$Diet_RelDay) %>%
+        .[["abundance"]] %>% asinh
+    
+    cor_metat <- apply(metat_sub[, -1], 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- gene_info %>%
+        filter(GeneID %in% metat_sub[order(-cor_metat)[1:10], 1])
+    top10_lst[[subj]] <- top10
+    
+    metat_sub_to_plt[[subj]] <- metat_sub %>%
+        filter(GeneID %in% top10$GeneID) %>%
+        gather(key = "Meas_ID", value = "abundance", -GeneID) %>%
+        left_join(meas_info %>% select(Meas_ID, Subject, Diet_RelDay))
+}
+
+metat_sub_to_plt <- do.call(rbind, metat_sub_to_plt) %>%
+    arrange(GeneID, Subject, Diet_RelDay)
+
+ggplot(metat_sub_to_plt,
+       aes(x = Diet_RelDay, y = asinh(abundance), color = GeneID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(top10_lst, knitr::kable)
+```
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+amplicon_sub_to_plt <- list()
+amp_top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    ps_sub <- subset_samples(ps, Subject == subj &
+                             Diet_RelDay %in% count_mean$Diet_RelDay) 
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) 
+    df <- sample_data(ps_sub) %>% arrange(Diet_RelDay) %>%
+        filter( Diet_RelDay %in% subj_mean_metab$Diet_RelDay) %>% 
+        arrange(Diet_RelDay) 
+
+    subj_amplicon <- as(otu_table(ps_sub), "matrix")[, df$Meas_ID]
+    
+    subj_mean_metab <- subj_mean_metab %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(subj_amplicon, 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- as(tax_table(ps_sub), "matrix") %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        select(SeqID, Family, Genus, Species) %>%
+        filter(SeqID %in% names(cor_metat)[order(-cor_metat)[1:10]])
+    
+    amp_top10_lst[[subj]] <- top10
+    
+    amplicon_sub_to_plt[[subj]] <- subj_amplicon %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        filter(SeqID %in% top10$SeqID) %>%
+        gather(key = "Meas_ID", value = "abundance", -SeqID) %>%
+        left_join(df %>% select(Meas_ID, Subject, Diet_RelDay))
+}
+
+amplicon_sub_to_plt <- do.call(rbind, amplicon_sub_to_plt) %>%
+    arrange(Subject, Diet_RelDay)
+
+ggplot(amplicon_sub_to_plt,
+       aes(x = Diet_RelDay, y = asinh(abundance), color = SeqID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(amp_top10_lst, knitr::kable)
+```
+
+
+```{r}
+knitr::kable(metab_response_diet_down)
+```
+
+```{r,fig.width=8, fig.height=3}
+
+
+count <- metab_response_diet_down %>%
+  select(down, BIOCHEMICAL, Subject) %>%
+  left_join(assayData, by = c("down" = "identifier", "Subject")) %>%
+  arrange(down, Subject, Abx_RelDay)
+
+ggplot(count %>%
+         filter(Diet_RelDay > -15, Diet_RelDay < 20),
+       aes(x = Diet_RelDay, y = asinh(abundance), color = down)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=8, fig.height=3}
+colnames(metat) <- metat_meas_ids
+
+count_mean <- count %>% 
+    filter(Diet_RelDay > -15, Diet_RelDay < 20) %>%
+    group_by(Subject, Diet_RelDay) %>%
+    summarize(abundance = mean(abundance)) %>%
+    arrange(Subject, Diet_RelDay)
+
+metat_sub_to_plt <- list()
+top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    meas_info <- meas_info  %>%
+        mutate(Diet_RelDay = as.numeric(Diet_RelDay))
+    subj_mean_metab <- count_mean %>% filter(Subject == subj)
+    
+    df <- meas_info %>%
+        filter(Meas_ID %in% metat_meas_ids, Subject == subj) %>%
+        filter(Diet_RelDay %in% subj_mean_metab$Diet_RelDay) %>%
+        arrange(Diet_RelDay)
+
+    metat_sub <- data.frame(metat)[, c("GeneID", df$Meas_ID)]
+    metat_sub[is.na(metat_sub)] <- 0
+    
+     subj_mean_metab <- subj_mean_metab %>%
+         filter( Diet_RelDay %in% df$Diet_RelDay) %>%
+        .[["abundance"]] %>% asinh
+    
+    cor_metat <- apply(metat_sub[, -1], 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- gene_info %>%
+        filter(GeneID %in% metat_sub[order(-cor_metat)[1:10], 1])
+    top10_lst[[subj]] <- top10
+    
+    metat_sub_to_plt[[subj]] <- metat_sub %>%
+        filter(GeneID %in% top10$GeneID) %>%
+        gather(key = "Meas_ID", value = "abundance", -GeneID) %>%
+        left_join(meas_info %>% select(Meas_ID, Subject, Diet_RelDay))
+}
+
+metat_sub_to_plt <- do.call(rbind, metat_sub_to_plt) %>%
+    arrange(GeneID, Subject, Diet_RelDay)
+
+ggplot(metat_sub_to_plt,
+       aes(x = Diet_RelDay, y = asinh(abundance), color = GeneID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(top10_lst, knitr::kable)
+```
+
+
+```{r, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+amplicon_sub_to_plt <- list()
+amp_top10_lst <- list()
+for(subj in unique(count$Subject)) {
+    ps_sub <- subset_samples(ps, Subject == subj &
+                             Diet_RelDay %in% count_mean$Diet_RelDay) 
+    subj_mean_metab <- count_mean %>% filter(Subject == subj) 
+    df <- sample_data(ps_sub) %>% arrange(Diet_RelDay) %>%
+        filter( Diet_RelDay %in% subj_mean_metab$Diet_RelDay) %>% 
+        arrange(Diet_RelDay) 
+
+    subj_amplicon <- as(otu_table(ps_sub), "matrix")[, df$Meas_ID]
+    
+    subj_mean_metab <- subj_mean_metab %>%
+        .[["abundance"]] %>% asinh
+    cor_metat <- apply(subj_amplicon, 1, 
+                       function(x) cor(x, subj_mean_metab, method = "spearman"))
+    
+    top10 <- as(tax_table(ps_sub), "matrix") %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        select(SeqID, Family, Genus, Species) %>%
+        filter(SeqID %in% names(cor_metat)[order(-cor_metat)[1:10]])
+    
+    amp_top10_lst[[subj]] <- top10
+    
+    amplicon_sub_to_plt[[subj]] <- subj_amplicon %>%
+        as.data.frame() %>%
+        rownames_to_column("SeqID") %>%
+        filter(SeqID %in% top10$SeqID) %>%
+        gather(key = "Meas_ID", value = "abundance", -SeqID) %>%
+        left_join(df %>% select(Meas_ID, Subject, Diet_RelDay))
+}
+
+amplicon_sub_to_plt <- do.call(rbind, amplicon_sub_to_plt) %>%
+    arrange(Subject, Diet_RelDay)
+
+ggplot(amplicon_sub_to_plt,
+       aes(x = Diet_RelDay, y = asinh(abundance), color = SeqID)) +
+  geom_line() + geom_point() + facet_wrap(~ Subject) +
+  geom_smooth(aes(group = Subject), color="black")
+```
+
+
+```{r}
+lapply(amp_top10_lst, knitr::kable)
+```
+
+```{r}
+sessionInfo()
+```
+
