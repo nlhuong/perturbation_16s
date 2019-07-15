@@ -17,3 +17,4 @@ analysis/*/figs/*
 **/*.Rhistory
 **/*.err
 **/*.out
+**/fella_data
