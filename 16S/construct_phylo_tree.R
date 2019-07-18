@@ -11,21 +11,22 @@ library(phyloseq)
 library(DECIPHER)
 library(phangorn)
 
-ALIGN <- TRUE
-DIST <- TRUE
-PHYLONJ <- TRUE
+ALIGN <- FALSE
+DIST <- FALSE
+PHYLONJ <- FALSE
 PHYLOGTR <- TRUE
 
-path_to_process_data <- "/scratch/PI/sph/resilience/16S/phyloseq/"
-datafile <- file.path(path_to_process_data, "perturb_physeq_filtr_10Jul18.rds") 
-resfile <- file.path(path_to_process_data, "phylo_fit.rda")
+path_to_process_data <- "/scratch/users/lanhuong/Projects/perturbation_16s/data/16S/phyloseq/"
+datafile <- file.path(path_to_process_data, "perturb_physeq_fltr2438_15Jul19.rds") 
+resfile <- file.path(path_to_process_data, "phylo_fit_fltr2438_15Jul19.rda")
 
 
 if(file.exists(resfile)) {
-  load(res_filename)
+  load(resfile)
 }
 
 ps <- readRDS(datafile)
+ps
 seqs <- as.character(ps@tax_table[, "Seq"])
 names(seqs) <- taxa_names(ps)
 head(seqs)

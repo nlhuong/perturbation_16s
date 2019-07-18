@@ -41,12 +41,7 @@ data.frame(ps@sam_data) %>%
 # Transform counts to not "over-weight" highly abundant taxa
 ps_asinh <- transform_sample_counts(ps, function(x) {asinh(x)})
 brayD.ihs <- phyloseq::distance(ps_asinh, method = "bray")
-<<<<<<< HEAD
-=======
-```
 
-```{r}
->>>>>>> 0f2bac2c0de245537b351fb1fee052145d1cd0ce
 class(brayD.ihs)
 ```
 

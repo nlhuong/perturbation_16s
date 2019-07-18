@@ -1,0 +1,713 @@
+---
+title: "Response to perturbations"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("phyloseq")
+library("RColorBrewer")
+library("tidyverse")
+datadir <- "../../data/"
+curdir <- getwd()
+theme_set(theme_bw())
+theme_update(text = element_text(20))
+
+abx_intv_cols <- c("PreAbx" = "grey60", "MidAbx" = "#E41A1C", 
+                   "PostAbx" = "#00BFC4", "UnpAbx" = "Purple")
+
+diet_intv_cols <- c("PreDiet" = "grey60", "MidDiet" = "#FD8D3C", "PostDiet" = "#4DAF4A")
+cc_intv_cols <- c("PreCC" = "grey60", "PostCC" = "#7A0177") #"#AE017E")
+
+intv_cols <- c(abx_intv_cols, diet_intv_cols, cc_intv_cols, "NoInterv" = "grey60")
+```
+
+
+
+# Load 
+
+```{r}
+# File generated in /perturbation_16s/analysis/analysis_summer2019/generate_phyloseq.rmd
+psSubj <- readRDS("../../data/16S/phyloseq/perturb_physeq_participants_decontam_15Jul19.rds")
+psSubj
+# otu_table()   OTU Table:         [ 2425 taxa and 4402 samples ]
+# sample_data() Sample Data:       [ 4402 samples by 40 sample variables ]
+SMP <- data.frame(sample_data(psSubj))
+SUBJ <- SMP %>% select(Subject, Age:BirthYear) %>% distinct()
+```
+
+```{r}
+SMP %>%
+    select(Group, Subject) %>%
+    distinct() %>%
+    group_by(Group) %>%
+    summarise(subject_count = n())
+```
+
+```{r}
+load("output/pairwise_dist_subj_16S.rda")
+ls()
+```
+
+
+# Distance to baseline
+
+## Bray-Curtis distance
+
+Mean shift from baseline samples [-7, 0] measured with Bray-Curtis distance.
+
+```{r, eval = FALSE}
+abx_bray_to_baseline <- bray.df %>%
+  filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, Abx_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(Abx_RelDay = Abx_RelDay_2) %>%
+  left_join(SMP)
+
+diet_bray_to_baseline <- bray.df %>%
+  filter(Diet_RelDay_1 >= -7 & Diet_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, Diet_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(Diet_RelDay = Diet_RelDay_2) %>%
+  left_join(SMP)
+
+cc_bray_to_baseline <- bray.df %>%
+  filter(CC_RelDay_1 >= -7 & CC_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, CC_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(CC_RelDay = CC_RelDay_2) %>%
+  left_join(SMP)
+
+
+noItv_bray_to_baseline <- bray.df %>%
+  filter(Group == "NoIntv", DaysFromStart_1 >= 0, DaysFromStart_1 <= 10) %>%
+  group_by(Subject, Group, DaysFromStart_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(DaysFromStart = DaysFromStart_2) %>%
+  left_join(SMP) %>%
+  mutate(Interval = as.character(Interval))
+
+bray_to_baseline <- list(
+  abx_bray_to_baseline %>% mutate(Interval = Abx_Interval, RelDay = Abx_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  diet_bray_to_baseline %>% mutate(Interval = Diet_Interval, RelDay = Diet_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  cc_bray_to_baseline %>% mutate(Interval = CC_Interval, RelDay = CC_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  noItv_bray_to_baseline %>% mutate(RelDay = DaysFromStart) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline)
+)
+names(bray_to_baseline) <- c("Abx", "Diet", "CC", "NoIntv")
+bray_to_baseline <- plyr::ldply(bray_to_baseline, function(df) df, .id = "perturbation") %>%
+  mutate(Interval = factor(Interval, levels = names(intv_cols)))
+
+# dim(abx_bray_to_baseline)  
+# dim(diet_bray_to_baseline) 
+# dim(cc_bray_to_baseline) 
+# dim(noItv_bray_to_baseline)
+# head(abx_bray_to_baseline)  
+# head(diet_bray_to_baseline)  
+# head(cc_bray_to_baseline)  
+# head(noItv_bray_to_baseline)  
+
+
+save(list = c("brayD.ihs", "bray.df", "bray_to_baseline",
+              "jaccardD", "jacc.df",
+              "uniFracD.lst", "uniFrac.df"),
+     file = "output/pairwise_dist_to_baseline_subj_16S.rda")
+
+```
+
+
+```{r bray-to-baseline, fig.width=8}
+bray_to_baseline %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.2) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, scales = "free_x") +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("Bray-Curtis distance to baseline") 
+
+```
+
+```{r bray-to-baseline-perturb, fig.width=10, fig.height=4}
+bray_to_baseline %>%
+  filter(perturbation != "NoIntv") %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, scales = "free_x", ncol = 3) +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("Bray-Curtis distance to baseline") 
+
+```
+
+```{r bray-to-baseline-perturb-zoom, fig.width=10, fig.height=4}
+bray_to_baseline %>%
+  filter(perturbation != "NoIntv", RelDay <=30, RelDay >= -30) %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, ncol = 3) +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("Bray-Curtis distance to baseline") 
+
+```
+
+```{r abx-bray-to-baseline, fig.width=8}
+abx_bray_to_baseline %>%
+  mutate(Abx_Interval = factor(Abx_Interval, level = names(abx_intv_cols))) %>%
+  filter(Abx_RelDay >= -50) %>%
+  ggplot(
+    aes(x = Abx_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Abx_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.2) + 
+  scale_color_manual(values = abx_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from initial antibiotic dose") +
+  ylab("Bray-Curtis distance to 7 pre-antibiotic samples") 
+```
+
+
+```{r abx-bray-to-baseline-zoom, fig.width=8}
+abx_bray_to_baseline %>%
+  mutate(Abx_Interval = factor(Abx_Interval, level = names(abx_intv_cols))) %>%
+  filter(Abx_RelDay <= 30, Abx_RelDay >= -30) %>%
+  ggplot(
+    aes(x = Abx_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Abx_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.5) + 
+  scale_color_manual(values = abx_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from initial antibiotic dose") +
+  ylab("Bray-Curtis distance to 7 pre-antibiotic samples") +
+  ylim(0.05, 0.85)
+
+```
+
+```{r diet-bray-to-baseline, fig.width=8}
+
+diet_bray_to_baseline %>%
+  mutate(Diet_Interval = factor(Diet_Interval, level = names(diet_intv_cols))) %>%
+  filter(Diet_RelDay <= 50) %>%
+  ggplot(
+    aes(x = Diet_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Diet_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = diet_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from diet initiation") +
+  ylab("Bray-Curtis distance to 7 pre-diet samples") 
+
+```
+
+
+```{r diet-bray-to-baseline-zoom, fig.width=8}
+diet_bray_to_baseline %>%
+  mutate(Diet_Interval = factor(Diet_Interval, level = names(diet_intv_cols))) %>%
+  filter(Diet_RelDay <= 30, Diet_RelDay >= -30) %>%
+  ggplot(
+    aes(x = Diet_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Diet_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = diet_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from diet initiation") +
+  ylab("Bray-Curtis distance to 7 pre-diet samples") +
+  ylim(0.05, 0.85)
+
+```
+
+```{r cc-bray-to-baseline, fig.width=8}
+cc_bray_to_baseline %>%
+  mutate(CC_Interval = factor(CC_Interval, level = names(cc_intv_cols))) %>%
+  filter(CC_RelDay >= -50 , CC_RelDay <= 50) %>%
+  ggplot(
+    aes(x = CC_RelDay, y = dist_to_baseline, 
+        group = Subject, color = CC_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = cc_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from colon cleanout") +
+  ylab("Bray-Curtis distance to 7 pre-colon-cleanout samples")
+
+```
+
+```{r cc-bray-to-baseline-zoom, fig.width=8}
+cc_bray_to_baseline %>%
+  mutate(CC_Interval = factor(CC_Interval, level = names(cc_intv_cols))) %>%
+ filter(CC_RelDay >= -30 , CC_RelDay <= 30) %>%
+  ggplot(
+    aes(x = CC_RelDay, y = dist_to_baseline, 
+        group = Subject, color = CC_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = cc_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from colon cleanout") +
+  ylab("Bray-Curtis distance to 7 pre-colon-cleanout samples") +
+  ylim(0.05, 0.85)
+
+```
+
+
+## Jaccard distance
+
+```{r, eval = FALSE}
+abx_jacc_to_baseline <- jacc.df %>%
+  filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, Abx_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(Abx_RelDay = Abx_RelDay_2) %>%
+  left_join(SMP)
+
+diet_jacc_to_baseline <- jacc.df %>%
+  filter(Diet_RelDay_1 >= -7 & Diet_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, Diet_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(Diet_RelDay = Diet_RelDay_2) %>% 
+  left_join(SMP)
+
+cc_jacc_to_baseline <- jacc.df %>%
+  filter(CC_RelDay_1 >= -7 & CC_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, CC_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(CC_RelDay = CC_RelDay_2) %>%
+  left_join(SMP)
+
+
+noItv_jacc_to_baseline <- jacc.df %>%
+  filter(Group == "NoIntv", DaysFromStart_1 >= 0, DaysFromStart_1 <= 10) %>%
+  group_by(Subject, Group, DaysFromStart_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(DaysFromStart = DaysFromStart_2) %>%
+  left_join(SMP) %>%
+  mutate(Interval = as.character(Interval))
+
+jacc_to_baseline <- list(
+  abx_jacc_to_baseline %>% mutate(Interval = Abx_Interval, RelDay = Abx_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  diet_jacc_to_baseline %>% mutate(Interval = Diet_Interval, RelDay = Diet_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  cc_jacc_to_baseline %>% mutate(Interval = CC_Interval, RelDay = CC_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  noItv_jacc_to_baseline %>% mutate(RelDay = DaysFromStart) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline)
+)
+names(jacc_to_baseline) <- c("Abx", "Diet", "CC", "NoIntv")
+jacc_to_baseline <- plyr::ldply(jacc_to_baseline, function(df) df, .id = "perturbation") %>%
+  mutate(Interval = factor(Interval, levels = names(intv_cols)))
+
+save(list = c("brayD.ihs", "bray.df", "bray_to_baseline",
+              "jaccardD", "jacc.df", "jacc_to_baseline",
+              "uniFracD.lst", "uniFrac.df"),
+     file = "output/pairwise_dist_to_baseline_subj_16S.rda")
+
+```
+
+```{r jacc-to-baseline, fig.width=8}
+jacc_to_baseline %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.2) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, scales = "free_x") +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("Jaccard distance to baseline") 
+
+```
+
+```{r jacc-to-baseline-perturb, fig.width=10, fig.height=4}
+jacc_to_baseline %>%
+  filter(perturbation != "NoIntv") %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, scales = "free_x", ncol = 3) +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("Jaccard distance to baseline") 
+
+```
+
+```{r jacc-to-baseline-perturb-zoom, fig.width=10, fig.height=4}
+jacc_to_baseline %>%
+  filter(perturbation != "NoIntv", RelDay <=30, RelDay >= -30) %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, ncol = 3) +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("Jaccard distance to baseline") 
+
+```
+
+
+```{r abx-jacc-to-baseline, fig.width=8}
+abx_jacc_to_baseline %>%
+  mutate(Abx_Interval = factor(Abx_Interval, level = names(abx_intv_cols))) %>%
+  filter(Abx_RelDay >= -50) %>%
+  ggplot(
+    aes(x = Abx_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Abx_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.2) + 
+  scale_color_manual(values = abx_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from initial antibiotic dose") +
+  ylab("Jaccard distance to 7 pre-antibiotic samples")
+```
+
+
+```{r abx-jacc-to-baseline-zoom, fig.width=8}
+abx_jacc_to_baseline %>%
+  mutate(Abx_Interval = factor(Abx_Interval, level = names(abx_intv_cols))) %>%
+  filter(Abx_RelDay <= 30, Abx_RelDay >= -30) %>%
+  ggplot(
+    aes(x = Abx_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Abx_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.5) + 
+  scale_color_manual(values = abx_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from initial antibiotic dose") +
+  ylab("Jaccard distance to 7 pre-antibiotic samples") +
+  ylim(0.1, 1.0)
+
+```
+
+```{r diet-jacc-to-baseline, fig.width=8}
+
+diet_jacc_to_baseline %>%
+  mutate(Diet_Interval = factor(Diet_Interval, level = names(diet_intv_cols))) %>%
+  filter(Diet_RelDay <= 50) %>%
+  ggplot(
+    aes(x = Diet_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Diet_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = diet_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from diet initiation") +
+  ylab("Jaccard distance to 7 pre-diet samples")
+
+```
+
+
+```{r diet-jacc-to-baseline-zoom, fig.width=8}
+diet_jacc_to_baseline %>%
+  mutate(Diet_Interval = factor(Diet_Interval, level = names(diet_intv_cols))) %>%
+  filter(Diet_RelDay <= 30, Diet_RelDay >= -30) %>%
+  ggplot(
+    aes(x = Diet_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Diet_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = diet_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from diet initiation") +
+  ylab("Jaccard distance to 7 pre-diet samples") +
+  ylim(0.1, 1.0)
+
+```
+
+```{r cc-jacc-to-baseline, fig.width=8}
+cc_jacc_to_baseline %>%
+  mutate(CC_Interval = factor(CC_Interval, level = names(cc_intv_cols))) %>%
+  filter(CC_RelDay >= -50 , CC_RelDay <= 50) %>%
+  ggplot(
+    aes(x = CC_RelDay, y = dist_to_baseline, 
+        group = Subject, color = CC_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = cc_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from colon cleanout") +
+  ylab("Jaccard distance to 7 pre-colon-cleanout samples")
+
+```
+
+```{r cc-jacc-to-baseline-zoom, fig.width=8}
+cc_jacc_to_baseline %>%
+  mutate(CC_Interval = factor(CC_Interval, level = names(cc_intv_cols))) %>%
+ filter(CC_RelDay >= -30 , CC_RelDay <= 30) %>%
+  ggplot(
+    aes(x = CC_RelDay, y = dist_to_baseline, 
+        group = Subject, color = CC_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = cc_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from colon cleanout") +
+  ylab("Jaccard distance to 7 pre-colon-cleanout samples") +
+  ylim(0.1, 1.0)
+
+```
+
+
+## (Unweighted) UniFrac
+
+
+```{r, eval = FALSE}
+abx_uniFrac_to_baseline <- uniFrac.df %>%
+  filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, Abx_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(Abx_RelDay = Abx_RelDay_2) %>%
+  left_join(SMP)
+
+diet_uniFrac_to_baseline <- uniFrac.df %>%
+  filter(Diet_RelDay_1 >= -7 & Diet_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, Diet_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(Diet_RelDay = Diet_RelDay_2) %>% 
+  left_join(SMP)
+
+cc_uniFrac_to_baseline <- uniFrac.df %>%
+  filter(CC_RelDay_1 >= -7 & CC_RelDay_1 <= 0) %>%
+  group_by(Subject, Group, CC_RelDay_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(CC_RelDay = CC_RelDay_2) %>%
+  left_join(SMP)
+
+
+noItv_uniFrac_to_baseline <- uniFrac.df %>%
+  filter(Group == "NoIntv", DaysFromStart_1 >= 0, DaysFromStart_1 <= 10) %>%
+  group_by(Subject, Group, DaysFromStart_2) %>%
+  summarize(dist_to_baseline = mean(dist)) %>%
+  rename(DaysFromStart = DaysFromStart_2) %>%
+  left_join(SMP) %>%
+  mutate(Interval = as.character(Interval))
+
+uniFrac_to_baseline <- list(
+  abx_uniFrac_to_baseline %>% mutate(Interval = Abx_Interval, RelDay = Abx_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  diet_uniFrac_to_baseline %>% mutate(Interval = Diet_Interval, RelDay = Diet_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  cc_uniFrac_to_baseline %>% mutate(Interval = CC_Interval, RelDay = CC_RelDay) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline),
+  noItv_uniFrac_to_baseline %>% mutate(RelDay = DaysFromStart) %>%
+    select(Meas_ID, Subject, Group, Interval, RelDay, dist_to_baseline)
+)
+names(uniFrac_to_baseline) <- c("Abx", "Diet", "CC", "NoIntv")
+uniFrac_to_baseline <- plyr::ldply(uniFrac_to_baseline, function(df) df, .id = "perturbation") %>%
+  mutate(Interval = factor(Interval, levels = names(intv_cols)))
+
+save(list = c("brayD.ihs", "bray.df", "bray_to_baseline",
+              "jaccardD", "jacc.df", "jacc_to_baseline",
+              "uniFracD.lst", "uniFrac.df", "uniFrac_to_baseline"),
+     file = "output/pairwise_dist_to_baseline_subj_16S.rda")
+
+```
+
+```{r uniFrac-to-baseline, fig.width=8}
+uniFrac_to_baseline %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.2) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, scales = "free_x") +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("UniFrac distance to baseline") 
+
+```
+
+```{r uniFrac-to-baseline-perturb, fig.width=10, fig.height=4}
+uniFrac_to_baseline %>%
+  filter(perturbation != "NoIntv") %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, scales = "free_x", ncol = 3) +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("UniFrac distance to baseline") 
+
+```
+
+```{r uniFrac-to-baseline-perturb-zoom, fig.width=10, fig.height=4}
+uniFrac_to_baseline %>%
+  filter(perturbation != "NoIntv", RelDay <=30, RelDay >= -30) %>%
+  ggplot(
+    aes(x = RelDay, y = dist_to_baseline, 
+        group = Subject, color = Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1) + 
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(~ perturbation, ncol = 3) +
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  perturbation") +
+  ylab("UniFrac distance to baseline") 
+
+```
+
+
+```{r abx-uniFrac-to-baseline, fig.width=8}
+abx_uniFrac_to_baseline %>%
+  mutate(Abx_Interval = factor(Abx_Interval, level = names(abx_intv_cols))) %>%
+  filter(Abx_RelDay >= -50) %>%
+  ggplot(
+    aes(x = Abx_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Abx_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.2) + 
+  scale_color_manual(values = abx_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from initial antibiotic dose") +
+  ylab("UniFrac distance to 7 pre-antibiotic samples")
+```
+
+
+```{r abx-uniFrac-to-baseline-zoom, fig.width=8}
+abx_uniFrac_to_baseline %>%
+  mutate(Abx_Interval = factor(Abx_Interval, level = names(abx_intv_cols))) %>%
+  filter(Abx_RelDay <= 30, Abx_RelDay >= -30) %>%
+  ggplot(
+    aes(x = Abx_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Abx_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.5, size = 1.5) + 
+  scale_color_manual(values = abx_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from initial antibiotic dose") +
+  ylab("UniFrac distance to 7 pre-antibiotic samples") +
+  ylim(0.1, 1.0)
+
+```
+
+```{r diet-uniFrac-to-baseline, fig.width=8}
+
+diet_uniFrac_to_baseline %>%
+  mutate(Diet_Interval = factor(Diet_Interval, level = names(diet_intv_cols))) %>%
+  filter(Diet_RelDay <= 50) %>%
+  ggplot(
+    aes(x = Diet_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Diet_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = diet_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from  diet initiation") +
+  ylab("UniFrac distance to 7 pre-diet samples")
+
+```
+
+
+```{r diet-uniFrac-to-baseline-zoom, fig.width=8}
+diet_uniFrac_to_baseline %>%
+  mutate(Diet_Interval = factor(Diet_Interval, level = names(diet_intv_cols))) %>%
+  filter(Diet_RelDay <= 30, Diet_RelDay >= -30) %>%
+  ggplot(
+    aes(x = Diet_RelDay, y = dist_to_baseline, 
+        group = Subject, color = Diet_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = diet_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from diet initiation") +
+  ylab("UniFrac distance to 7 pre-diet samples") +
+  ylim(0.1, 1.0)
+
+```
+
+```{r cc-uniFrac-to-baseline, fig.width=8}
+cc_uniFrac_to_baseline %>%
+  mutate(CC_Interval = factor(CC_Interval, level = names(cc_intv_cols))) %>%
+  filter(CC_RelDay >= -50 , CC_RelDay <= 50) %>%
+  ggplot(
+    aes(x = CC_RelDay, y = dist_to_baseline, 
+        group = Subject, color = CC_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = cc_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from colon cleanout") +
+  ylab("UniFrac distance to 7 pre-colon-cleanout samples")
+
+```
+
+```{r cc-uniFrac-to-baseline-zoom, fig.width=8}
+cc_uniFrac_to_baseline %>%
+  mutate(CC_Interval = factor(CC_Interval, level = names(cc_intv_cols))) %>%
+ filter(CC_RelDay >= -30 , CC_RelDay <= 30) %>%
+  ggplot(
+    aes(x = CC_RelDay, y = dist_to_baseline, 
+        group = Subject, color = CC_Interval)) +
+  geom_line(aes(group = Subject), alpha = 0.7, lwd = 0.5) + 
+  geom_point(alpha = 0.7, size = 1.2) + 
+  scale_color_manual(values = cc_intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  xlab("Days from colon cleanout") +
+  ylab("UniFrac distance to 7 pre-colon-cleanout samples") +
+  ylim(0.1, 1.0)
+
+```
+
+
+
+
+```{r}
+sessionInfo()
+```
+

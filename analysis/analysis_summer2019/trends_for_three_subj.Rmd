@@ -357,8 +357,6 @@ knitr::kable(metab_response_cc_up)
 
 
 ```{r,fig.width=6, fig.height=3}
-
-
 count <- metab_response_cc_up %>%
   select(up, BIOCHEMICAL, Subject) %>%
   left_join(assayData, by = c("up" = "identifier", "Subject")) %>%

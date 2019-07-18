@@ -1,0 +1,581 @@
+---
+title: "Ordination Plot"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("phyloseq")
+library("RColorBrewer")
+library("tidyverse")
+datadir <- "../../data/"
+curdir <- getwd()
+```
+
+
+# Load data
+
+## Amplicon 16S data
+
+```{r}
+# File generated in /perturbation_16s/analysis/analysis_summer2019/generate_phyloseq.rmd
+ps <- readRDS("../../data/16S/phyloseq/perturb_physeq_decontam_15Jul19.rds")
+ps
+```
+
+
+
+# PCA {#pca .unnumbered}
+
+## Standard PCA {#pca .unnumbered}
+
+```{r}
+taxtab <- data.frame(tax_table(ps)) %>%
+  mutate(Seq_ID = rownames((.)))
+```
+
+```{r pca, eval = FALSE}
+# Compute PCA 
+pca.ihs <- prcomp(t(asinh(norm_counts)), scale = FALSE)
+save(list = c("pca.ihs"), file = resfile)
+```
+
+
+```{r}
+library("factoextra")
+library("ggrepel")
+fviz_eig(pca.ihs)
+```
+
+```{r pca-subj, fig.height=10, fig.width=14}
+fviz_pca_ind(pca.ihs, habillage= SMP$Subject, 
+             label = "none", geom = "point", pointshape = 16, 
+             addEllipses = TRUE, ellipse.level = 0.6) + 
+  coord_fixed(pca.ihs$sdev[2]/pca.ihs$sdev[1])
+```
+
+
+```{r}
+nPC <- 5
+loadings <- pca.ihs$rotation[, 1:nPC] %>%
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  rownames_to_column("Seq_ID") %>%
+  left_join(taxtab)
+
+scores <- pca.ihs$x[, 1:nPC] %>%
+  as.data.frame() %>%
+  rownames_to_column("Meas_ID") %>%
+  left_join(SMP) %>%
+  arrange(Group, Subject, Samp_Date)  %>%
+  mutate(constant = "constant")
+```
+
+
+```{r pca-intv, fig.height=7, fig.width=14}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Interval", eigs = pca.ihs$sdev^2) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right")
+```
+
+```{r pca-intv-3-4, fig.height=9, fig.width=12}
+plot_projection(
+  scores, xname = "PC3", yname = "PC4", labname = NULL,
+  size = 2, color = "Interval", eigs = pca.ihs$sdev^2) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right")
+```
+
+```{r pca-loadings, fig.height=10, fig.width=15}
+plt <- plot_projection(
+  loadings, xname = "PC1", yname = "PC2", size = "PC3",
+  color = "Class", eigs = pca.ihs$sdev^2, alpha = 0.5
+  ) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter((PC1^2 + PC2^2) > 0.006), 
+    aes(label = Genus),
+    nudge_y = 0.002) +
+  theme(legend.position = "right")
+print(plt)
+```
+
+
+```{r pca-subj-time, fig.height=40, fig.width=20, warning = FALSE}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "PC1", yname = "PC2", 
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
+```
+
+Centering the subjects
+
+```{r}
+subject_scores <- scores %>%
+  select(Subject, PC1:PC5) %>%
+  group_by(Subject) %>%
+  summarise_all(mean)
+
+scores_centered <- scores %>%
+  left_join(subject_scores, by = c("Subject"), suffix = c("", ".subj")) %>%
+  mutate(
+    PC1 = PC1 - PC1.subj,
+    PC2 = PC2 - PC2.subj,
+    PC3 = PC3 - PC3.subj,
+    PC4 = PC4 - PC4.subj,
+    PC5 = PC5 - PC5.subj
+  )
+```
+
+```{r pca-intv-centered-abx, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(4, "Set1"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Abx_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Abx_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidAbx"), 
+    aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+```{r pca-intv-centered-diet, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(3, "Dark2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Diet_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "Diet_Interval", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidDiet"), aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+```{r pca-intv-centered-cc, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(2, "Set2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$CC_Interval), "NoInterv")))
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.9) +
+   scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+```{r pca-intv-centered-time, fig.height=6, fig.width=14}
+plot_projection(
+  scores_centered, xname = "PC1", yname = "PC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = pca.ihs$sdev^2, alpha = 0.5) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+## Sparse PCA {#spase-pca .unnumbered}
+
+
+```{r eval = FALSE}
+sparse_pca <- PMA::SPC(
+  scale(t(asinh(norm_counts)), center = TRUE, scale = FALSE), 
+  K = 10, sumabsv = 10)
+save(list = c("pca.ihs", "sparse_pca"), file = resfile)
+```
+
+
+
+```{r}
+sparse_loadings <- data.frame(taxa_names(ps), sparse_pca$v)
+colnames(sparse_loadings) <- c("Seq_ID", paste0("sPC", 1:ncol(sparse_pca$v)))
+
+sparse_scores <- data.frame(sample_names(ps), sparse_pca$u)
+colnames(sparse_scores) <- c("Meas_ID", paste0("sPC", 1:ncol(sparse_pca$u)))
+
+loadings <- loadings %>%
+  left_join(sparse_loadings)
+
+scores <- scores %>%
+  left_join(sparse_scores) 
+```
+
+
+
+```{r}
+var.exp <- c(sparse_pca$prop.var.explained[1], 
+             diff(sparse_pca$prop.var.explained))
+
+ggplot(
+  data.frame(k = seq_along(sparse_pca$d),
+             eig = sparse_pca$d^2, 
+             percent.var.exp = 100* var.exp)) +
+  geom_bar(aes(x = k, y = percent.var.exp), stat = "identity")
+```
+
+```{r spca-group, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Group", eigs = spca_var) +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "right")
+```
+
+```{r spca-subj, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Subject", eigs = spca_var) +
+  #scale_color_manual(values = cols) +
+  theme(legend.position = "right")
+```
+
+
+```{r spca-intv, fig.height=7, fig.width=14}
+spca_var <- c(var.exp, 1-sum(var.exp))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Interval", eigs = spca_var) +
+  scale_color_manual(values = cols_itv) +
+  theme(legend.position = "right")
+```
+
+```{r spca-loadings, fig.height=10, fig.width=18}
+plt <- plot_projection(
+  loadings, xname = "sPC1", yname = "sPC2", size = "sPC3",
+  color = "Class", eigs = spca_var, alpha = 0.5) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter((sPC1^2 + sPC2^2) > 0.006), 
+    aes(label = Genus),
+    nudge_y = 0.002, size = 5) +
+  theme(legend.position = "right")
+print(plt)
+```
+
+```{r spca-subj-time, fig.height=40, fig.width=20, warning = FALSE}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "sPC1", yname = "sPC2",
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
+```
+
+Centering the subjects
+
+```{r}
+subject_scores <- scores %>%
+  select(Subject, sPC1:sPC10) %>%
+  group_by(Subject) %>%
+  summarise_all(mean)
+
+scores_centered <- scores_centered %>%
+  left_join(sparse_scores) %>%
+  left_join(subject_scores, by = c("Subject"), suffix = c("", ".subj")) 
+
+for(sPC in paste0("sPC", 1:10)) {
+  scores_centered[, sPC] <- scores_centered[, sPC] - 
+    scores_centered[, paste0(sPC, ".subj")]
+}
+```
+
+```{r spca-intv-centered-abx, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(4, "Set1"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Abx_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Abx_Interval", eigs = spca_var, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidAbx"), 
+    aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+```{r spca-intv-centered-diet, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(3, "Dark2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$Diet_Interval), "NoInterv")))
+
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "Diet_Interval", eigs = spca_var, alpha = 0.5) +
+  geom_point(
+    data = scores_centered %>% 
+      filter(Interval == "MidDiet"), aes(color = Interval),
+    size = 2, alpha = 0.7) +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+```{r spca-intv-centered-cc, fig.height=6, fig.width=14}
+cols <- c("grey77", brewer.pal(2, "Set2"))
+names(cols) <- c("NoInterv", sort(setdiff(unique(scores$CC_Interval), "NoInterv")))
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "CC_Interval", eigs = pca.ihs$sdev^2, alpha = 0.9) +
+   scale_color_manual(values = cols) +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+```{r spca-intv-centered-time, fig.height=6, fig.width=12}
+plot_projection(
+  scores_centered, xname = "sPC1", yname = "sPC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = spca_var, alpha = 0.5) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+```{r sPC1, fig.height=8, fig.width=12}
+ggplot(loadings %>% filter(abs(sPC1) > 1e-2),
+       aes(y = Genus, x = sPC1)) +
+  geom_jitter(
+    aes(color = Family),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom") 
+```
+
+
+```{r sPC2, fig.height=8, fig.width=12}
+ggplot(loadings %>% filter(abs(sPC2) > 1e-2),
+       aes(x = Genus, y = sPC2)) +
+  geom_jitter(
+    aes(color = Family),
+    height = 0, width = 0.2, size = 2) +
+  geom_vline(xintercept = 0, lty= 2, color = "grey55") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "bottom")
+
+```
+
+
+# adaptiveGPCA {#agPCA .unnumbered}
+
+
+```{r, echo = FALSE, eval = FALSE}
+library("adaptiveGPCA")
+pp <- processPhyloseq(ps_asinh)
+out.agpca <- adaptivegpca(pp$X, pp$Q, k = 5)
+
+# out.ff = gpcaFullFamily(pp$X, pp$Q, k = 2)
+# out.agpca <- 
+#   visualizeFullFamily(out.ff,
+#                       sample_data = sample_data(ps),
+#                       sample_mapping = aes(x = Axis1, y = Axis2, color = type),
+#                       var_data = tax_table(ps),
+#                       var_mapping = aes(x = Axis1, y = Axis2, color = Class))
+
+
+```
+
+```{r}
+agpca_scores <- data.frame(sample_names(ps), out.agpca$U)
+colnames(agpca_scores) <- c("Meas_ID", paste0("agPC", 1:ncol(out.agpca$U)))
+
+agpca_loadings <- data.frame(taxa_names(ps), out.agpca$QV) 
+colnames(agpca_loadings) <- c("Seq_ID", paste0("agPC", 1:ncol(out.agpca$QV)))
+
+scores <- scores %>%
+  left_join(agpca_scores) 
+
+loadings <- loadings %>%
+  left_join(agpca_loadings) 
+```
+
+```{r agpca-subj, echo = FALSE, fig.height=7, fig.width=14}
+plot_projection(
+  scores, xname = "agPC1", yname = "agPC2", labname = NULL,
+  size = 2, color = "Subject", eigs = out.agpca$vars, alpha = 0.7) +
+  theme(legend.position = "right") 
+```
+
+
+```{r agpca-loadings, fig.height=12, fig.width=12}
+plt <- plot_projection(
+  loadings, xname = "agPC1", yname = "agPC2", size = "agPC3",
+  color = "Class", eigs = out.agpca$vars, alpha = 0.5) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter( (agPC1^2 + agPC2^2) > 0.0006), 
+    aes(label = Genus),
+    nudge_y = 0.002, size = 5) +
+  theme(legend.position = "right")
+print(plt)
+```
+
+
+```{r agpca-time,  fig.height=10, fig.width=15}
+plot_projection(
+  scores, xname = "agPC1", yname = "agPC2", labname = NULL,
+  size = 2, color = "DaysFromStart", eigs = out.agpca$vars, alpha = 0.7) +
+  scale_color_viridis(trans = "sqrt") +
+  theme(legend.position = "right") +
+  facet_wrap(~Group)
+```
+
+
+# tSNE {#tsne .unnumbered}
+
+
+
+```{r, eval = FALSE}
+set.seed(123)
+norm_ihs <- t(asinh(norm_counts))
+rtsne.norm.ihs <- Rtsne::Rtsne(
+  norm_ihs, dims = 2, initial_dims = 50, perplexity = 50, 
+  is_distance = FALSE, pca = TRUE, eta = 200, exaggeration_factor = 12)
+save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs"), 
+     file = resfile)
+```
+
+
+```{r, eval = FALSE}
+brayD.ihs <- phyloseq::distance(ps_asinh, method = "bray")
+set.seed(123)
+rtsne.bray.ihs <- Rtsne::Rtsne(
+  brayD.ihs, is_distance = TRUE, dims = 2, perplexity = 50, 
+  pca = FALSE, eta = 200, exaggeration_factor = 12)
+save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs", 
+              "brayD.ihs", "rtsne.bray.ihs"), 
+     file = resfile)
+```
+
+
+```{r, eval = FALSE}
+tsne_scores <- data.frame(
+  Meas_ID = sample_names(ps),
+  tSNE1 = rtsne.norm.ihs$Y[, 1],
+  tSNE2 = rtsne.norm.ihs$Y[, 2],
+  tSNE1_bray = rtsne.bray.ihs$Y[, 1],
+  tSNE2_bray = rtsne.bray.ihs$Y[, 2],
+  tSNE1_centered = rtsne.centered.ihs$Y[, 1], 
+  tSNE2_centered = rtsne.centered.ihs$Y[, 2]) 
+
+scores <- scores %>%
+  left_join(tsne_scores)
+```
+
+
+```{r tsne-subj, fig.height=10, fig.width=14}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2",
+  labname = NULL, size = 2, color = "Subject") +
+  theme(legend.position = "right")
+```
+
+
+```{r tsne-itv, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2",
+  labname = NULL, size = 2, color = "Interval") +
+  theme(legend.position = "right")
+```
+
+
+```{r tsne-time, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2", 
+  labname = NULL, size = 2,  color = "DaysFromStart") + 
+  theme(legend.position = "right") +
+  scale_color_viridis() 
+```
+
+
+```{r tsne-subj-time, fig.height=40, fig.width=20, warning = FALSE}
+cols <- c("grey77", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols) <- c("NoInterv", setdiff(unique(scores$Interval), "NoInterv"))
+plot_projection(
+  scores, xname = "tSNE1", yname = "tSNE2", 
+  labname = NULL, size = 3, color = "Interval") +
+  geom_point(
+    data = scores %>% 
+      filter(grepl("Mid", Interval)), 
+    aes(fill = Interval),
+    size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group ~ Subject, scales = "free", ncol = 5) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols[grepl("Mid", names(cols))])
+```
+
+
+
+```{r tsne-centered-subj, fig.height=10, fig.width=14}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered",
+  labname = NULL, size = 2, color = "Subject") +
+  theme(legend.position = "right")
+```
+
+```{r tsne-centered-itv, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered",
+  labname = NULL, size = 2, color = "Interval") +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "right")
+```
+
+
+```{r tsne-centered-time, fig.height=10, fig.width=12}
+plot_projection(
+  scores, xname = "tSNE1_centered", yname = "tSNE2_centered", 
+  labname = NULL, size = 2,  color = "DaysFromStart") + 
+  theme(legend.position = "right") +
+  scale_color_viridis() 
+```
+
+
+
+
+```{r, eval = FALSE}
+save(list = c("pca.ihs", "sparse_pca","rtsne.norm.ihs", 
+              "brayD.ihs", "rtsne.bray.ihs", "pp", "out.agpca",
+              "scores", "loadings", "scores_centered"), 
+     file = resfile)
+```
+
+
+```{r}
+sessionInfo()
+```
+
+

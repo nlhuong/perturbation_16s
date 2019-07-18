@@ -59,8 +59,6 @@ theme_update(
 ```
 
 
-
-
 # Load data
 
 

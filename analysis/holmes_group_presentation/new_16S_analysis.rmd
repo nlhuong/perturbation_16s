@@ -145,13 +145,15 @@ head(subj_data)
 
 ```{r eval = FALSE}
 meas_info <- meas %>%
-  left_join(samp) %>%
-  left_join(subj_data) 
-write.csv(meas_info, file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"))
+  left_join(samp, by = c("Samp_ID")) %>%
+  left_join(subj_data, by = "Subject") %>%
+  select(-Event_Code.x) %>%
+  rename(Event_Code = Event_Code.y)
+write.csv(meas_info, file.path(datadir, "sample_info/meas_info_15July2019.csv"))
 ```
 
 ```{r, eval = FALSE}
-meas_info <- read.csv( file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"), row.names = 1) %>%
+meas_info <- read.csv( file.path(datadir, "sample_info/meas_info_15July2019.csv"), row.names = 1) %>%
   mutate_at(.vars = vars(contains("Date")), 
             .funs = function(x) {as.Date(as.character(x), "%Y-%m-%d")}) 
 head(meas_info)
@@ -170,12 +172,12 @@ Fix one incorrect first sample date:
 meas_info <- meas_info %>%
   left_join(start_dates) %>%
   mutate(DaysFromStart = as.numeric(Samp_Date - Real_First_Sample_Date ))
-write.csv(meas_info,  file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"))
+write.csv(meas_info,  file.path(datadir, "sample_info/meas_info_15July2019.csv"))
 ```
 
 
 ```{r}
-meas_info <- read.csv( file.path(datadir, "sample_info/Mapping_File_19Oct2018.xlsx"), row.names = 1) 
+meas_info <- read.csv( file.path(datadir, "sample_info/meas_info_15July2019.csv"), row.names = 1) 
 smp_modality_count <- meas_info %>%
   select(Meas_ID, Samp_ID, Meas_Type) %>%
   group_by(Samp_ID) %>%
@@ -400,8 +402,9 @@ ps_combined
 ```
 
 ```{r, eval=FALSE}
-physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_10Jul18.rds")
+physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_15Jul19.rds")
 saveRDS(ps_combined, file = physeqfile)
+#otu_table()   OTU Table:         [ 19638 taxa and 4561 samples ]
 ```
 
 
@@ -413,11 +416,12 @@ Preprocess Data {#preprocess .unnumbered}
 
 
 ```{r, eval = FALSE}
-physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_10Jul18.rds")
+physeqfile <- file.path(datadir, "16S/phyloseq/perturb_physeq_15Jul19.rds")
 ps0 <- readRDS(file = physeqfile)
 SMP <- data.frame(ps0@sam_data, stringsAsFactors = FALSE) %>%
   mutate(SampleDepth = sample_sums(ps0))
 ps0
+# otu_table()   OTU Table:         [ 19638 taxa and 4561 samples ]
 ```
 
 
@@ -462,21 +466,39 @@ subjects_prevalence <- num_subj_present(ps)
 # Filter taxa present in more than 1 subject
 ps <- subset_taxa(ps, subjects_prevalence >= minTaxaSubjPrev)
 ps
+# otu_table()   OTU Table:         [ 2435 taxa and 4521 samples ]
 ```
+
+
 
 Filter samples {#filter .unnumbered} 
 ---------------------------------
+
+```{r, eval = FALSE}
+minSampleSum <- 1e4
+ps <- subset_samples(ps, sample_sums(ps) > minSampleSum)
+ps
+# otu_table()   OTU Table:         [ 2435 taxa and 4415 samples ]
+```
+
+
+```{r eval = FALSE}
+saveRDS(ps, file = file.path(datadir, "16S/phyloseq/perturb_physeq_fltr2435_15Jul19.rds"))
+```
 
 We then separate the subject data and the negative controls:
 
 ```{r, eval = FALSE}
 pscontrols <- subset_samples(ps, Subject == "NA_QC" | is.na(Subject))
 pscontrols
+# otu_table()   OTU Table:         [ 2435 taxa and 13 samples ]
 ```
 
 ```{r, eval = FALSE}
-ps <- subset_samples(ps, Subject != "NA_QC" & !is.na(Subject))
-ps
+psparticipants <- subset_samples(ps, Subject != "NA_QC" & !is.na(Subject))
+psparticipants
+# otu_table()   OTU Table:         [ 2435 taxa and 4402 samples ]
+
 ```
 
 
@@ -485,25 +507,19 @@ We filter the subject samples which have total number of counts less than 10k re
 
 ```{r, eval = FALSE}
 minSampleSum <- 1e4
-ps <- subset_samples(ps, sample_sums(ps) > minSampleSum)
-ps
+psparticipants <- subset_samples(psparticipants, sample_sums(psparticipants) > minSampleSum)
+psparticipants
+# otu_table()   OTU Table:         [ 2435 taxa and 4402 samples ]
 ```
 
-Remove contamination:
-
-```{r}
-# TODO
+```{r eval = FALSE}
+saveRDS(pscontrols, file = file.path(datadir, "16S/phyloseq/perturb_physeq_controls_fltr2435_15Jul19.rds"))
 ```
 
-
-```{r}
-SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
-  mutate(SampleDepth = sample_sums(ps))
-  
-SUBJ <-  SMP %>%
-  select(Subject, Group, Age:BMI) %>%
-  distinct()
+```{r eval = FALSE}
+saveRDS(psparticipants, file = file.path(datadir, "16S/phyloseq/perturb_physeq_participants_fltr2435_15Jul19.rds"))
 ```
+
 
 
 Estimate the phylo tree {#phylo-tree .unnumbered} 
@@ -514,9 +530,20 @@ Go to code in
 and see how the tree was estimated.
 
 ```{r eval = FALSE}
-load(file.path(datadir, "16S/phyloseq/phylo_fit.rda"))
+load(file.path(datadir, "16S/phyloseq/phylo_fit_fltr2435_15Jul19.rda"))
 phy_tree(ps) <- rootedGTRtree
+phy_tree(pscontrols) <- rootedGTRtree
+phy_tree(psparticipants) <- rootedGTRtree
 ```
+
+```{r eval = FALSE}
+saveRDS(pscontrols, file = file.path(datadir, "16S/phyloseq/perturb_physeq_controls_fltr2435_15Jul19.rds"))
+```
+
+```{r eval = FALSE}
+saveRDS(psparticipants, file = file.path(datadir, "16S/phyloseq/perturb_physeq_participants_fltr2435_15Jul19.rds"))
+```
+
 
 ```{r}
 # Assign colors to taxa
@@ -550,7 +577,7 @@ taxa_col <- tibble(
 ```{r phylotree, fig.height=10, fig.width=15}
 default_par <- par()
 par(mar=c(7,1,1,1), xpd = TRUE)
-plot(ps@phy_tree, label.offset=0.7, show.tip.label = FALSE, 
+plot(psparticipants@phy_tree, label.offset=0.7, show.tip.label = FALSE, 
      direction = "downwards") 
 par(mar=c(1,1,1,1), xpd = TRUE)
 ape::tiplabels(pch=21, col="black", adj=1, bg=taxa_col$color, cex=1) 
@@ -558,14 +585,32 @@ legend(x= 600, y = -0.1, legend = taxFreq[[tax_rank]],
        fill = taxFreq$color, ncol = 4, cex = 1.2)
 ```
 
+Decontamination {#decontam .unnumbered} 
+-------------------------------------------------
 
+
+Remove contamination:
+
+```{r}
+# TODO
+```
+
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  SMP %>%
+  select(Subject, Group, Age:BMI) %>%
+  distinct()
+```
 
 Variance Stabilization {#vst .unnumbered} 
 -------------------------------------------------
 
 ```{r, eval = FALSE}
 # Transform counts to not "over-weight" highly abundant taxa
-ps_asinh <- transform_sample_counts(ps, function(x) {asinh(x)})
+#ps_asinh <- transform_sample_counts(ps, function(x) {asinh(x)})
 ```
 
 ```{r, eval = FALSE}
@@ -585,13 +630,10 @@ norm_counts <- counts(dds, normalized = TRUE)
 
 
 ```{r, eval = FALSE}
-save(list = c("ps", "pscontrols", "ps_asinh", "SMP", "SUBJ", "dds", "norm_counts"), 
+save(list = c("ps", "pscontrols", "psparticipants", "SMP", "SUBJ", "dds", "norm_counts"), 
      file = processed_datafile)
 ```
 
-```{r eval = FALSE}
-saveRDS(ps, file = file.path(datadir, "16S/phyloseq/perturb_physeq_fltr2430_17Jul18.rds"))
-```
 
 
 Data Visualization {#dat-vis .unnumbered} 
