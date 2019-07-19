@@ -1,0 +1,199 @@
+---
+title: "Compare responses"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("phyloseq")
+library("RColorBrewer")
+library("tidyverse")
+library("fdapace")
+
+datadir <- "../../data/"
+curdir <- getwd()
+theme_set(theme_bw())
+theme_update(text = element_text(20))
+
+theme_subplot <- theme(
+      legend.position = "none",
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(),
+      panel.background = element_rect(fill = "transparent",colour = NA),
+      plot.background = element_rect(fill = "transparent",colour = NA)
+    )
+
+abx_intv_cols <- c("PreAbx" = "grey60", "MidAbx" = "#E41A1C", 
+                   "PostAbx" = "#00BFC4", "UnpAbx" = "Purple")
+diet_intv_cols <- c("PreDiet" = "grey60", "MidDiet" = "#FD8D3C", 
+                    "PostDiet" = "#4DAF4A")
+cc_intv_cols <- c("PreCC" = "grey60", "PostCC" = "#7A0177") 
+
+intv_cols <- c(abx_intv_cols, diet_intv_cols, cc_intv_cols, "NoInterv" = "grey60")
+```
+
+# Load Data
+
+```{r}
+# File generated in /perturbation_16s/analysis/analysis_summer2019/generate_phyloseq.rmd
+psSubj <- readRDS("../../data/16S/phyloseq/perturb_physeq_participants_decontam_15Jul19.rds")
+psSubj
+# otu_table()   OTU Table:         [ 2425 taxa and 4402 samples ]
+# sample_data() Sample Data:       [ 4402 samples by 40 sample variables ]
+SMP <- data.frame(sample_data(psSubj))
+SUBJ <- SMP %>% select(Subject, Age:BirthYear) %>% distinct()
+```
+
+
+```{r}
+load("output/pairwise_dist_to_baseline_subj_16S.rda")
+load("output/fpca_res.rda")
+load("output/daily_variability.rda")
+alphaDiversity <- readRDS(file = "output/alphaDiversity.rds")
+ls()
+```
+
+
+```{r}
+max_amplitude <- function(df) {
+  df %>%
+    filter(RelDay >= 0, RelDay <= 10) %>%
+    group_by(Subject, perturbation) %>%
+    top_n(n = 1, wt = dist_to_baseline) %>%
+    select(perturbation, RelDay, Subject, dist_to_baseline) %>%
+    rename(max_amplitude = dist_to_baseline)
+}
+
+maxAmp <- lapply(list(bray_to_baseline, jacc_to_baseline, uniFrac_to_baseline), max_amplitude)
+names(maxAmp) <- c("bray", "jacc", "uniFrac")
+
+maxAmp <- plyr::ldply(maxAmp, function(x) x, .id = "metric") 
+
+maxAmp.wide <- maxAmp %>% 
+  select(-RelDay) %>%
+  filter(perturbation != "NoIntv") %>%
+  mutate(Subject = factor(Subject)) %>%
+  spread(key = perturbation, value = max_amplitude)
+maxAmp.wide$not_na <- rowSums(!is.na(maxAmp.wide %>% select(Abx:CC)))
+maxAmp.wide <- maxAmp.wide %>% filter(not_na > 1)
+```
+
+
+```{r}
+startingAlphaDiver <- alphaDiversity %>%
+  filter(Diet_RelDay < 0 | (is.na(Diet_RelDay) & Abx_RelDay < 0)) %>%
+  select(Subject, Observed:PD) %>%
+  group_by(Subject) %>%
+  summarise_all(mean)
+```
+
+
+```{r max-amp-diet-abx, fig.width=8, fig.height=3}
+df <- maxAmp.wide %>%
+  left_join(startingAlphaDiver) 
+df %>%
+  ggplot(aes(x = Abx, y = Diet, label = Subject, color = Shannon)) +
+  geom_text(size = 3) + geom_abline(slope = 1, lty = 2) +
+  facet_wrap(~metric) + 
+  scale_color_viridis_c() +
+  coord_fixed() + xlim(0.15, 0.85) + ylim(0.15, 0.85) + 
+  ggtitle("Maximum amplitude")
+```
+
+```{r max-amp-abx-cc, fig.width=8, fig.height=3}
+df %>%
+  ggplot(aes(x = Abx, y = CC, label = Subject, color = Shannon)) +
+  geom_text(size = 3) + geom_abline(slope = 1, lty = 2) +
+  facet_wrap(~metric) + 
+  scale_color_viridis_c() +
+  coord_fixed() + xlim(0.15, 0.85) + ylim(0.15, 0.85) + 
+  ggtitle("Maximum amplitude")
+```
+
+
+```{r max-amp-cc-diet, fig.width=8, fig.height=3}
+df %>%
+  ggplot(aes(x = CC, y = Diet, label = Subject, color = Shannon)) +
+  geom_text(size = 3) + geom_abline(slope = 1, lty = 2) +
+  facet_wrap(~metric) + 
+  scale_color_viridis_c() +
+  coord_fixed() + xlim(0.15, 0.65) + ylim(0.15, 0.65) + 
+  ggtitle("Maximum amplitude")
+```
+
+```{r}
+df2 <- df %>%  
+  left_join(
+    dailyVar.long %>% filter(interval == "pre") %>% spread(perturb, dist), 
+    by = c("metric", "Subject"), 
+    suffix = c(".max_amp", ".pre_dailyVar")
+)
+```
+
+```{r, abx-var-vs-maxamp, fig.width=8, fig.height=3}
+df2 %>% 
+ggplot(aes(Abx.max_amp, Abx.pre_dailyVar)) +
+  geom_point() +
+  facet_wrap(~metric, scales = "free") +  scale_color_viridis_c() 
+```
+
+
+```{r,abx-ggpair, fig.width=8, fig.height=7, message=FALSE, warning=FALSE}
+df2 %>% 
+  filter(metric == "bray") %>%
+  select(contains("Abx"), Observed:PD, Subject) %>%
+  GGally::ggpairs(mapping = aes(label = Subject), columns = 1:6)
+```
+
+
+```{r diet-ggpair, fig.width=8, fig.height=7, message=FALSE, warning=FALSE}
+df2 %>% 
+  filter(metric == "bray") %>%
+  select(contains("Diet"), Observed:PD, Subject) %>%
+  GGally::ggpairs(mapping = aes(label = Subject), columns = 1:6)
+```
+
+```{r}
+df3 <- dailyVar.long %>% filter(interval == "pre") %>% spread(perturb, dist) %>%
+  left_join(startingAlphaDiver) 
+```
+
+```{r pre-var-diet-abx, fig.width=8, fig.height=3}
+df3 %>%
+  ggplot(aes(x = Abx, y = Diet, label = Subject, color = Shannon)) +
+  geom_text(size = 3) + geom_abline(slope = 1, lty = 2) +
+  facet_wrap(~metric, scales = "free") + 
+  scale_color_viridis_c() +
+  #coord_fixed() +# xlim(0, 0.5) + ylim(0.0, 0.5) + 
+  ggtitle("Pre-perturbation daily variability")
+```
+
+```{r pre-var-cc-abx, fig.width=8, fig.height=3}
+df3 %>%
+  ggplot(aes(x = Abx, y = CC, label = Subject, color = Shannon)) +
+  geom_text(size = 3) + geom_abline(slope = 1, lty = 2) +
+  facet_wrap(~metric, scales = "free") + 
+  scale_color_viridis_c() +
+  #coord_fixed() +# xlim(0, 0.5) + ylim(0.0, 0.5) + 
+  ggtitle("Pre-perturbation daily variability")
+```
+
+
+```{r pre-var-cc-diet, fig.width=8, fig.height=3}
+df3 %>%
+  ggplot(aes(x = CC, y = Diet, label = Subject, color = Shannon)) +
+  geom_text(size = 3) + geom_abline(slope = 1, lty = 2) +
+  facet_wrap(~metric, scales = "free") + 
+  scale_color_viridis_c() +
+  #coord_fixed() +# xlim(0, 0.5) + ylim(0.0, 0.5) + 
+  ggtitle("Pre-perturbation daily variability")
+```
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+

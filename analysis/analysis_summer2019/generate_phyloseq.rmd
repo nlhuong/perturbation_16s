@@ -443,13 +443,12 @@ ps
 ```
 
 
-```{r distr-seq-samples, fig.width=10, fig.height=9}
+```{r distr-seq-samples, fig.width=10, fig.height=10}
 
-df2plot <- data.frame(sample_data(ps)) %>%
+df2plot <- data.frame(sample_data(psSubj)) %>%
   select(Meas_ID, Samp_ID, Subject, Samp_Date, Meas_Type, 
          Group, Interval) %>%
-  mutate(Samp_Date = as.Date(Samp_Date)) %>%
-  filter(!grepl("NA", Subject))
+  mutate(Samp_Date = as.Date(Samp_Date))
 
 
 new_intv_levs <- unique(df2plot$Interval)
@@ -458,10 +457,6 @@ colors <- c("grey57", "red", colors)
 names(colors) <- c("NoInterv", "UnpAbx", 
                    setdiff(new_intv_levs, c("NoInterv", "UnpAbx")))
 df2plot %>% 
-         filter(
-           !(Group %in% c("Abx", "CC", "CC_Abx")),
-           !is.na(Subject), !grepl("QC", Subject), 
-           !(Subject  %in% c("DAG", "DAC"))) %>%
   ggplot() +
   geom_point(
       pch = 124, size = 3,
@@ -653,8 +648,15 @@ table(contamdf.prev05$contaminant)
 tax_table(ps)[which(contamdf.prev05$contaminant)[1:10], 2:7]
 ```
 
-```{r}
+```{r, eval  = FALSE}
 psFamily <- tax_glom(ps, taxrank = "Family")
+family_sum <- taxa_sums(psFamily)
+topFamily <- as(psFamily@tax_table, "matrix")[order(-family_sum)[1:10], "Family"]
+saveRDS(psFamily, file = "output/perturb_physeq_glom_family_15Jul19.rds")
+```
+
+```{r, inlcude  = FALSE}
+psFamily <- readRDS(file = "output/perturb_physeq_glom_family_15Jul19.rds")
 family_sum <- taxa_sums(psFamily)
 topFamily <- as(psFamily@tax_table, "matrix")[order(-family_sum)[1:10], "Family"]
 ```
@@ -687,8 +689,16 @@ ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
 ```
 
 ```{r, fig.width=8, fig.height=6}
-familyfactor <- factor(as(tax_table(ps.pa.pos), "matrix")[, "Family"], levels = topFamily)
-ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=familyfactor)) + geom_point() +
+df.pa <- df.pa %>%
+  rownames_to_column("SeqID") %>%
+  mutate(
+    Family = factor(as(tax_table(ps.pa.pos), "matrix")[, "Family"], levels = topFamily)
+  ) 
+
+df.pa %>%  
+ggplot(aes(x=pa.neg, y=pa.pos, color=Family)) +
+  geom_point(data = df.pa %>%  filter(pa.neg <= 25)) + 
+  geom_text(data = df.pa %>%  filter(pa.neg > 25), aes(label = SeqID)) +
   xlab("Prevalence (Negative Controls)") + ylab("Prevalence (Subject Samples)") +
   theme(legend.position = "right") + theme(legend.position = "bottom") +
   guides(color=guide_legend(ncol=3))
@@ -702,7 +712,7 @@ ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=asinh(taxa.sum))) + geom_point(
 ```
 
 ```{r}
-cross_contam_seqs <- df.pa %>% rownames_to_column("SeqID") %>% filter(pa.neg > 25) %>% .[["SeqID"]]
+cross_contam_seqs <- df.pa %>% filter(pa.neg > 25) %>% .[["SeqID"]]
 knitr::kable(tax_table(ps)[cross_contam_seqs, 5:7])
 ```
 
@@ -713,11 +723,20 @@ ggplot(data=df.pa.mid, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point(
 ```
 
 ```{r, fig.width=8, fig.height=6}
-familyfactor <- factor(as(tax_table(ps.pa.pos), "matrix")[, "Family"], levels = topFamily)
-ggplot(data=df.pa.mid, aes(x=pa.neg, y=pa.pos, color=familyfactor)) + geom_point() +
-  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (Mid Perturbatin Samples)") +
+df.pa.mid <- df.pa.mid %>%
+  rownames_to_column("SeqID") %>%
+  mutate(
+    Family = factor(as(tax_table(ps.pa.pos.mid), "matrix")[, "Family"], levels = topFamily)
+  ) 
+
+df.pa.mid %>%  
+ggplot(aes(x=pa.neg, y=pa.pos, color=Family)) +
+  geom_point(data = df.pa.mid %>%  filter(pa.neg <= 25)) + 
+  geom_text(data = df.pa.mid %>%  filter(pa.neg > 25), aes(label = SeqID)) +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (Subject Samples)") +
   theme(legend.position = "right") + theme(legend.position = "bottom") +
   guides(color=guide_legend(ncol=3))
+
 
 ```
 
@@ -728,7 +747,7 @@ ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=asinh(taxa.sum))) + geom_point(
 ```
 
 ```{r}
-cross_contam_seqs_mid_perturb <- df.pa.mid %>% rownames_to_column("SeqID") %>% 
+cross_contam_seqs_mid_perturb <- df.pa.mid %>% 
   filter(pa.neg > 25, pa.pos > 300) %>% .[["SeqID"]]
 knitr::kable(tax_table(ps)[cross_contam_seqs_mid_perturb, 5:7])
 ```

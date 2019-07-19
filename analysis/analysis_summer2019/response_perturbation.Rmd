@@ -58,6 +58,9 @@ ls()
 Mean shift from baseline samples [-7, 0] measured with Bray-Curtis distance.
 
 ```{r, eval = FALSE}
+bray.df <- bray.df %>%
+  filter(Sample_1 != Sample_2)
+
 abx_bray_to_baseline <- bray.df %>%
   filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
   group_by(Subject, Group, Abx_RelDay_2) %>%
@@ -281,6 +284,8 @@ cc_bray_to_baseline %>%
 ## Jaccard distance
 
 ```{r, eval = FALSE}
+jacc.df <- jacc.df %>% filter(Sample_1 != Sample_2)
+
 abx_jacc_to_baseline <- jacc.df %>%
   filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
   group_by(Subject, Group, Abx_RelDay_2) %>%
@@ -495,6 +500,8 @@ cc_jacc_to_baseline %>%
 
 
 ```{r, eval = FALSE}
+
+uniFrac.df <- uniFrac.df %>% filter(Sample_1 != Sample_2)
 abx_uniFrac_to_baseline <- uniFrac.df %>%
   filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
   group_by(Subject, Group, Abx_RelDay_2) %>%

@@ -176,9 +176,9 @@ dailyVar <- dailyVar.bray %>% left_join(dailyVar.jacc) %>% left_join(dailyVar.un
 
 
 
-```{r dailyvar-with-noitv, fig.width=8, fig.height=6}
+```{r dailyvar-with-noitv, fig.width=8, fig.height=8}
 dailyVar.long <- dailyVar %>%
-  gather(key = "metric", value = "dist", jacc:uniFrac) 
+  gather(key = "metric", value = "dist", bray:uniFrac) 
 
 dailyVar.long %>%
   ggplot(aes(y = dist, x = perturb, color = interval)) +
