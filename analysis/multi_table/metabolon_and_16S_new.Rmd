@@ -1,0 +1,370 @@
+---
+title: "Combining 16S and Metabolon Data_new"
+author: 
+  - name: Lan Huong Nguyen
+affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+  toc_float: true
+df_print: paged
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+rm(list = ls())
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/multitable/", 
+  dev='png') 
+```
+
+```{r warning=FALSE, message=FALSE}
+library("DESeq2")
+library("phyloseq")
+library("viridis")
+library("RColorBrewer")
+library("tidyverse")
+```
+
+
+```{r}
+theme_set(theme_bw())
+theme_update(
+  strip.text = element_text(size = 10),
+  strip.background = element_rect(color = "grey90"),
+  text = element_text(size = 15)
+)
+```
+
+# Load data
+
+```{r, eval = FALSE}
+# processed_physeq.rda Copied from ../holmes_group_presentation
+# processed_datafile <- "../../data/16S/phyloseq/processed_physeq.rda"
+# load(processed_datafile)
+```
+
+
+
+```{r, eval = FALSE}
+# ps_subset <- subset_samples(ps_asinh, Samp_ID %in% sampleIDs)
+# ps_subset
+# 
+# smpID <- ps_subset@sam_data$Samp_ID
+# names(smpID) <- ps_subset@sam_data$Meas_ID
+# sample_names(ps_subset) <- smpID[sample_names(ps_subset)]
+# 
+# saveRDS(ps_subset, file = "../../data/metabolome/ps16S_asinh_matched_with_metabolon_25mar2019.rds")
+```
+
+
+```{r}
+ps_subset <- readRDS("/Users/visitor/Google Drive/Studium/Master/MoBi/4. Semester/Praktikum Stanford/Praktikumsunterlagen/Stanford-Internship/Metabolon Data/Multitable Analysis with Microbiome/data folder Lan GoogleDrive/data/16_rds/ps16S_asinh_matched_with_metabolon_25mar2019.rds")
+ps_subset <- subset_taxa(ps_subset, taxa_sums(ps_subset) > 0)
+ps_subset
+
+```
+
+
+```{r}
+subjects <- unique(ps_subset@sam_data$Subject)
+```
+
+# Trace plots
+
+```{r}
+get_responses <- function(dist_df, dist_cols = c("bray", "jaccard", "unifrac")) {
+  group_cols <- dist_df %>%
+    select(-ends_with("S1"),  -dist_cols) %>%
+    colnames()
+  
+  dist_df <- dist_df %>%
+    group_by_at(group_cols) %>%
+    summarise_at(
+      .vars = dist_cols,
+      .funs = mean) %>%
+    arrange(Subject) 
+}
+```
+
+```{r SR}
+metabolome <- readRDS("/Users/visitor/Google Drive/Studium/Master/MoBi/4. Semester/Praktikum Stanford/Praktikumsunterlagen/Stanford-Internship/Metabolon Data/Multitable Analysis with Microbiome/data folder Lan GoogleDrive/data/metabolome_rds/assayData NA_filtered_and_imputed.rds")
+
+```
+
+
+```{r}
+metabolDist <- dist(t(metabolome))
+
+brayDist <- phyloseq::distance(ps_subset, method="bray")
+#unifracDist <- distance(ps_subset, method = "unifrac")
+```
+
+
+
+```{r}
+bray.df <- reshape2::melt(as.matrix(brayDist), varnames = c("S1", "S2")) %>%
+  mutate(S1 = as.character(S1), S2 = as.character(S2)) 
+
+# unifrac.df <- reshape2::melt(as.matrix(unifracDist), varnames = c("S1", "S2")) %>%
+#   mutate(S1 = as.character(S1), S2 = as.character(S2))
+
+metabol.df <- reshape2::melt(as.matrix(metabolDist), varnames = c("S1", "S2")) %>%
+  mutate(S1 = as.character(S1), S2 = as.character(S2))
+#colnames(metabolDist)[3] <- "value.metabol"
+
+distDF <- bray.df %>%
+    left_join(metabol.df, by = c("S1", "S2"), suffix = c(".bray", ".metabol"))
+
+rm(bray.df,  metabol.df)
+```
+
+```{r}
+#calculate correlation between the two distances
+correlation_metabol_16S_distance <- cor(distDF$value.bray, distDF$value.metabol)
+correlation_metabol_16S_distance
+```
+
+
+```{r}
+
+write.csv(sample_data(ps_subset), "ps_subset_sample_data")
+ps_subset_sample_data <- read_csv("ps_subset_sample_data")
+
+distDF <- distDF %>%
+    left_join(ps_subset_sample_data %>% 
+                  select(Samp_ID, Subject, Group,
+                         contains("RelDay"), contains("Interval")),
+              by = c("S1" = "Samp_ID")) %>%
+    left_join(ps_subset_sample_data %>% 
+                  select(Samp_ID, Subject, 
+                         contains("RelDay"), contains("Interval")),
+              by = c("S2" = "Samp_ID"), suffix = c(".S1", ".S2")) %>%
+    filter(Subject.S1 == Subject.S2) %>%
+    mutate(Subject = Subject.S1) %>%
+    select(-Subject.S1, -Subject.S2)
+```
+
+```{r}
+dist_abx <- distDF %>% 
+  filter(
+    grepl("Abx", Group),
+    Abx_RelDay.S1 >= -7,
+    Abx_RelDay.S1 < 0)
+
+dist_diet <- distDF %>% 
+  filter(
+    grepl("Diet", Group),
+    Diet_RelDay.S1 >= -7,
+    Diet_RelDay.S1 < 0)
+
+dist_cc <- distDF %>% 
+  filter(
+    grepl("CC", Group),
+    CC_RelDay.S1 >= -7,
+    CC_RelDay.S1 < 0)
+```
+
+
+
+```{r}
+
+dist_abx <- get_responses(dist_abx, dist_cols = c("value.bray", "value.metabol")) %>%
+    ungroup() %>%  select(-contains("CC_RelDay"), -contains("Diet_RelDay"))
+dist_diet <- get_responses(dist_diet, dist_cols = c("value.bray", "value.metabol")) %>%
+     ungroup() %>% select(-contains("CC_RelDay"), -contains("Abx_RelDay"))
+dist_cc <- get_responses(dist_cc, dist_cols = c("value.bray", "value.metabol")) %>%
+     ungroup() %>% select(-contains("Abx_RelDay"), -contains("Diet_RelDay"))
+
+```
+
+
+```{r}
+new_intv_levs <- unique(distDF$Interval.S1)
+colors <- colorRampPalette(brewer.pal(9, "Set1"))(length(new_intv_levs)-1)
+colors <- c("grey80", "magenta", colors)
+names(colors) <- c("NoInterv", "UnpAbx", 
+                   setdiff(new_intv_levs, c("NoInterv", "UnpAbx")))
+```
+
+
+
+
+```{r, fig.width=10, fig.height=8}
+max_metabol <- max(distDF$value.metabol)
+dist_abx %>%
+    ggplot(aes(x = Abx_RelDay.S2, y = value.bray, color = Interval.S2)) +
+    geom_line(aes(group = Subject),lwd = 1) + geom_point(aes(shape = "16S"), size = 2) + 
+    geom_line(aes(group = Subject, y = value.metabol/max_metabol),alpha = 0.7) + 
+    geom_point(aes(y = value.metabol/max_metabol, shape = "metabolome"), size = 2) +
+    scale_y_continuous(sec.axis = sec_axis(~.*max_metabol, name = "L2-Metabol to 7 days pre-abx baseline")) +
+    scale_shape_manual(values = c(16, 17)) +
+    facet_wrap(~ Subject, ncol = 1) +
+    theme(legend.position = "bottom") +
+    xlab("Day relative to Abx") +
+    ylab("Bray-Curtis to 7 days pre-abx baseline") +
+    scale_color_manual(values = colors) +
+    guides(color=guide_legend(ncol=3), shape=guide_legend(ncol=1)) 
+```
+
+
+
+```{r, fig.width=10, fig.height=10}
+dist_diet %>%
+    ggplot(aes(x = Diet_RelDay.S2, y = value.bray, color = Interval.S2)) +
+    geom_line(aes(group = Subject),lwd = 1) + geom_point(aes(shape = "16S"), size = 2) + 
+    geom_line(aes(group = Subject, y = value.metabol/max_metabol),alpha = 0.7) + 
+    geom_point(aes(y = value.metabol/max_metabol, shape = "metabolome"), size = 2) +
+    scale_y_continuous(sec.axis = sec_axis(~.*max_metabol, name = "L2-Metabol to 7 days pre-abx baseline")) +
+    scale_shape_manual(values = c(16, 17)) +
+    facet_wrap(~ Subject, ncol = 1) +
+    theme(legend.position = "bottom") +
+    xlab("Day relative to Diet") +
+    ylab("Bray-Curtis to 7 days pre-diet baseline") +
+    guides(color=guide_legend(ncol=2), shape=guide_legend(ncol=1)) +
+    scale_color_manual(values = colors)
+```
+
+
+
+
+
+```{r, fig.width=10, fig.height=8}
+dist_cc %>%
+    ggplot(aes(x = CC_RelDay.S2, y = value.bray, color = Interval.S2)) +
+    geom_line(aes(group = Subject),lwd = 1) + geom_point(aes(shape = "16S"), size = 2) + 
+    geom_line(aes(group = Subject, y = value.metabol/max_metabol),alpha = 0.7) + 
+    geom_point(aes(y = value.metabol/max_metabol, shape = "metabolome"), size = 2) +
+    scale_y_continuous(sec.axis = sec_axis(~.*max_metabol, name = "L2-Metabol to 7 days pre-abx baseline")) +
+    scale_shape_manual(values = c(16, 17)) +
+    facet_wrap(~ Subject, ncol = 1) +
+    theme(legend.position = "bottom") +
+    xlab("Day relative to Diet") +
+    ylab("Bray-Curtis to 7 days pre-cc baseline") +
+    guides(color=guide_legend(ncol=3)) +
+    scale_color_manual(values = colors) +
+    guides(color=guide_legend(ncol=2), shape=guide_legend(ncol=1)) 
+```
+
+
+# Distatis plots
+
+You can read about DiSTATIS method at
+
+https://onlinelibrary.wiley.com/doi/epdf/10.1002/wics.198
+
+```{r}
+D.lst <- list(as.matrix(brayDist), as.matrix(metabolDist))
+D.arr <- abind::abind(D.lst, along = 3)
+distatis.res <- DistatisR::distatis(D.arr, nfact2keep = 10)
+df <- distatis.res$res4Splus$PartialF %>%
+  reshape2::melt(varnames = c("SampleID", "FactorID", "TableID")) %>%
+  spread(key = "FactorID", value = "value") %>%
+  mutate(SampleID = factor(SampleID))
+consensus.df <- data.frame(
+  SampleID = rownames(distatis.res$res4Splus$F),
+  distatis.res$res4Splus$F, check.names = FALSE)
+```
+
+
+```{r}
+consensus2plot <- consensus.df %>%
+    select(SampleID, `Factor 1`, `Factor 2`) %>%
+    left_join(
+        ps_subset_sample_data %>% 
+             select(Samp_ID, Subject, Group, contains("RelDay"), contains("Interval")),
+        by= c("SampleID" = "Samp_ID"))
+```
+
+
+```{r}
+df2plot <- df %>%
+    select(SampleID, TableID, `Factor 1`, `Factor 2`) %>%
+    mutate(TableID = factor(TableID)) %>%
+    left_join(
+        ps_subset_sample_data %>% 
+             select(Samp_ID, Subject, Group, contains("RelDay"), contains("Interval")),
+        by= c("SampleID" = "Samp_ID")) %>%
+    mutate(dataset = factor(TableID, levels = c(1,2), labels = c("16S", "Metabolome")))
+```
+
+
+```{r distatis-consensus, fig.width=10, fig.height=8}
+ggplot(
+  data = consensus2plot,
+  aes(x = `Factor 1`, y = `Factor 2`, fill = Subject)) +
+  coord_fixed() + xlab("Factor 1") + ylab("Factor 2") +
+  geom_point(data = df2plot, 
+             aes(color = Subject, shape = dataset),
+             alpha= 0.8, size  = 2) + 
+  geom_point(color = "black", size = 3, pch = 23) +
+  theme(legend.position = "bottom",
+        text = element_text(size = 25)) +
+  theme(legend.direction = "horizontal") +
+  theme(legend.position = "bottom") +
+  theme(legend.box = "vertical") 
+```
+
+
+```{r distatis, fig.width=10, fig.height=8}
+ggplot(
+  data = df2plot,
+  aes(x = `Factor 1`, y = `Factor 2`, shape = Subject,  color = dataset)) +
+  coord_fixed() + xlab("Factor 1") + ylab("Factor 2") +
+  geom_point(size  = 3) +
+  #scale_shape_manual(values = c(21, 23, 24)) +
+  theme(legend.position = "bottom", text = element_text(size = 25)) +
+  theme(legend.direction = "horizontal") +
+  theme(legend.box = "vertical")  +
+  scale_color_brewer(palette = "Set1")
+```
+
+
+# CCA
+
+```{r}
+asv <- as(otu_table(ps_subset), "matrix")
+asv <- asv[, colnames(metabolome)]
+asv <- t(asv)
+
+metabolome <- t(metabolome)
+```
+
+```{r}
+asvTop <- asv[, order(-apply(asv, 2, sd))[1:200]]
+
+metabolomeTop <- metabolome[, order(-apply(metabolome, 2, sd))[1:200]]
+
+```
+
+
+```{r}
+cc_metabol_16S <- cancor(asvTop, metabolomeTop)
+names(cc_metabol_16S)
+```
+
+
+```{r}
+cc_metabol_16S$cor
+```
+
+
+
+```{r}
+barplot(cc_metabol_16S$cor, main = "Canonical correlations for 'cancor()'", col = "gray")
+
+```
+
+
+
+
+```{r}
+sessionInfo()
+```
+

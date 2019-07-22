@@ -1,0 +1,2190 @@
+---
+title: "Analysis of Metabolomic Effects in a Longitudinal Perturbation Study"
+author: Stefanie Reisenauer
+affiliation: Stanford University, Statistics Department
+header-includes:
+  - \usepackage{float}
+abstract: In this article, mass spectrometry metabolome data from a longitudinal perturbation study is analyzed in R, using Bioconductor and tidyverse packages. In the perturbation study, fecal samples from three patients were collected over a timecourse of 266 to 319 days, with perturbations in the form of diet change, colon cleanout or antibiotics administration being introduced within this timeframe. In a first step, data exploration and quality control as well as data transformation and filtering is performed. Then, a statistical based multivariate analysis (Probabilistic PCA) is performed to see clustering within the data and identify metabolites with high loadings upon the perturbations in the study, i.e. the metabolites that experience the highest change upon perturbations. With this extracted list of metabolites, a pathway enrichment analysis against the KEGG Orthology database is performed, i.e. against a functional pathway network spanning multiple organisms. The workflow finally provides the user with a functionality that enables the extraction of the longitudinal trajectory of a specific metabolite in an individuum of choice over the whole study, or over a zoomed in timeframe around one of the perturbations.
+keywords: metabolome, longitudinal study, PPCA, PPCCA, KEGG, pathway enrichment
+bibliography: BibliographyMetabolomeWorkflow.bib
+output: 
+  BiocStyle::html_document:
+  toc_float: true
+df_print: paged
+date: "`r BiocStyle::doc_date()`"
+
+---
+
+```{r knitrOptions, include=FALSE}
+library(BiocStyle)
+library(knitr)
+options(digits = 4, width = 80)
+opts_chunk$set(echo = TRUE, 
+               tidy = FALSE, 
+               include = TRUE,
+               warning = FALSE,
+               dev = c('png'),
+               fig.width = 6, fig.height = 2.5,
+               comment = '  ', 
+               dpi = 300, cache = TRUE,
+               fig.pos = "H")
+
+
+```
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+# rm(list = ls())
+# library("BiocStyle")
+# library("rmarkdown")
+# library("ggplot2")
+# options(width = 200, stringsAsFactors = FALSE) 
+# knitr::opts_chunk$set(
+#   message = FALSE, error = FALSE, warning = FALSE, cache = TRUE,
+#   fig.width = 8, fig.height = 6,
+#   fig.path = "../figs/multitable/", 
+#   dev='png') 
+# knitr::opts_knit$set(root.dir = "/Users/visitor/Google Drive/Studium/Master/MoBi/4. Semester/Praktikum #Stanford/Praktikumsunterlagen/Stanford-Internship/Metabolon Data/R Workflow/objects for html")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+  # theme_set(theme_bw())
+  # theme_update(
+  #   strip.text = element_text(size = 10),
+  #   strip.background = element_rect(color = "grey90"),
+  #   text = element_text(size = 15)
+  # )
+```
+
+```{r echo = FALSE}
+#knit to pdf: rmarkdown::render("Workflow_Metabolome_Analysis_Perturbation Study_Stefanie_Reisenauer_for_pdf.Rmd", output_format = BiocWorkflowTools::f1000_article(keep_tex = TRUE))
+```
+
+
+```{r saveR-objectsthataretime-intensivetocalculateorsavedlocally, eval = FALSE, echo = FALSE}
+
+saveRDS(metabolon_data, "metabolon_data")
+saveRDS(subject_mapping_file, "subject_mapping_file")
+saveRDS(sample_mapping_file, "sample_mapping_file")
+
+#PPCA whole sampleset
+saveRDS(PPCA_jack_whole_sampleset, "PPCA_jack_whole_sampleset")
+
+#PPCA per individual 
+saveRDS(PPCA_individual_data, "PPCA_individual_data")
+saveRDS(metabolites_over_cutoff_PPCA_individual, 
+        "metabolites_over_cutoff_PPCA_individual")
+saveRDS(PPCA_loadings_individual, "PPCA_loadings_individual")
+
+#PPCCAs 
+saveRDS(PPCCA_data_perturbationwise_10days, 
+        "PPCCA_data_perturbationwise_10days")
+saveRDS(PPCCA_loadings_perturbationwise_10days, 
+        "PPCCA_loadings_perturbationwise_10days")
+
+#functions
+saveRDS(ppca.metabol.jack.SR, "ppca.metabol.jack.SR")
+saveRDS(ppca.metabol.SR, "ppca.metabol.SR")
+saveRDS(buildGraphFromKEGGREST_adapted, "buildGraphFromKEGGREST_adapted")
+
+#KEGG Database
+saveRDS(fella_data, "fella_data")
+
+```
+
+```{r loadR-objectsthataretime-intensivetocalculateorsavedlocally, echo = FALSE}
+library(FELLA)
+metabolon_data <- readRDS("./metabolon_data")
+subject_mapping_file <- readRDS("subject_mapping_file")
+sample_mapping_file <- readRDS("sample_mapping_file")
+
+PPCA_jack_whole_sampleset <- readRDS("PPCA_jack_whole_sampleset")
+
+PPCA_individual_data <- readRDS("PPCA_individual_data")
+metabolites_over_cutoff_PPCA_individual <- 
+  readRDS("metabolites_over_cutoff_PPCA_individual")
+PPCA_loadings_individual <- readRDS("PPCA_loadings_individual")
+
+
+PPCCA_data_perturbationwise_10days <- 
+  readRDS("PPCCA_data_perturbationwise_10days")
+PPCCA_loadings_perturbationwise_10days <- 
+  readRDS("PPCCA_loadings_perturbationwise_10days")
+
+#functions
+ppca.metabol.jack.SR <- readRDS("ppca.metabol.jack.SR")
+ppca.metabol.SR <- readRDS("ppca.metabol.SR")
+buildGraphFromKEGGREST_adapted <- readRDS("buildGraphFromKEGGREST_adapted")
+fella_data <- readRDS("fella_data")
+```
+
+
+```{r loadrequiredpackagesfortheworkflow, results = "hide", message = FALSE, echo = FALSE}
+
+library(readr) #for data import
+library(SummarizedExperiment)
+library(dplyr)
+library(magrittr)
+library(stringr)
+library(ggplot2)
+library(rlist)
+library(MetabolAnalyze)
+library(ggrepel)
+
+```
+
+
+#1. Data background information
+
+This workflow analyzes mass spectrometry data generated by the company 
+Metabolonfrom human fecal samples of a longitudinal perturbation study, i.e. 
+the samples originate from multiple sampling points in time for each patient.
+
+##1.1 Perturbation study 
+Details about the setup of the perturbation study are extracted from the 
+ProjectProposal Research Strategy (@ResearchStrategy) and the Subject Mapping 
+file, an excel file created in the course of the study for documentation
+purposes. 
+
+### Planned study layout
+The perturbation study was set out as a longitudinal perturbation study with 
+40 sampling dates and two defined perturbations. There are three types of 
+perturbation:
+
+- "diet": a 5-day supplementation of the diet with resistant starch in week 
+11 of the study after 10 weeks of monitoring in the absence of perturbation
+- "abx": a 5-day oral course of the antibiotic ciprofloxacin in week 23 of 
+the study
+- "CC": colon cleanout in form of an osmotic bowel cleansing of the exact 
+same type and protocol as used in preparation for colonoscopy (without the 
+colonoscopy), in week 23 of the study. 
+
+All subjects should undergo the "diet" perturbation, and then half of the 
+subjects should get the "abx", and the other half the "CC" treatment in week 
+23. 
+
+Sample collection should occur weekly, with additional samples at 2-3 day 
+intervals in the weeks during and after each perturbation. 
+
+### Actual study layout
+Patient identifiers, sampling timepoints, perturbation information and 
+metainformation about each patient can be found in the Subject Mapping file 
+(@Metabolon_Word). We find from that file that 113 patients have participated 
+in the perturbation study. 
+
+
+##1.2 echnical details of sample processing and analysis
+Technical details are extracted from the data output Microsoft Excel file and 
+the accompanying Microsoft Word file(@Metabolon_Word) provided by Metabolon.
+
+###Sample processing by Metabolon 
+Prior to processing, samples were stored at -80 degrees Celsius. 
+Metabolon extracted identical mass-equivalents of fecal sample for 
+measurement. Methanol was added and samples were shaked vigorously for two 
+minutes and then centrifuged "to remove protein, dissociate small molecules 
+bound to protein or trapped in the precipitated protein matrix, and to 
+recover chemically diverse metabolites". Samples were fractioned to 5 
+subsamples, 4 of which were run on different combinations of UPLC columns and 
+Mass Spectrometry ionization mode and one was kept as backup:
+
+- RP/ UPLC, positive mode ESI (two fractions for 2 separate methods)
+- RP/ UPLC, negative mode ESI
+- HILIC/ UPLC, negative mode ESI
+
+The output file comprises a total of 1127 biochemicals, 874 compounds of 
+known identity (named biochemicals) and 253 compounds of unknown structural 
+identity (unnamed biochemicals)".
+
+###Sample Runs 
+Samples were run on 7 rundays.
+
+
+#2. Data import into R
+##2.1 Metabolon output file structure
+The output file provided by Metabolome is a Microsoft Excel file with sample 
+intensity values and samples in columns and metabolites in rows. There is 
+additional qualitative and technical information on both metabolites and 
+samples, such as metabolite identifiers, retention indices and sample run day. 
+This extra information is given in row entries for metabolites and column 
+entries for samples, so that the actual intensity values per metabolite and 
+sample don't start in the top left corner of the file. We will import it into 
+R and have a look at its structure.
+
+For the import, we need to export the "OrigScale" tab of the Metabolon Excel 
+output file to .csv. Before doing that, we search the Excel file for commas 
+and protect them by framing them by double quotation marks (""). We then save 
+a .csv file with the name "Metabolon_data_csv.csv" to the working directory.
+
+###Import of Metabolon file
+```{r importDataFromExcelTable, eval = FALSE}
+# metabolon_data <- readxl::read_excel("../../data/metabolome/SFUN-04-18ML+ CLIENT DATA TABLE 9.13.18 .XLSX",
+#                                      sheet = 2, col_names = FALSE)
+metabolon_data <- read_csv("../../data/metabolome/Metabolon_data_csv.csv", col_names = FALSE) %>%
+  as.data.frame
+```
+
+###Import of Subject Mapping File
+We also import the Subject Mapping File into R, containing information about 
+type and timepoints of perturbations for the single subjects:
+
+```{r importOfSubjectMappingFile, eval = FALSE}
+# col_names <- read_csv("../../data/sample_info/Subj_Mapping_Files_26March2018.csv", skip = 1)
+# col_names <-colnames(col_names)
+# subject_mapping_file <- read_csv("../../data/sample_info/Subj_Mapping_Files_26March2018.csv", 
+#                                  skip = 3, col_names = col_names)
+subject_mapping_file <- read_csv("../../data/sample_info/Subj_Mapping_Files_26March2018.csv",
+    col_names = FALSE) %>%
+  as.data.frame
+```
+
+###Import of Sample Mapping File
+The day relative to perturbation for each sample and perturbation type can be 
+later extracted from the Sample Mapping file: 
+
+```{r importOfSampleMappingFile, eval = FALSE}
+# col_names <- read_csv("../../data/sample_info/Sample_Mapping_Files_26March2018.csv", skip = 1)
+# col_names <-colnames(col_names)
+# sample_mapping_file <- read_csv("../../data/sample_info/Sample_Mapping_Files_26March2018.csv", 
+#                                  skip = 3, col_names = col_names)
+
+
+sample_mapping_file <- read_csv("../../data/sample_info/Sample_Mapping_Files_26March2018.csv", 
+    col_names = FALSE) %>%
+  as.data.frame
+
+```
+
+##2.2 Create a SummarizedExperiment Object
+
+I will now input the experimental data from Metabolon into a 
+SummarizedExperiment object. Given the structure of the mixed nature of the 
+metabolon_data containing both the experimental data and additional information 
+for metabolites and samples, I first have to dissect the experimental data 
+from the meta data. The SummarizedExperiment object can then store the 
+experimental data as "assayData", the additional information for metabolites 
+as "rowData" and the additional information for the samples as "columnData".
+
+###Extract Assay Data
+
+```{r ExtractAssayData, warning = FALSE}
+
+#gives the number of the column where the experimental data starts
+column_start_of_exp_data <- grep("SAMPLE NAME", as.data.frame(metabolon_data)[1,]) + 1
+
+#gives the number of the row where the experimental data starts
+row_start_of_exp_data <- grep("PATHWAY SORTORDER", as.data.frame(metabolon_data)[,1]) + 1 
+
+#select only the experimental data 
+metabolon_data <- data.frame(metabolon_data)
+metabolon_assay_data <- 
+  metabolon_data[row_start_of_exp_data:nrow(metabolon_data),   
+                 column_start_of_exp_data:ncol(metabolon_data)] %>%
+  mutate_all(funs(str_replace_all(., ",", ""))) %>%
+  data.matrix()
+# dim:  1127  259
+
+#name columns after SampleIDs and rows after COMP IDs
+colnames(metabolon_assay_data) <- 
+  as.character(metabolon_data[1, ][column_start_of_exp_data:ncol(metabolon_data)])
+rownames(metabolon_assay_data) <- 
+  as.character(metabolon_data[[5]][row_start_of_exp_data:nrow(metabolon_data)])
+```
+
+
+###Extract colData
+```{r ExtractColData}
+
+#colData contains meta data about the columns in the assayData (i.e. single 
+#samples used in the experiment) with the samples in rows and sample features 
+#in columns
+metabolon_colData <- metabolon_data[1:(row_start_of_exp_data-1), 
+                      (column_start_of_exp_data):length(metabolon_data)] %>%
+    t()
+
+colnames(metabolon_colData) <- metabolon_data[[13]][1:12]
+rownames(metabolon_colData) <- colnames(metabolon_assay_data)
+
+#add SubjectID column to colData
+SubjectID <- c()
+for(i in 1:nrow(metabolon_colData)){
+  ID <- substring(metabolon_colData[i, "CLIENT IDENTIFIER"], 1, 3)
+  SubjectID <- c(SubjectID, ID)
+}
+
+#subject IDs contain the Subject's 3-letter-code as well as a running number 
+#indicating the sampling timepoint
+SubjectIDs <- unique(SubjectID)
+
+metabolon_colData <- cbind(metabolon_colData, SubjectID) %>%
+    as.data.frame()
+
+#rowData contains detailed information about the rows in the assayData (i.e. 
+#the biochemical compounds detected by MassSpec) with the compounds in rows 
+#and compound features in columns
+metabolon_rowData <- metabolon_data[row_start_of_exp_data:nrow(metabolon_data), 
+                                    1:column_start_of_exp_data-1]
+metabolon_rowData <- as.data.frame(metabolon_rowData)
+colnames(metabolon_rowData) <- metabolon_data[12, 1:13]
+rownames(metabolon_rowData) <- metabolon_data[[5]][13:nrow(metabolon_data)]
+
+```
+
+
+
+
+###Create SummarizedExperiment Object
+```{r CreateSummarizedExperimentObject}
+
+sum_exp <- SummarizedExperiment(assays=list(assay=metabolon_assay_data), 
+                                colData = metabolon_colData, 
+                                rowData = metabolon_rowData)
+```
+
+```{r, eval=FALSE}
+metabolon_colData_updated <- metabolon_colData %>%
+    mutate(Event_Code = gsub(" ", "_", `CLIENT IDENTIFIER`)) %>%
+    left_join(sample_mapping_file %>% filter(Samp_Type != "Urine")) %>%
+    select(-SubjectID) %>%
+    mutate(Subject = gsub("\\ .*", "", `CLIENT IDENTIFIER`)) %>%
+    left_join(subject_mapping_file)
+
+sum_exp <- SummarizedExperiment(
+    assays=list(assay= metabolon_assay_data),
+    colData = metabolon_colData_updated,
+    rowData = metabolon_rowData)
+    
+saveRDS(sum_exp, file = "../../data/metabolome/metabol_OrigScaled_SummarizedExp.rds")
+```
+
+
+```{r}
+#add timepoint relative to perturbation to colData; get the information from 
+
+#the sample mapping file
+sample_mapping_file_processed <- 
+  sample_mapping_file[3:nrow(sample_mapping_file), ]
+colnames(sample_mapping_file_processed) <- sample_mapping_file[2,]
+
+
+rel_day_CC <- c()
+rel_day_diet <- c()
+rel_day_abx <- c()
+Samp_ID <- c()
+
+stool_swab_subset <- subset(sample_mapping_file_processed, 
+                            Samp_Type == "Stool" | Samp_Type=="Swab") 
+                        #as both "Stool" and "Swab" refer to stool samples
+
+for (i in SubjectIDs){
+  subj_rel_day_CC <- 
+    stool_swab_subset$CC_RelDay[grep(i, stool_swab_subset$Event_Code)]
+  
+  names(subj_rel_day_CC) <- 
+    stool_swab_subset$Event_Code[grep(i, stool_swab_subset$Event_Code)]
+  
+  rel_day_CC <- c(rel_day_CC, subj_rel_day_CC)
+  
+  
+  subj_rel_day_diet <- 
+    stool_swab_subset$Diet_RelDay[grep(i, stool_swab_subset$Event_Code)]
+  
+  names(subj_rel_day_diet) <- 
+    stool_swab_subset$Event_Code[grep(i, stool_swab_subset$Event_Code)]
+  
+  rel_day_diet <- c(rel_day_diet, subj_rel_day_diet)
+  
+  
+  subj_rel_day_abx <- 
+    stool_swab_subset$Abx_RelDay[grep(i, stool_swab_subset$Event_Code)]
+  
+  names(subj_rel_day_abx) <- 
+    stool_swab_subset$Event_Code[grep(i, stool_swab_subset$Event_Code)]
+  
+  rel_day_abx <- c(rel_day_abx, subj_rel_day_abx)
+  
+  
+  subj_Samp_ID <- 
+    stool_swab_subset$Samp_ID[grep(i, stool_swab_subset$Event_Code)]
+  
+  names(subj_Samp_ID) <- 
+    stool_swab_subset$Event_Code[grep(i, stool_swab_subset$Event_Code)]
+  
+  Samp_ID <- c(Samp_ID, subj_Samp_ID)
+}
+
+#as one or various samples might be missing for various reasons, we are 
+#going to do a matching of the dataframes rownames with the names of the 
+#vector with the relative dates with the colData in order to be sure to not
+#mix up the order
+colData(sum_exp)$rel_day_CC <- 
+  rel_day_CC[names(rel_day_CC) %in% 
+               gsub(" ", "_", colData(sum_exp)$`CLIENT IDENTIFIER`)]
+
+colData(sum_exp)$rel_day_diet <- 
+  rel_day_diet[names(rel_day_CC) %in% 
+                 gsub(" ", "_", colData(sum_exp)$`CLIENT IDENTIFIER`)]
+
+colData(sum_exp)$rel_day_abx <- 
+  rel_day_abx[names(rel_day_CC) %in% 
+                gsub(" ", "_", colData(sum_exp)$`CLIENT IDENTIFIER`)]
+
+colData(sum_exp)$Samp_ID <- Samp_ID[names(rel_day_CC) %in% 
+                                      gsub(" ", "_", colData(sum_exp)$`CLIENT IDENTIFIER`)] 
+
+
+#we will create a list with sub-experiments, i.e. a SummarizedExperiment 
+#object for each individual, as we will need that later in the data analysis 
+#per individual: 
+#code in order to generate a list sub_exp_list with sub_experiments for 
+#each individual in the sample set
+sub_exp_list <- list()
+
+for (d in SubjectIDs){
+  relevant_IDs <- colnames(sum_exp)[grep(d, sum_exp$`CLIENT IDENTIFIER`)]
+  subset_sum_exp <- sum_exp[,which(colnames(sum_exp) %in% relevant_IDs)]
+  sub_exp_list[[d]] <- subset_sum_exp
+}
+
+```
+
+#3. Data exploration and transformation
+
+##3.1 Access perturbation study information
+Now that we have stored the assay- and the metadata in the 
+SummarizedExperiment object, we can get some more information on the subjects 
+we are analyzing.
+
+### Types of perturbations 
+
+```{r getPerturbationInfo}
+
+subject_mapping_file_processed <- 
+  subject_mapping_file[4:nrow(
+    subject_mapping_file), 2:length(subject_mapping_file)]
+rownames(subject_mapping_file_processed) <- 
+  subject_mapping_file[4:nrow(subject_mapping_file),1]
+colnames(subject_mapping_file_processed) <- 
+  subject_mapping_file[2,2:length(subject_mapping_file)]
+
+
+diet <- c()
+ColonCleanout <- c()
+antibiotics <- c()
+diet_start <- c()
+CC_start <- c()
+abx_start <- c()
+
+get_perturbation_info <- function(IDs, mapping_file){
+  for(i in 1:length(IDs)){
+    ifelse(is.na(mapping_file[SubjectIDs[i], "CC_Date"]), 
+           ColonCleanout <- c(ColonCleanout, "no"), 
+           ColonCleanout <- c(ColonCleanout, "yes"))
+    ifelse(is.na(mapping_file[SubjectIDs[i], "Diet_StartDate"]), 
+           diet <- c(diet, "no"), diet <- c(diet, "yes"))
+    ifelse(is.na(mapping_file[SubjectIDs[i], "Abx_StartDate"]), 
+           antibiotics <- c(antibiotics, "no"), 
+           antibiotics <- c(antibiotics, "yes"))
+    #CC_start <- c(CC_start, mapping_file[SubjectIDs[i], "CC_Date"])
+    #diet_start <- c(diet_start, mapping_file[SubjectIDs[i], "Diet_StartDate"])
+    #abx_start <- c(abx_start, mapping_file[SubjectIDs[i], "Abx_StartDate"])
+  }
+perturbation_info_df <- data.frame(SubjectIDs,
+                                   diet, #diet_start, 
+                                   ColonCleanout, #CC_start, 
+                                   antibiotics) #abx_start)
+perturbation_info_df
+}
+
+perturbation_info <- get_perturbation_info(SubjectIDs, 
+                                           subject_mapping_file_processed)
+perturbation_info
+
+
+```
+We find that in our data there is one individual DBV with all three 
+perturbations, one with "diet" and "CC" (EBF) and one with "CC" and "abx" (DBU). 
+
+###Study time for individuals
+We already see that the original study plan to have 2 perturbation types in 
+all subjects was deviated from in Subject DBV. Now we want to get additionally 
+an overview on how the total study time varied across the individuals:
+
+```{r calculateMinAndMaxTimecourse}
+
+calc_timespan <- function(individual){
+  
+  output <- list()
+  sampling_timepoints<- colData(sub_exp_list[[individual]])$rel_day_diet %>% 
+    #we access rel_day_diet here, because that is a perturbation that all 
+    #individuals in the perturbationstudy underwent and therefore has values 
+    #in all cases
+                as.numeric()
+  
+  timespan_days <- max(sampling_timepoints) - min(sampling_timepoints)
+  timespan_weeks <- round(timespan_days/7,1)
+  
+  output$days <- timespan_days
+  output$weeks <- timespan_weeks
+  output
+}
+
+#calculate timespans for all individuals in the data
+
+timespans <- c()
+for (d in SubjectIDs){
+  timespan <- calc_timespan(d)$days
+  names(timespan) <- d
+  timespans <- c(timespans, timespan)
+}
+
+print(timespans)
+```
+
+Using the code above, we can see that the samples were generated in a 
+longitudinal perturbation study over a time course between `r min(timespans)` 
+and `r max(timespans)` days, with the exact time span varying for the 
+individuals.  
+
+##3.2 Determination of appropriate data transformation
+
+Now that we have gained insights over the types and timeframes of the 
+perturbations experienced by the individuals we have time series data from, 
+we will explore the data further. We will have a look at the mean-variance-
+interdependency in order to find an appropriate data transformation. 
+
+###Mean-variance-interdependency
+
+First, we are going to plot mean and variance per metabolite across all 
+samples per metabolite. As a second plot, we want to see the metabolite 
+value distribution per subject, i.e. plotting all intensity values without 
+taking into account the metabolite or sample they point to.  
+
+```{r meanVarianceDependencyacrosssamplespermetabolite1, fig.width = 5, fig.height = 4}
+
+#mean-variance-dependency across samples per metabolite
+metaboliteIDs <- rownames(sum_exp)
+mean_metabolite_intensity <- as.vector(apply(assay(sum_exp),1,mean, 
+                                             na.rm=TRUE)) #set NA to na.rm
+variance_metabolite_intensity <- as.vector(apply(assay(sum_exp),1, var, 
+                                                 na.rm = TRUE))
+
+
+mean_variance_df <- data.frame(metaboliteIDs, mean_metabolite_intensity, 
+                               variance_metabolite_intensity)
+
+ggplot(data = mean_variance_df, mapping=aes(x=mean_metabolite_intensity, 
+                                            y=variance_metabolite_intensity))+
+  #geom_point(aes(alpha=0.5), size=3)+
+  geom_hex(contour = FALSE, aes(fill =..density..))+
+  labs (x = "mean signal", y = "signal variance")+
+  ggtitle("Mean-Variance-Dependency, Signal per Metabolite")+
+  scale_fill_viridis_c()
+
+
+#absolute value intensity distribution
+#extract vectors with intensity values per subject and store in a list
+  
+#get a list of vectors per subject, filled with absolute intensity values 
+#per subject
+abs_int_list <- lapply(sub_exp_list, 
+                       function (x){
+                         data.frame("Intensities" = as.vector(assay(x)))})
+
+
+for (i in names(abs_int_list)){
+  abs_int_list[[i]]$Subject <- i
+}
+
+abs_int_df<- list.rbind(abs_int_list)
+
+ggplot(abs_int_df, aes(Intensities, fill = Subject)) + 
+  geom_density(alpha = 0.2) +
+  xlim(0, 1e7)+
+  ggtitle("Signal Distribution per Subject")
+
+```
+
+We see that the signal variance spreads over 19 orders of magnitude and that 
+there is a positive correlation between mean and variance of the signal.
+The absolute value distribution of the signals is heavily skewed, which we 
+also hope to correct for with the data transformation. However, the overlay 
+of the signal distribution across the individuals is pretty big, suggesting 
+that there are no big differences in the signal intensity between individuals. 
+
+
+In order to get more interpretable signal values and eliminate the mean-
+variance-dependency and the skewness of the intensity value distribution, 
+we apply a log2(1+x) transformation and an arcsinh transformation and compare 
+them in order to see which transformation gives us the most satisfying results. 
+
+We plot again the mean-variance dependency and the absolute signal 
+distribution for both types of data transformation:
+
+
+```{r meanVarianceDependencyacrosssamplespermetabolite2, fig.width = 5, fig.height = 4}
+
+arcsinh_assay_data <- asinh(assay(sum_exp))
+log2_assay_data <- apply(assay(sum_exp), 1:2, function(x){log(x+1, base=2)}) 
+#log2(1+x) to avoid -Inf values
+
+mean_metabolite_intensity_arcsinh <- 
+  as.vector(apply(arcsinh_assay_data, 1, mean, na.rm=TRUE)) #set NA to na.rm
+
+variance_metabolite_intensity_arcsinh <- 
+  as.vector(apply(arcsinh_assay_data, 1, var, na.rm = TRUE))
+
+mean_metabolite_intensity_log2 <- 
+  as.vector(apply(log2_assay_data,1,mean, na.rm=TRUE)) #set NA to na.rm
+
+variance_metabolite_intensity_log2 <- 
+  as.vector(apply(log2_assay_data,1, var, na.rm = TRUE))
+
+
+mean_variance_df <- data.frame(metaboliteIDs, 
+                               mean_metabolite_intensity_arcsinh,
+                               variance_metabolite_intensity_arcsinh,
+                               mean_metabolite_intensity_log2, 
+                               variance_metabolite_intensity_log2)
+
+
+ggplot(data = mean_variance_df %>% 
+         filter(!is.na(variance_metabolite_intensity_log2)),
+       mapping=aes(x=mean_metabolite_intensity_log2, 
+                   y=variance_metabolite_intensity_log2)) +
+  geom_hex(contour = FALSE, aes(fill =..density..))+
+  ylab("variance metabolite intensity") +
+  xlab("mean metabolite intensity") +
+  ggtitle("Mean-variance dependency, log2(1+x)")
+  scale_fill_viridis_c()
+
+ggplot(data = mean_variance_df %>% 
+         filter(!is.na(variance_metabolite_intensity_arcsinh)),
+       mapping=aes(x=mean_metabolite_intensity_arcsinh, 
+                   y=variance_metabolite_intensity_arcsinh)) +
+  geom_hex(contour = FALSE, aes(fill =..density..))+
+  ylab("variance metabolite intensity") +
+  xlab("mean metabolite intensity") +
+  ggtitle("Mean-variance dependency, arcsinh")
+  scale_fill_viridis_c()
+
+#transformed intensity value distribution
+
+#get a list with one vector per subject, filled with arcsinh values per subject
+arc_int_list <- lapply(sub_exp_list, function (x){
+  data.frame("arcsinh_Intensities" = as.vector(asinh(assay(x))))})
+
+
+names(arc_int_list) <- names(sub_exp_list) #assign the Subject names to the 
+                                          #list elements
+
+for (i in names(arc_int_list)){
+  arc_int_list[[i]]$Subject <- i
+}
+
+library(rlist)
+arc_int_df<- list.rbind(arc_int_list)
+
+
+ggplot(arc_int_df, aes(arcsinh_Intensities, fill = Subject)) + 
+  geom_density(alpha = 0.2)+
+  xlim(0,35)+
+  xlab("Intensities")+
+  ggtitle("arcsinh-transformed Signal distribution per Subject")
+
+
+#get a list with one vector per subject, filled with log2(1+x) values per subject
+log_int_list <- lapply(sub_exp_list, function (x){
+  data.frame("log2_Intensities" = as.vector(apply(assay(x), 1:2, 
+                                                  function(x){
+                                                    log(x+1, base=2)})))})
+
+names(log_int_list) <- names(sub_exp_list) #assign the Subject names to the 
+                                            #list elements
+
+for (i in names(arc_int_list)){
+  log_int_list[[i]]$Subject <- i
+}
+
+log_int_df<- list.rbind(log_int_list)
+
+ggplot(log_int_df, aes(log2_Intensities, fill = Subject)) + 
+  geom_density(alpha = 0.2)+
+  xlim(0,35)+
+  xlab("Intensities")+
+  ggtitle("log2(1+x)-transformed Signal distribution per Subject")
+
+
+```
+
+We see that for both transformations, the absolute intensity value 
+distribution reduces the skewity of the signal distribution plots a lot. 
+Both transformations remove the mean-variance dependency. We will choose the 
+arcsinh transformation, as the overall values for mean and variance are smaller, 
+and a smaller variance is generally desired. 
+
+
+After having found a satisfying data transformation, we will remove variables 
+from the data with a high number of missing values across the samples. 
+
+##3.3 Data filtering
+
+We are going to filter out all metabolites that have "NA" assigned in more 
+than 60 % of all samples per patient in at least one patient.
+
+```{r FilterMetabolitesWithHighNumberOfNAs}
+
+#get a list with named vectors per subject, with metabolites as names and 
+#NA counts per metabolite as element
+NA_list <- lapply(sub_exp_list, function (x){apply(assay(x), 1, function(x){
+  sum(is.na(x))})})
+
+metabolite_NA_counts<- list.cbind(NA_list) %>% as.data.frame()#generates 
+#dataframe with metabolites in rows and NA counts per subject in columns
+
+metabolite_NA_percentages_list <- list()
+#get percentage of NA per subject and metabolite
+for(d in SubjectIDs){
+  metabolite_NA_percentages_list[[d]] <- 
+    sapply(metabolite_NA_counts[,d, drop=FALSE], 
+           function(x){x/ncol(assay(sub_exp_list[[d]]))})
+}
+metabolite_NA_percentages_df<- list.cbind(metabolite_NA_percentages_list) %>% 
+  as.data.frame()
+
+#filter out metabolites that have over 60 percent missing values in at least 
+#one of the subjects
+
+metabolites_to_keep <- apply(metabolite_NA_percentages_df, 1, 
+                             function(x){!max(x)>0.6}) #no subject has a NA 
+#percentage over 60 %
+sum_exp_NA_filtered <- sum_exp[metabolites_to_keep]
+assay(sum_exp_NA_filtered) <- asinh(assay(sum_exp_NA_filtered))
+
+#colnames(sum_exp_NA_filtered) <- colData(sum_exp)$Samp_ID
+#split NA_filtered sum_exp again to subexperiments for individuals
+
+sub_exp_list_NA_filtered <- list()
+for (d in SubjectIDs){
+    relevant_IDs <- colnames(sum_exp)[grep(d, sum_exp$`CLIENT IDENTIFIER`)]
+    subset_sum_exp_NA_filtered <- sum_exp_NA_filtered[
+       ,which(colnames(sum_exp_NA_filtered) %in% relevant_IDs)]
+    sub_exp_list_NA_filtered[[d]] <- subset_sum_exp_NA_filtered
+}
+```
+
+
+```{r, eval=FALSE}
+# Z <- aggregate(
+#     t(assay(sum_exp)), 
+#     by = list(Subject = sum_exp$Subject), 
+#     FUN = function(x) mean(is.na(x))) 
+# 
+# #filter out metabolites that have over 60 percent missing values in at least 
+# #one of the subjects
+# metabolites_to_keep <- apply(Z[, -1], 2, function(x){!max(x)>0.6})
+# # 772 remaining
+# 
+# sum_exp_fltr <- sum_exp[metabolites_to_keep, ]
+# sum_exp_fltr
+# saveRDS(sum_exp_fltr, file = "../../data/metabolome/metabol_OrigScaled_SummarizedExp_fltr.rds")
+```
+
+```{r}
+#sum_exp_fltr <- readRDS(file = "../../data/metabolome/metabol_OrigScaled_SummarizedExp_fltr.rds")
+```
+
+
+
+
+
+#4. Multivariate Analysis
+
+Multivariate analysis can't deal with missing values. Therefore, we have to 
+impute them. We will use the `imputeTS package` for that, as it takes into 
+account the time series nature of the data and therefore considers the values 
+before and after the missing value in the time series.
+
+##4.1 Imputation of missing values
+
+```{r imputeMissingValues}
+
+library(imputeTS)
+
+#make ts (time series) objects out of the assay data of the list elements; 
+#transpose the assay data in order to have the time series in columns (as 
+#this is the way the ts object handles the time series data); transform matrix 
+#back to metabolites in rows in second lapply() function
+
+imp_int_assay_list <- lapply(sub_exp_list_NA_filtered, function (x){
+  na.interpolation(as.ts(t(assay(x))))}) %>% lapply(function(x){t(x)})
+for(i in names(sub_exp_list)){
+  colnames(imp_int_assay_list[[i]]) <- colnames(assay(sub_exp_list[[i]]))
+}
+  
+#put together assay data for all samples
+
+assay_data_imp_matrix <- list.cbind(imp_int_assay_list)
+#colnames(assay_data_imp_matrix) <- colData(sum_exp)$Samp_ID
+                         
+``` 
+
+```{r, eval=FALSE}
+# library(imputeTS)
+# 
+# # samples are already sorted within each individual
+# imp_int_assay_list <- lapply(
+#     unique(sum_exp_fltr$Subject), 
+#     function (subj){
+#         se <- sum_exp_fltr[, sum_exp_fltr$Subject == subj]
+#         res <- t(na_interpolation(as.ts(t(assay(se)))))
+#         colnames(res) <- colnames(se)
+#         return(res)
+#     }
+# )
+# names(imp_int_assay_list) <- unique(sum_exp_fltr$Subject)
+# assay_data_imp_matrix <- list.cbind(imp_int_assay_list)
+# sum_exp_fltr_imputed <- sum_exp_fltr
+# assay(sum_exp_fltr_imputed) <- assay_data_imp_matrix
+# saveRDS(sum_exp_fltr_imputed, file = "../../data/metabolome/metabol_OrigScaled_SummarizedExp_fltr_imputed.rds")
+```
+
+
+```{r}
+# sum_exp_fltr_imputed <- readRDS("../../data/metabolome/metabol_OrigScaled_SummarizedExp_fltr_imputed.rds")
+# assay_data_imp_matrix <- assay(sum_exp_fltr_imputed)
+```
+
+##4.2 PPCA and PPCCA 
+###Probabilistic Principal Component Analysis (PPCA)
+We will now perform a PPCA on the data, a probabilistic PCA. It outputs the 
+same point distribution as a conventional PCA and thus only differs in the 
+mathematical approach leading to this distribution, which provides additional 
+information on the certainty of the point locations in the plot.
+
+Rather than reducing the existing data to a low-dimensional space, it assumes 
+a set of latent variables and maps from this low-dimensional space to the 
+high-dimensional data space (@PPCA). This framework calculates the distribution 
+of the latent variables as an expected value together with its standard 
+deviation, allowing for an estimate of its uncertainty. 
+
+Based on the statistical nature of this model, other statistical methods 
+can be applied to it. For data with a lot of variables like the dataset 
+present, it might not only be useful to calculate the loadings of each 
+variable, but also the uncertainty associated with the loadings in order to 
+remove loadings that don't differ signifcantly from zero and thus make the 
+analysis of the multivariate plot less complex. 
+
+The `MetaboAnalyze`package provides an implementation of the PPCA method as 
+well as the uncertainty calculation of the loadings of the variables. 
+It calculates confidence intervals for the loadings by applying the jackknife 
+method, rerunning the analysis multiple times leaving out one observation 
+each time. Note that the application of the jackknife method to a Bayesian 
+framework (as present in PPCA) is unusual, and the mathematical accurate way 
+to measure statistical accuracy in this framework would be a MCMC model. 
+However, since the jackknife method is already implemented in the package at 
+hand, and the resulting confidence intervals are only used to eliminate 
+variables with loadings not significantly different from zero in order to 
+reduce complexity, it is not considered necessary to implement MCMC here 
+instead. 
+
+Also note that in the package, variables are referred to as "spectral bins", 
+since those are the variables in NMR data, the data type the package was 
+originally written for.
+
+####Adaptions made to the functions in `MetaboAnalyze`
+
+We exclusively use the  
+`MetaboAnalyze::ppca.metabol.jack`   
+in our analysis, 
+since we want to gain the information about the uncertainty of the loadings.  
+`ppca.metabol.jack`is an augmentation of `ppca.metabol` that calculates 
+uncertainties for the loadings in the PPCA with the jackknife method, and 
+calls `ppca.metabol` for the PPCA computation in each iteration. Due to the 
+iterative nature of the function, it takes relatively long to compute. To 
+reduce complexity, the maximum number of principal components can be set 
+beforehand by setting the `maxq` parameter, which we set to 3. The total 
+variance explained by the model is thus distributed to only three axes.
+
+Some adaptions were made to the PPCA package functions  
+`MetaboAnalyze::ppca.metabol` and  
+`MetaboAnalyze::ppca.metabol.jack`. 
+
+In the `ppca.metabol` function, following adaptions were made: 
+
+- the upper limit for the number of variables to be inputted of 375 was 
+eliminated.
+
+In the `ppca.metabol.jack` function, following adaptions were made:
+
+- The original function contains an interactive part, in which the user is 
+asked to select the number of variables he requires. This part was 
+eliminated and the number of required variables was set to the number of 
+variables with loadings different from zero, in order to make this function 
+usable in a loop. 
+- an additional slot "man.sdev" was introduced to the output list, 
+containing the standard deviations per principal component (PC). They will 
+be used in plotting later for a fixed ratio of the PC axes according to the 
+percentage of variance explained by this axis over the total variance 
+explained by the PPCA model.
+
+####PPCA for the whole sample set
+We first plot the PPCA for the whole sample set, i.e. for all three subjects 
+across the timeseries, in order to see if the data clusters more for 
+individuals or perturbation types. 
+
+In general, the data inputted to a multivariate analysis function should 
+have the variables (in our case metabolites) in columns and samples in rows. 
+Multivariate analyses can't handle missing values, so we will use the imputed 
+data for the analysis. Our input data object `input_data` fulfills these 
+requirements. 
+
+
+```{r PPCA, eval = FALSE}
+
+library(MetabolAnalyze)
+
+input_data <- t(assay_data_imp_matrix)
+
+PPCA_jack_whole_sampleset <- ppca.metabol.jack.SR(input_data, maxq=3)
+
+```
+
+The function outputs a list with 
+
+- PPCA data point distribution along the principal components in the `$scores` 
+slot
+- variable loading values for loadings significantly different from 0 in the 
+`$SignifW` slot. 
+
+We want to select metabolites with loading values of at least 70% of the 
+median of the 5 highest loadings on any of the axes. Note that this selection 
+doesn't influence the PPCA calculation itself, but is only relevant for 
+which metabolite loadings are plotted in the graphical output and are chosen 
+for further analysis. 
+
+```{r explorePPCAplots}
+
+#select metabolites with loadings in any of at least 70% of the median of 
+#the 5 highest absolute loading values on any of the axes.
+
+cutoff_loadings <- .7*median(sort(abs(PPCA_jack_whole_sampleset$SignifW), 
+                                  decreasing = TRUE)[1:5])
+metabolites_over_cutoff_PPCA_whole_sampleset <- PPCA_jack_whole_sampleset$
+  SignifW[apply(PPCA_jack_whole_sampleset$SignifW, 1, 
+                                  function(x) any(abs(x)>cutoff_loadings)), ]
+
+PPCA_loadings_whole_sampleset <- data.frame(Variables = rownames(
+  metabolites_over_cutoff_PPCA_whole_sampleset), 
+  metabolites_over_cutoff_PPCA_whole_sampleset) 
+
+
+
+PPCA_data_jack <- data.frame(PC1 = PPCA_jack_whole_sampleset$scores[,1], 
+                             PC2 = PPCA_jack_whole_sampleset$scores[,2],
+                       Individual = colData(sum_exp)$SubjectID)
+
+#calculate percentage of variance explained by each PC over variance 
+#explained by the whole model
+percentVar_PPCA_whole_dataset <- round(100*PPCA_jack_whole_sampleset$
+                                         man.sdev^2/sum(
+                                           PPCA_jack_whole_sampleset$
+                                                          man.sdev^2),1)
+sd_ratio_PPCA_whole_sampleset <- sqrt(percentVar_PPCA_whole_dataset[2] / 
+                                        percentVar_PPCA_whole_dataset[1])
+
+
+#plot the PPCA 
+ggplot(PPCA_data_jack, aes(x = PC1, y = PC2)) +
+  geom_point(aes(colour=Individual), size =3) +
+  ggtitle("PPCA plot for all subjects and samples") +
+  theme(plot.title = element_text(hjust = 0.5))+
+  coord_fixed(ratio=sd_ratio_PPCA_whole_sampleset)+
+  xlab(paste0("PC1, VarExp: ", percentVar_PPCA_whole_dataset[1], "%")) +
+  ylab(paste0("PC2, VarExp: ", percentVar_PPCA_whole_dataset[2], "%")) +
+  geom_segment(data = PPCA_loadings_whole_sampleset, aes(x = 0, y = 0, 
+                                                         xend = (X1*2),
+    yend = (X2*2)), arrow = arrow(length = unit(1/2, "picas")),
+    color = "black", alpha = 0.3) +
+  annotate("text", x = (PPCA_loadings_whole_sampleset$X1*2.2), 
+           y = (PPCA_loadings_whole_sampleset$X2*2.2),
+    label = PPCA_loadings_whole_sampleset$Variables, alpha = 0.4)
+  
+```
+
+We see that the PPCA clusters very well for individuals, suggesting that the 
+difference in metabolome composition between individuals is more pronounced 
+than the effect the study perturbations have on it. 
+However, since we are especially interested in the effect the perturbations 
+in the study have on an individual level, rather than the metabolites that 
+are responsible for distinguishing across individuals, we will focus now on 
+plotting PPCA plots per subjects. 
+
+####PPCA on individuals
+
+By plotting PPCAs per individuals, we will be able to see clustering due to 
+perturbations, recovery after perturbations, and possible co-clustering of 
+different perturbations within an individual, i.e. different perturbations 
+causing similar changes in the metabolome.
+
+First, we run the PPCA for each individual. We create an object 
+`input_data_list` with input data for the PPCCA for each individual; the slots 
+in the list have the names of the individuals. We generate an output list 
+`PPCA_data` with slots for each individual in the dataset, as well as a list 
+`PPCA_loadings_individual` containing only the loadings for metabolites over 
+the cutoff. 
+
+```{r preparationsforPPCAperindividual}
+input_data_list_individuals <- list()
+for (d in SubjectIDs){
+  input_data_list_individuals[[d]] <- t(imp_int_assay_list[[d]])
+}
+```
+
+
+```{r PPCAperindividual, eval = FALSE}
+
+#get list with PPCA data for all individuals
+PPCA_individual_data <- list()
+metabolites_over_cutoff_PPCA_individual <- list()
+PPCA_loadings_individual <- list()
+
+
+for (d in SubjectIDs){
+  PPCA_jack <- ppca.metabol.jack.SR(input_data_list_individuals[[d]],
+                                    maxq =2)
+  PPCA_individual_data[[d]] <- PPCA_jack
+  cutoff_loadings <- .7*median(sort(abs(PPCA_jack$SignifW), 
+                                    decreasing = TRUE)[1:5])
+  selected_metabolites <- 
+    PPCA_jack$SignifW[apply(PPCA_jack$SignifW, 1, 
+                            function(x) any(abs(x) > cutoff_loadings)),]
+  PPCA_loadings_individual[[d]] <- 
+    data.frame(Variables = rownames(selected_metabolites), selected_metabolites)
+  metabolites_over_cutoff_PPCA_individual[[d]] <- selected_metabolites
+  }
+
+
+```
+
+In the output plot, we will colour-code the days relative to perturbation 
+for each perturbation for a first impression and additionally mark the days 
+-3 to 10, and every third data point before and after that, with the 
+corresponding numbers.
+
+
+```{r plotPPCAforindividuals}
+
+#generate a list with relative days per perturbation per individual for 
+#PPCA plots to be coloured according to day relative to perturbation
+
+pert_types <- c("rel_day_CC", "rel_day_diet", "rel_day_abx")
+
+rel_day <- list()
+
+for (d in SubjectIDs){
+  for (i in pert_types){
+    rel_days <- as.numeric(colData(sub_exp_list_NA_filtered[[d]])[[i]])
+    names(rel_days) <- names(colData(sub_exp_list_NA_filtered[[d]])[[i]])
+    rel_day[[d]][[i]] <- rel_days
+  }
+}
+
+#plot results; up to 3 PCA plots for each individual, with days relative 
+#to perturbartion color-coded.
+plot_list_PPCA_all_samples <- list()
+for (d in SubjectIDs){
+  for (i in pert_types){
+    if(is.na(rel_day[[d]][[i]][1])){next}
+    else{
+      PPCA_plot_data <- 
+        data.frame(PC1 = PPCA_individual_data[[d]]$scores[,1], 
+                   PC2 = PPCA_individual_data[[d]]$scores[,2])
+      percentVar <- 
+        round(100*PPCA_individual_data[[d]]$man.sdev^2/
+                sum(PPCA_individual_data[[d]]$man.sdev^2),1)
+      sd_ratio <- sqrt(percentVar[2] / percentVar[1])
+      
+  #label every fourth data point and all days within a period of -3 to 10 days 
+      #within the perturbation
+    days_to_be_labeled <- c((colData(sub_exp_list_NA_filtered[[d]])[[i]] %>% 
+                               as.numeric) [1:(length(colData(
+                                 sub_exp_list_NA_filtered[[d]])[[i]])/4)*4], 
+                            -3:10) %>%
+    unique()%>%
+    sort()
+
+      plot <- ggplot(PPCA_plot_data, aes (x=PC1, y = PC2, 
+                                          color = rel_day[[d]][[i]])) +
+        geom_point(size = 3)+
+        ggtitle(paste("PPCA Plot, all samples", "Individual", d, i)) +
+        theme(plot.title = element_text(hjust = 0.5))+
+        scale_colour_gradientn(colours = colorRamps::blue2red(10), 
+                               limits=c(-10, 10), oob=scales::squish)+
+        geom_segment(data = PPCA_loadings_individual[[d]], aes(x = 0, y = 0, 
+                                                               xend = (X1*2),
+        yend = (X2*2)), arrow = arrow(length = unit(1/2, "picas")),
+        color = "black", alpha = 0.3) +
+        geom_text_repel(aes(label=ifelse(rel_day[[d]][[i]] %in% 
+                                           days_to_be_labeled, 
+                                         rel_day[[d]][[i]], ""),
+                            hjust=0, vjust=0))+
+        annotate("text", x = (PPCA_loadings_individual[[d]]$X1*2.2), 
+                 y = (PPCA_loadings_individual[[d]]$X2*2.2),
+        label = PPCA_loadings_individual[[d]]$Variables, alpha = 0.4) +
+        coord_fixed(ratio=sd_ratio)+
+        xlab(paste0("PC1, VarExp: ", percentVar[1], "%")) +
+        ylab(paste0("PC2, VarExp: ", percentVar[2], "%"))
+      print(plot)
+      plot_list_PPCA_all_samples[[d]][[i]] <- plot
+    }}}
+
+```
+There is one PPCA plot per individual, and we plotted it multiple times in 
+order to color it in according to the different perturbations that this 
+individual experienced. DBV thus has three plots, colored in for the day 
+relative to perturbation for diet, colon cleanout, and antibiotics, 
+respectively. Day 0, i.e. the start day of the perturbation, is colored in 
+green; Samples from the days before the perturbation are blue and samples 
+after the perturbation are first yellow, and turn red the further they are 
+from the perturbation. 
+
+####Findings for individuals
+For each individual, the short-term-clustering in the PPCA (i.e. of the 
+data points for days relative to perturbations within the range 0 to 7), as 
+well as long-term-effects (i.e. the clustering of data points before and >10 
+days after perturbation, represented by blue and red points, respectively) 
+are examined.
+
+#####DBV
+The PPCA plot for individual DBV shows a poor short-term clustering for the 
+diet perturbation. However, on the long term, samples before and after the diet 
+perturbation do cluster along PC2. 
+For colon cleanout, again no short-term effects can be seen, but the samples 
+do cluster along PC1 and PC2 in the long run. 
+For antibiotics treatment, a short-term clustering along PC1 for days 1 to 7 
+can be observed. A long-term clustering effect might be present along PC2, 
+but is hard to validate because of only few sample points after the 
+perturbation. 
+
+#####EBF
+For the diet perturbation, a pronounced clustering effect from day 3 to 7 
+can be observed, with long-term recovery afterwards to the original cluster. 
+The samples for days 2 to 7 relative to antibiotics treatment jump back to 
+the same cluster as for the diet perturbation; however, after day 7, the 
+individual doens't return to its original state, but the samples group in a 
+seperate cluster on the upper right side, indicating that there is no 
+long-term recovery to the original state.
+
+#####DBU
+For the diet perturbation, there might be a weak short-term-cluster along 
+PC1. Also, there is a even less pronounced long-term-clustering along PC1. 
+For the colon cleanout perturbation, we see a strong effect along PC1 and 
+PC2 for days 1 to 8. 
+<br> 
+<br>
+
+####Simplification of data for individual DBV
+We see the less pronounced clustering in the DBV subject. Since this is also 
+the sample with all three perturbations, the poor clustering might be due to 
+the increased complexity of the data. I therefore try and remove the samples 
+after CC, since this is the perturbation "in the middle" (after diet and 
+before antibiotics treatment): 
+
+```{r PPCAforDBVwithoutCC, results = "hide", message = FALSE, warnings = FALSE}
+
+data_to_keep <-  subset(colData(sub_exp_list_NA_filtered$DBV), 
+                        rel_day_CC < 0 | rel_day_abx > 0) 
+#exclude samples between CC and start of abx treatment
+
+matrix_for_PPCA <- 
+  input_data_list_individuals$DBV[rownames(input_data_list_individuals$DBV) %in% 
+                                    rownames(data_to_keep),]
+
+PPCA_jack <- ppca.metabol.jack.SR(matrix_for_PPCA, maxq =2)
+PPCA_data_DBV_trunc <- PPCA_jack
+selected_metabolites_DBV_trunc <- 
+  PPCA_jack$SignifW[apply(PPCA_jack$SignifW, 1, 
+                          function(x) any(abs(x) > cutoff_loadings)),]
+PPCA_loadings_DBV_trunc <- 
+  data.frame(Variables = rownames(selected_metabolites_DBV_trunc), 
+             selected_metabolites_DBV_trunc)
+metabolites_over_cutoff_DBV_trunc <- selected_metabolites_DBV_trunc
+
+
+rel_days_DBV_wo_CC <- list()
+for (i in pert_types)
+rel_days_DBV_wo_CC[[i]] <- as.numeric(data_to_keep[[i]])
+
+#plot
+PPCA_plot_data <- data.frame(PC1 = PPCA_data_DBV_trunc$scores[,1],
+                             PC2 = PPCA_data_DBV_trunc$scores[,2])
+percentVar <- round(100*PPCA_data_DBV_trunc$man.sdev^2/
+                      sum(PPCA_data_DBV_trunc$man.sdev^2),1)
+sd_ratio <- sqrt(percentVar[2] / percentVar[1])
+
+for (i in c("rel_day_diet", "rel_day_abx")){
+  days_to_be_labeled <- c((colData(sub_exp_list_NA_filtered$DBV)[[i]] %>% 
+                             as.numeric) [1:(length(colData(
+                               sub_exp_list_NA_filtered$DBV)[[i]])/3)*3], 
+                          -3:10) %>%
+    unique()%>%
+    sort()
+
+      plot <- ggplot(PPCA_plot_data, 
+                     aes (x=PC1, y = PC2, color = rel_days_DBV_wo_CC[[i]])) +
+        geom_point(size = 3)+
+        ggtitle(paste("PPCA Plot DBV, w/o samples before CC")) +
+        theme(plot.title = element_text(hjust = 0.5))+
+        scale_colour_gradientn(colours = colorRamps::blue2red(10), 
+                               limits=c(-10, 10), oob=scales::squish)+
+        geom_segment(data = PPCA_loadings_DBV_trunc, aes(x = 0, y = 0, 
+                                                         xend = (X1*2),
+        yend = (X2*2)), arrow = arrow(length = unit(1/2, "picas")),
+        color = "black", alpha = 0.3) +
+        geom_text_repel(aes(label=ifelse(rel_days_DBV_wo_CC[[i]] %in% 
+                                           days_to_be_labeled, 
+                                         rel_days_DBV_wo_CC[[i]], ""),
+                            hjust=0, vjust=0))+
+        annotate("text", x = (PPCA_loadings_DBV_trunc$X1*2.2), 
+                 y = (PPCA_loadings_DBV_trunc$X2*2.2),
+        label = PPCA_loadings_DBV_trunc$Variables, alpha = 0.4) +
+        coord_fixed(ratio=sd_ratio)+
+        xlab(paste0("PC1, VarExp: ", percentVar[1], "%")) +
+        ylab(paste0("PC2, VarExp: ", percentVar[2], "%"))
+      print(plot)
+    }
+```
+
+The clustering has not greatly improved. Note that even though I removed 
+the samples in between the CC and abx treatment in order to reduce complexity, 
+the samples after abx treatment can't be deconvoluted from possible long-term 
+effects from colon cleanout, and therefore the CC treatment might still 
+influence the data clustering. However, it might as well be that just DBV 
+doesn't react that strongly to the perturbations.
+
+
+###Principal Component and Covariate Analysis (PPCCA)
+
+Finally, the PPCCA method in the `MetabolAnalyze` package proposes the 
+integration of covariates into the analysis. Possible sample covariates in 
+my data type are: 
+
+- the individual the data of a sample stems from
+- the day relative to perturbation. 
+
+Since I already decided to plot the PPCA per individual in order to account 
+for the high inter-individual differences in the metabolome, only the days 
+relative to perturbation remain as covariates to be included. 
+
+There are different ways to code this covariate:
+  
+  1) continuous: actual day relative to perturbation, with days before 
+  perturbation < 0, the start of the perturbation as 0 and days after 
+  perturbation > 0.
+  2) semi-continuous: days before perturbation as -1, days 0 to 6 as their 
+  actual values and days after day 6 as 6.
+  3) binary: with 0 for days before perturbation and day of perturbation, 
+  and 1 for days after perturbation.
+  
+All three types have been tested for the PPCCA with all samples of the 
+individual EBF, and the binary covariate type has shown the best clustering 
+(data not shown). Therefore, I decide to code the day relative to 
+perturbation as a binary variable. 
+
+#### PPCCA per perturbation per subject
+I now want to conduct a PPCCA per perturbation, i.e. only with the samples 
+within a range of 10 days before and after the perturbation, in order to 
+"zoom in" on metabolites that are specifically responsible for data clustering 
+within this period.
+
+First, I need to conduct a PPCA per perturbation per subject for the 10 days 
+before and after perturbation. To be able to do so, I need to create a list 
+containing days relative to perturbation for each subject and perturbation, 
+as well as the corresponding metabolite intensities for those samples.
+
+####Preparations for subjectwise, perturbationwise PPCCA
+```{r preparationsforsubjectwiseperturbationwisePPCCA, warning = FALSE}
+
+#make list with days relative to perturbation per individual and perturbation; 
+#needed for color-coding the plot later
+day_rel_pert_zoomed_10days <- c(-10:10)
+list_rel_days_zoomed_10days <- list()
+
+for (d in SubjectIDs){
+  i_list <- list()
+  for (i in pert_types){
+    rel_days_zoomed <- 
+      as.numeric(colData(sub_exp_list_NA_filtered[[d]])[[i]]
+                 [colData(sub_exp_list_NA_filtered[[d]])[[i]] %in% 
+                     day_rel_pert_zoomed_10days])
+    names(rel_days_zoomed) <- names(sub_exp_list_NA_filtered[[d]][[i]]
+                                    [colData(sub_exp_list_NA_filtered[[d]])[[i]] 
+                                      %in% day_rel_pert_zoomed_10days])
+    i_list[[i]] <- rel_days_zoomed
+  }
+  list_rel_days_zoomed_10days[[d]] <- i_list
+}
+
+#code the relative days as binary values for the covariate to be used in PPCCA
+
+binary_rel_days_zoomed <- list()
+
+for (d in SubjectIDs){
+  for (i in pert_types){
+    binary_vector <- c()
+    for (b in 1:length(list_rel_days_zoomed_10days[[d]][[i]])){
+      if(is.na(rel_day[[d]][[i]])){next}
+      else{
+      if (list_rel_days_zoomed_10days[[d]][[i]][b] > 0) {
+        binary_vector<- c(binary_vector, 1)
+      }
+      else {binary_vector <- c(binary_vector, 0)}
+    }}
+    binary_rel_days_zoomed[[d]][[i]] <- binary_vector
+  }
+}
+
+
+input_data_list_individual_perturbationwise <- list()
+for (d in SubjectIDs){
+  i_list <- list()
+  for (i in pert_types){
+    rel_subset <- imp_int_assay_list[[d]][, 
+                                  as.numeric(
+                                  colData(sub_exp_list_NA_filtered[[d]])[[i]]) 
+                                  %in% c(-10:10)]
+    if(length(rel_subset)==0){i_list[[i]] <- NA}
+    else i_list[[i]] <- t(rel_subset)
+  }
+ input_data_list_individual_perturbationwise[[d]] <- i_list}
+
+```
+
+####PPCCA per perturbation per subject
+```{r PPCCAperperturbationpersubject, eval = FALSE}
+
+PPCCA_data_perturbationwise_10days <- list()
+PPCCA_loadings_perturbationwise_10days <- list()
+
+for (d in SubjectIDs){
+  for (i in pert_types){
+        if(is.na(rel_day[[d]][[i]])){next}
+    else{
+  matrix_for_PPCCA_perturbationwise_10days <- d_list_zoomed_10days[[d]][[i]]
+  PPCCA_jack_perturbationwise_10days <- 
+    ppcca.metabol.jack.SR(matrix_for_PPCCA_perturbationwise_10days, 
+                          binary_rel_days_zoomed[[d]][[i]], minq=2, maxq=2)
+  selected_metabolites <- PPCCA_jack_perturbationwise_10days$SignifW 
+  #select the metabolites with loadings significantly different from 0
+  PPCCA_loadings_perturbationwise_10days[[d]][[i]] <- 
+    data.frame(Variables = rownames(selected_metabolites), selected_metabolites)
+  PPCCA_data_perturbationwise_10days[[d]][[i]] <- 
+    PPCCA_jack_perturbationwise_10days
+    }
+  }
+}
+
+
+```
+
+
+```{r plotPPCCAperturbationwise, warning = FALSE}
+
+metabolites_over_cutoff_PPCCA <- list()
+for (d in SubjectIDs){
+  for (i in pert_types){
+        if(is.na(rel_day[[d]][[i]])){next}
+    else{
+      cutoff_loadings <- 
+        .6*median(sort(abs(PPCCA_data_perturbationwise_10days[[d]][[i]]$SignifW), 
+                       decreasing = TRUE)[1:5])
+      selected_metabolites <- PPCCA_data_perturbationwise_10days[[d]][[i]]$
+        SignifW[apply(
+          PPCCA_data_perturbationwise_10days[[d]][[i]]$SignifW, 1, 
+             function(x) any(abs(x) > cutoff_loadings)),]
+      metabolites_over_cutoff_PPCCA[[d]][[i]] <- 
+        data.frame(Variables = rownames(selected_metabolites), 
+                   selected_metabolites)
+    }}}    
+
+plot_list_PPCCA_perturbationwise_10days <- list()
+
+
+for (d in SubjectIDs){
+  for (i in pert_types){
+    if(is.na(rel_day[[d]][[i]])){next}
+    else{
+      PPCCA_plot_data <- 
+        data.frame(PC1 = PPCCA_data_perturbationwise_10days[[d]][[i]]$scores[,1], 
+                   PC2 = PPCCA_data_perturbationwise_10days[[d]][[i]]$scores[,2])
+      percentVar<- 
+        round(100*PPCCA_data_perturbationwise_10days[[d]][[i]]$man.sdev^2/
+                sum(PPCCA_data_perturbationwise_10days[[d]][[i]]$man.sdev^2),1)
+      sd_ratio <- sqrt(percentVar[2] / percentVar[1])
+  
+      plot <- ggplot(PPCCA_plot_data, aes (x=PC1, y = PC2, 
+                          color = list_rel_days_zoomed_10days[[d]][[i]])) +
+        geom_point(size = 3)+
+        ggtitle(paste("PPCCA Plot pertwise 10day zoom", "Individual", d, i)) +
+        theme(plot.title = element_text(hjust = 0.5), 
+              legend.position = "none")+
+        scale_colour_gradientn(colours = colorRamps::blue2red(10), 
+                               limits=c(-10, 10), oob=scales::squish)+
+        geom_segment(data = metabolites_over_cutoff_PPCCA[[d]][[i]], 
+                     aes(x = 0, y = 0, xend = (X1*2),
+        yend = (X2*2)), arrow = arrow(length = unit(1/2, "picas")),
+        color = "black", alpha = 0.4) +
+        annotate("text", x = (metabolites_over_cutoff_PPCCA[[d]][[i]]$X1*2.2), 
+                 y = (metabolites_over_cutoff_PPCCA[[d]][[i]]$X2*2.2),
+        label = metabolites_over_cutoff_PPCCA[[d]][[i]]$Variables, alpha = 0.4)+
+        coord_fixed(ratio=sd_ratio)+
+        xlab(paste0("PC1, VarExp: ", percentVar[1], "%")) +
+        ylab(paste0("PC2, VarExp: ", percentVar[2], "%"))
+        
+      plot_list_PPCCA_perturbationwise_10days[[d]][[i]] <- plot
+      print(plot)
+    }}}
+
+
+```
+
+
+#5. Finding metabolites with significant changes upon perturbation
+We now want to find metabolites that undergo a change upon perturbation, 
+and group them into subgroups of metabolites that behave in a similar way, 
+i.e. essentially go either up or down upon perturbation. To find those 
+subgroups, there are two approaches: 
+
+1) top-down: design of patterns around the timepoint of perturbation and 
+query the data against metabolites with intensity patterns correlating with 
+the designed pattern
+2) bottom-up: take metabolites with highest loadings per perturbation and 
+individual as starting point and group them into similar patterns around 
+the perturbations
+
+Given the high number of metabolites the data at hand provides, the top-down 
+approach might have the disadvantage of finding lots of metabolites that match 
+the pattern at hand only by chance. This disadvantage can be overcome by using 
+the bottom-up approach, that preselects metabolites for high loadings in the 
+PPCCA and then groups them into similar patterns. Therefore, we will focus 
+on the bottom-up approach here.
+
+##5.1 Grouping of metabolites with high loadings in PPCCA
+
+For each individual and perturbation, we will have a look at the metabolites 
+with highest loadings and try and group them according to similarity in their 
+expression patterns. In general, variables pointing to the same direction in 
+multivariate plots tend to have similar values in the data. Therefore, we can 
+conveniently semgent the cartesian system to which the PPCCA is plotted into 
+8 equally sized segments and split the metabolites according to which segment 
+their loading vectors are part of, as shown in Figure 1:.  
+
+\pagebreak
+
+![](segmentedPPCCAplot.png) 
+<center> _Figure 1: division of perturbationwise, segmentationwise PPCCA plots into 8 segments._ </center>
+
+The following code creates the `segmented_metabolites` object, a list with 
+elements on three levels for individual, perturbation, and segment. 
+
+```{r dividemetabolitesintosectionsinPPCCA}
+
+segments <- c("segment1", "segment2", "segment3", "segment4", "segment5", 
+              "segment6", "segment7", "segment8")
+
+segmented_metabolites <- list()
+pert_types <- c("rel_day_CC", "rel_day_diet", "rel_day_abx")
+
+for (d in SubjectIDs){
+  for (i in pert_types){
+    if(is.na(rel_day[[d]][[i]])){next}
+    else{
+      X1 <- metabolites_over_cutoff_PPCCA[[d]][[i]]$X1
+      X2 <- metabolites_over_cutoff_PPCCA[[d]][[i]]$X2
+      metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio <- 
+        with(metabolites_over_cutoff_PPCCA, X1/X2)
+
+segment1 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 > 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 > 0 &
+    abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) > 1),]
+segmented_metabolites[[d]][[i]][["segment1"]] <- segment1
+
+
+segment2 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 > 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 > 0 &
+     abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) < 1),]
+segmented_metabolites[[d]][[i]][["segment2"]] <- segment2
+
+segment3 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 < 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 > 0 &
+     abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) < 1),]
+segmented_metabolites[[d]][[i]][["segment3"]] <- segment3
+
+segment4 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 < 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 > 0 &
+    abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) > 1),]
+segmented_metabolites[[d]][[i]][["segment4"]] <- segment4
+
+segment5 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 < 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 < 0 &
+     abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) > 1),]
+segmented_metabolites[[d]][[i]][["segment5"]] <- segment5
+
+segment6 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 < 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 < 0 &
+     abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) < 1),]
+segmented_metabolites[[d]][[i]][["segment6"]] <- segment6
+
+segment7 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 > 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 < 0 &
+     abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) < 1),]
+segmented_metabolites[[d]][[i]][["segment7"]] <- segment7
+
+segment8 <- metabolites_over_cutoff_PPCCA[[d]][[i]][which(
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X1 > 0 & 
+    metabolites_over_cutoff_PPCCA[[d]][[i]]$X2 < 0 &
+     abs(metabolites_over_cutoff_PPCCA[[d]][[i]]$ratio) > 1),]
+segmented_metabolites[[d]][[i]][["segment8"]] <- segment8
+}
+  }
+}
+
+#get the corresponding metabolites 
+#metaboliteIDs <- segmented_metabolites[["EBF"]][["rel_day_abx"]]
+#[["segment8"]]$Variables
+#metabolites <- rowData(sum_exp)[metaboliteIDs,]$BIOCHEMICAL
+#metabolite_table <- as.data.frame(metabolites)
+#rownames(metabolite_table) <- metaboliteIDs
+#metabolite_table 
+
+```
+
+Let's look exemplarily at the output for the 
+`segmented_metabolites$DBV$rel_day_CC_segment8`, i.e. the metabolites with 
+high loadings found in the PPCCA plot in individual DBV upon colon cleanout. 
+
+```{r}
+segmented_metabolites$DBV$rel_day_CC$segment8
+```
+
+We find the loadings on PC1 and PC2 in columns `X1` and `X2`, respectively. 
+The `Variable` column contains the `COMP ID` identfier assigned by Metabolon.
+
+
+We now want to plot the metabolites per segment. We use non-imputed intensity 
+values for that, in order to get the most realistic picture of the trajectory 
+of the metabolites.
+For that, I first create a `data_list` object with non-imputed values, 
+`input_data_list_ind_pert_nonimp`. 
+
+```{r timeSeriesplotsmetaboliteswithhighloadingsnon-imputed, fig.width = 6, fig.height = 1.5}
+
+library(cowplot)
+theme_set(theme_gray()) #bcs otherwise cowplot overwrites ggplot2's general 
+#layout
+
+#generate color vector with 74 different colors for plotting later, bcs with 
+#ColorBrewer palettes, only 8 lines could be plotted in one plot 
+
+library(RColorBrewer)
+n <- 60
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, 
+                           rownames(qual_col_pals))) #create color vector 
+                                #with as many distinct colours as possible
+
+#subselect samples within the relevant range within perturbation
+day_rel_pert_zoomed <- c(-20:20)
+list_rel_days_zoomed <- list()
+
+for (d in SubjectIDs){
+  i_list <- list()
+  for (i in pert_types){
+    rel_days_zoomed <- 
+      as.numeric(colData(sub_exp_list_NA_filtered[[d]])[[i]]
+                 [colData(sub_exp_list_NA_filtered[[d]])[[i]] %in% 
+                     day_rel_pert_zoomed])
+    i_list[[i]] <- rel_days_zoomed
+  }
+  list_rel_days_zoomed[[d]] <- i_list
+}
+
+#new input-data-list, with non-imputed, but already NA-filtered values
+
+input_data_list_ind_pert_nonimp <- list()
+for (d in SubjectIDs){
+  i_list <- list()
+  for (i in pert_types){
+    rel_subset <- assay(sub_exp_list_NA_filtered[[d]])[, 
+                  as.numeric(colData(sub_exp_list_NA_filtered[[d]])[[i]]) %in% 
+                    c(-20:20)]
+    if(length(rel_subset)==0){i_list[[i]] <- NA}
+    else i_list[[i]] <- t(rel_subset)
+  }
+  input_data_list_ind_pert_nonimp[[d]] <- i_list}
+
+
+segment_plot_list_nonimputed <- list()
+for (d in SubjectIDs){
+  for (i in pert_types){
+    if(is.na(rel_day[[d]][[i]])){next}
+    else{
+      for (s in segments){
+      subset_metabolites <- 
+        as.character(segmented_metabolites[[d]][[i]][[s]]$Variables)
+        if(length(subset_metabolites)==0){next}
+        else{
+          if (length(subset_metabolites) > 10){
+            assay_data_1 <-  
+              input_data_list_ind_pert_nonimp[[d]][[i]][, subset_metabolites[1:10], 
+                                                        drop=FALSE] 
+            #drop = FALSE in order to not coerce matrix to a vector in case 
+            #only one metabolite is found
+            gg_assay_data_1 <- assay_data_1 %>% as.vector()
+            gg_metabolites_1 <- rep(colnames(assay_data_1), 
+                                    each = nrow(assay_data_1))
+        gg_timepoints_1 <- rep(list_rel_days_zoomed[[d]][[i]], 
+                               times=ncol(assay_data_1))
+        df_lineplot_1 <- data.frame(gg_metabolites_1, gg_timepoints_1, 
+                                    gg_assay_data_1)
+        
+           
+        plot1 <- ggplot(data=df_lineplot_1, aes(x=gg_timepoints_1, 
+                                                y=gg_assay_data_1, 
+                                                group=gg_metabolites_1)) +
+                geom_point(aes(color=gg_metabolites_1)) +
+                geom_line(aes(color=gg_metabolites_1)) +
+                scale_color_manual(values=col_vector) +
+                theme(axis.text.x = element_text(colour = "aquamarine4", 
+                                      angle = 60, size = 6.5, hjust = 1 ,
+                                      face = "bold"))+
+                geom_vline(xintercept = 0) +
+                scale_x_continuous(breaks=-20:20)+
+                ggtitle(paste(d,i,s, ", plot1"))
+        
+                
+                
+          assay_data_2 <-  input_data_list_ind_pert_nonimp[[d]][[i]][, 
+                        subset_metabolites[11:length(subset_metabolites)], 
+                        drop=FALSE] 
+          #drop = FALSE in order to not coerce matrix to a vector in case 
+          #only one metabolite is found
+            gg_assay_data_2 <- assay_data_2 %>% as.vector()
+            gg_metabolites_2 <- rep(colnames(assay_data_2), 
+                                    each = nrow(assay_data_2))
+        gg_timepoints_2 <- rep(list_rel_days_zoomed[[d]][[i]], 
+                               times=ncol(assay_data_2))
+        df_lineplot_2 <- data.frame(gg_metabolites_2, gg_timepoints_2, 
+                                    gg_assay_data_2)
+        
+           
+        plot2 <- ggplot(data=df_lineplot_2, aes(x=gg_timepoints_2, 
+                                                y=gg_assay_data_2, 
+                                                group=gg_metabolites_2)) +
+                geom_point(aes(color=gg_metabolites_2)) +
+                geom_line(aes(color=gg_metabolites_2)) +
+                scale_color_manual(values=col_vector) +
+                theme(axis.text.x = element_text(colour = "aquamarine4", 
+                                      angle = 60, size = 6.5, hjust = 1 ,
+                                      face = "bold"))+
+                geom_vline(xintercept = 0) +
+                scale_x_continuous(breaks=c(-20:20))+
+                ggtitle(paste(d,i,s, ", plot2"))
+        
+        plot <- cowplot::plot_grid(plot1, plot2, nrow=2)
+        segment_plot_list_nonimputed[[d]][[i]][[s]] <- plot
+        
+          }
+          else{
+        assay_data <- 
+          input_data_list_ind_pert_nonimp[[d]][[i]][, subset_metabolites, 
+                                                    drop=FALSE] 
+        #drop = FALSE in order to not coerce matrix to a vector in case 
+        #only one metabolite is found
+        gg_assay_data <- assay_data %>% as.vector()
+        
+        gg_metabolites <- rep(colnames(assay_data), each = nrow(assay_data))
+        gg_timepoints <- rep(list_rel_days_zoomed[[d]][[i]], 
+                             times=ncol(assay_data))
+        
+        df_lineplot <- data.frame(gg_metabolites, gg_timepoints, gg_assay_data)
+        
+        
+        plot <- ggplot(data=df_lineplot, aes(x=gg_timepoints, y=gg_assay_data, 
+                                             group=gg_metabolites)) +
+                geom_point(aes(color=gg_metabolites)) +
+                geom_line(aes(color=gg_metabolites)) +
+                scale_color_manual(values=col_vector) +
+                theme(axis.text.x = element_text(colour = "aquamarine4", 
+                                      angle = 60, size = 6.5, hjust = 1 ,
+                                      face = "bold"))+
+                geom_vline(xintercept = 0) +
+                ggplot2::scale_x_continuous(breaks=c(-20:20))+
+                ggtitle(paste(d,i,s))
+        
+                print(plot)
+                segment_plot_list_nonimputed[[d]][[i]][[s]] <- plot
+  }}}}}}
+
+```
+  
+  
+In a next step, we can use these metabolites grouped into similar time series 
+trajectories as input for a pathway enrichment analysis in order to biologically 
+interpret the metabolites with highest loadings upon perturbation.
+
+#6. KEGG Pathway enrichment analysis
+##6.1 Types of Pathway enrichment analyses
+There are basically three types of pathway enrichment: overrepresentation 
+analysis (ORA), functional class scoring (FCS) and pathway topology-based 
+methods (PT) (@FELLA). We will briefly discuss each of them and then choose 
+a suitable method for our application. 
+
+###Overrepresentation Analysis (ORA)
+  
+![](ORA.png)
+<center> _Figure 2: concept of the overrepresentation method in pathway enrichment analysis._ </center>  
+
+
+ORA is the most conventional pathway enrichment analysis, in which a pathway 
+is considered as enriched if a given set of metabolites has significantly 
+more occurences in that pathway than would be expected by chance (see Figure 2). 
+ORA takes a set of metabolites as input and does not take into account 
+intensity values. 
+
+###Functional Class Scoring (FCS)
+
+![](FCS.png)
+<center> _Figure 3: concept of the functional class scoring method in pathway enrichment analysis, as used in the PAPi R package._ </center>
+
+FCS uses quantitative input data, and thus accounts both for the occurence 
+of metabolites as well as their intensity values. An example for an 
+implementation of this approach in R is the package `PAPi`. It assumes a 
+pathway flux model, in which a high metabolic flux, i.e. a high pathway 
+activity, results in low intensities of the intermediate metabolites; this 
+model thus sees a positive correlation between the amount of metabolites 
+detected in a pathway with the pathway's activity, and a negative correlation 
+between the intensity values for the single metabolites and the pathway 
+activity (see Figure 3). However, this model might not or only to a certain 
+extent be applicable to fecal samples, since rather than a "snapshot" of 
+metabolic activity, we might deal with the "end stadium", at least for 
+metabolites of the human metabolism, leading to wrong conclusions applying 
+the PAPi framework. Because little is known about the active metabolic 
+processes in fecal samples by the microbiome contained in it, we should 
+refrain from applying an FCS approach. However, if knowledge about the 
+presumed activity of the microbiome in fecal samples comes up, this approach 
+should be considered (@PAPi).
+
+###Pathway Topology (PT)
+PT methods not only take into account the presence and abundance of 
+metabolites, but also their topological position within a pathway, putting 
+a higher weight on more central metabolites. This method is an extension of 
+FCS and should likewise be considered when more information is gained about 
+general pathway and microbe activity in stool samples. 
+
+##6.2 Pathway enrichment analysis based on a KEGG graph: the `FELLA` package
+For now, we therefore conduct a overrepresentation analysis, inputting only 
+a set of metabolites without quantity information. The `FELLA` package provides 
+a nice R interface for that, combining ORA with the concept of network analysis. 
+It builds a graph from KEGG data, implementing metabolites, reactions, enzymes, 
+modules, and pathways all into one graph. The simplified concept is visualized 
+in Figure 4:
+
+![](FELLAnetwork.png)
+<center> _Figure 4: basic concept of the network created by FELLA from the KEGG database._ </center><br>
+
+The enrichment is then performed by inputting a list of metabolites and 
+applying a hypergeometric test, a diffusion algorithm or PageRank. The output 
+is a significant subgraph of the initial KEGG graph, that can be accessed both 
+graphically and as a table listing the significant graph nodes along with 
+their p-values. This general framework provided by the FELLA package is 
+shown in Figure 5: 
+
+![](FELLAworkflow.png)
+<center> _Figure 5: Framework of the FELLA package in R._ </center> <br>
+
+
+
+###FELLA Analysis
+```{r FELLAanalysis}
+
+library(FELLA)
+
+```
+
+First, we need to build a database from KEGG. The original 
+`FELLA::buildGraphFromKEGGREST` function has `organism` as argument, which 
+forces the user to choose an organism from the KEGG database. However, 
+since our samples contain a complex mixture of human and microbial 
+metabolites, we can't commit to one single organism. KEGG contains 5050 
+bacterial organisms, so running the algorithm against all of them would be 
+labor-intense. In fact, even if we knew the exact microbial composition of 
+our samples and thus could reduce that number to some hundred, we wouldn't 
+want to dissect our data to the single organism level, since the microbiome 
+relies heavily on co-metabolism between the single microbes and thus should 
+be rather regarded as one "super-organism" rather than a composition of 
+single organisms. 
+
+Luckily, KEGG provides an excellent framework for this with the KEGG 
+orthology, a database of molecular functions overspanning multiple organisms, 
+generating orthology pathways based on the general function of genes and 
+enzymes rather than their occurence in a specific organism. The original  
+`FELLA::buildGraphFromKEGGREST` function connects enzymes, modules and 
+pathways to genes of a specific organism. We can adapt the function in a 
+way that it instead connect enzymes, modules and pathways to a KO identifier 
+that is organism-independent. This was done in the 
+`buildGraphFromKEGGREST_adapted` function.
+
+###Create general database from KEGG across all samples based on KEGG Orthology
+```{r creategeneraldatabasefromKEGGacrossallorganisms, based on KO, eval = FALSE}
+KEGG_KO_graph <- buildGraphFromKEGGREST_adapted() #nearly crashes R, 
+#don't run if you have built the graph already!
+
+buildDataFromGraph( #note: if I do this with the entire database, i.e. 
+  #with the Graph from the buildGraphFromKEGGREST_adpated function that does 
+  #not distinguish between organisms, I can only select "diffusion" and no 
+  #other options, as it crashes otherwise
+  keggdata.graph = test,
+  databaseDir = "/Users/visitor/Google Drive/Studium/Master/MoBi/
+  4. Semester/Praktikum Stanford/Praktikumsunterlagen/Stanford-Internship/
+  Metabolon Data/new_KEGG/KEGG_KO_graph_data",
+  internalDir = FALSE,
+  matrices = c("diffusion"),
+  normality =c("diffusion")
+)
+
+```
+
+###Load Data Base
+```{r loadDataBase, eval = FALSE}
+
+#load data base
+fella_data <-loadKEGGdata(
+  databaseDir = "/Users/visitor/Google Drive/Studium/Master/MoBi/4. Semester/
+  Praktikum Stanford/Praktikumsunterlagen/Stanford-Internship/Metabolon Data/
+  new_KEGG/KEGG_KO_graph_data",
+  internalDir=FALSE,
+  loadMatrix = c("diffusion")
+) 
+```
+
+###Select meaningful metabolites from PPCCA
+To ensure a meaningful pathway analysis, we select the "meaningful" segments 
+from the PPCCA manually per subject and perturbation, i.e. we explore the 
+lineplots per segment generated earlier, and decide which segments show 
+metabolites with either a meaningful de- or increase upon perturbation and 
+cluster together segments with metabolites with upward tendency upon 
+perturbation, and segments with downward tendency together, respectively. 
+The metabolites contained are then stored in the `chosen_metabolites` list 
+object with entries at the three levels individual, perturbation, and direction 
+(i.e. "up" for upregulated metabolites and "down" for downregulated ones).
+
+```{r preselectRelevantMetaboliteSegments}
+
+
+#preselect relevant segments of the PPCCA plot upon visual inspection, i.e. 
+#segments that point towards the axis of cluster segmentation before and 
+#after/ during perturbation; also, the time series plots have to show a 
+#clear tendency and be homogenous
+
+
+relevant_segments <- list()
+
+relevant_segments$DBV$rel_day_diet$up <- c("segment4")
+relevant_segments$DBV$rel_day_diet$down <- c("segment7")
+
+relevant_segments$DBV$rel_day_CC$up <- c("segment1", "segment7", "segment8")
+relevant_segments$DBV$rel_day_CC$down <- c("segment4", "segment5")
+
+relevant_segments$DBV$rel_day_abx$up <- c("segment4", "segment5")
+relevant_segments$DBV$rel_day_abx$down <- c("segment1", "segment2", "segment8")
+
+
+relevant_segments$EBF$rel_day_diet$up <- c("segment7", "segment8")
+relevant_segments$EBF$rel_day_diet$down <- c("segment3", "segment4")
+
+relevant_segments$EBF$rel_day_abx$up <- c("segment1", "segment2", "segment8")
+relevant_segments$EBF$rel_day_abx$down <- c("segment4", "segment5")
+
+
+relevant_segments$DBU$rel_day_diet$up <- c("segment3", "segment5", "segment6")
+relevant_segments$DBU$rel_day_diet$down <- c("segment2", "segment8")
+
+relevant_segments$DBU$rel_day_CC$up <- c("segment3", "segment4")
+relevant_segments$DBU$rel_day_CC$down <- c("segment7", "segment8")
+
+
+directions <- c("up", "down")
+
+chosen_metabolites <- list()
+
+for (d in SubjectIDs){
+  for (i in pert_types){
+    for (r in directions){
+    relevant_metabolites <- c()
+    for (s in relevant_segments[[d]][[i]][[r]]){
+        metabolites <- as.vector(segmented_metabolites[[d]][[i]][[s]]$Variables)
+        if(length(metabolites) == 0){next}
+        else{
+          
+        relevant_metabolites <- c(relevant_metabolites, metabolites)
+    }}
+        chosen_metabolites[[d]][[i]][[r]] <- as.data.frame(relevant_metabolites, 
+                                                           relevant_metabolites)
+    }
+  }
+}
+
+```
+
+Let's have a look at the `chosen_metabolites` object. We will exemplarily 
+access the upregulated metabolites for the individual EBF upon the diet 
+treatment:
+
+```{r}
+chosen_metabolites$EBF$rel_day_diet$up
+```
+
+```{r}
+saveRDS(chosen_metabolites, "chosen_mateboltes.rds")
+```
+
+
+###Carry through KEGG analysis for all subjects
+
+With the metabolites groups stored in the `chosen_metabolites` object as 
+input, we can now perform the KEGG pathway enrichment analysis for all 
+individuals. Our output is the `KEGG_analysis_overview_aggregated` object, 
+which will be discussed in more detail after having a first short look at it.
+```{r carrythroughKEGGanalysisforallsubjects, results = "hide", message = FALSE}
+
+KEGG_analysis_aggregated_list <- list()
+KEGG_analysis_overview_aggregated <- list()
+for (d in SubjectIDs){
+  for (i in pert_types){
+    for (r in directions){
+      metabolite_names <- 
+        chosen_metabolites[[d]][[i]][[r]]$relevant_metabolites
+       KEGG_metabolites <- 
+         as.factor(rowData(sum_exp)[metabolite_names,]$KEGG) %>% 
+         droplevels(exclude = "") %>% levels()
+      
+      
+      if(length(KEGG_metabolites) == 0){next}
+      if (length(intersect(names(fella_data@keggdata@id[["compound"]]), 
+                           KEGG_metabolites)) == 0) {next}
+ 
+      KEGG_analysis_overview_aggregated[[d]][[i]][[r]]$Biochemicals <-
+        as.data.frame(subset(rowData(sum_exp)[metabolite_names,], 
+                            select = c("BIOCHEMICAL", "KEGG")))
+      KEGG_analysis <- 
+        defineCompounds(compounds = KEGG_metabolites, data = fella_data)
+      
+      KEGG_analysis_aggregated_list[[d]][[i]][[r]]$Input <- 
+        getInput(KEGG_analysis) #the slots input and excluded tell us how 
+      #many metabolites could be mapped to the network and how many had to 
+      #be excluded from the analysis because no corresponding metabolite 
+      #could be found
+       KEGG_analysis_overview_aggregated[[d]][[i]][[r]]$Input <- 
+         getInput(KEGG_analysis)
+       
+      KEGG_analysis_aggregated_list[[d]][[i]][[r]]$Excluded <- 
+        getExcluded(KEGG_analysis)
+      KEGG_analysis_overview_aggregated[[d]][[i]][[r]]$Excluded <- 
+        getExcluded(KEGG_analysis)
+      
+      if ( length(KEGG_analysis_aggregated_list[[d]][[i]][[r]]$Input)==0) 
+        {next}
+
+      KEGG_analysis <- runDiffusion( #run the actual diffusion analysis; 
+        #note that we can use the same object as before and it will be updated.
+        object = KEGG_analysis,
+        data = fella_data,
+        approx = "normality") #why use normality? what are the other 
+      #options? -> investigate
+        #save the data for building a graph from them and building the graph 
+
+graph<- generateResultsGraph(object = KEGG_analysis,
+     method = "diffusion",
+     data = fella_data)
+
+KEGG_analysis_aggregated_list[[d]][[i]][[r]]$Graph <- graph
+graph_table <- generateResultsTable(object = KEGG_analysis,
+   method = "diffusion",
+     data = fella_data)
+
+KEGG_analysis_aggregated_list[[d]][[i]][[r]]$enrichment_results_table <- 
+  graph_table
+
+summary <- subset(graph_table, Entry.type == "pathway" & p.score < 1e-04) 
+# get summary data frame with pathways with a p-value below 1e-04
+
+KEGG_analysis_overview_aggregated[[d]][[i]][[r]]$enriched_pathways <- summary
+
+}}}
+
+```
+
+###Output
+```{r ShowSummary}
+
+KEGG_analysis_overview_aggregated 
+
+```
+
+
+The `KEGG_analysis_overview_aggregated` list object has entries on four 
+levels, with entries per individual and perturbation on the second level, 
+a distinction between up- and down-regulated metabolites on the third level, 
+and on the fourth level:
+
+- `$Biochemicals` (data frame with input Biochemical names and corresponding 
+KEGG identfiers) 
+- `$Input` (KEGG identified metabolites from the input used for the analysis, 
+i.e. contained in the graph)
+- `$Excluded` (KEGG identified metabolites from the input not used in the 
+analysis)
+- `$enriched pathways` (data frame with excerpt from the graph_table 
+generated from the `FELLA` enrichment analysis, containing pathway names, 
+corresponding KEGG IDs and p scores).
+
+###Biological Interpretation of the KEGG analysis 
+Since this analysis was only carried through for three subjects, no general 
+trends of pathway enrichment upon specific perturbations can be derived. 
+Nevertheless, it is interesting to compare the pathway enrichment and single 
+metabolite trajectories between individuals and between perturbations.
+
+We can see that there is a high overlap in enriched pathways for the 
+perturbations diet and antibiotics in the individual EBF. This confirms the 
+trajectory of data 
+points in the PPCA plot for this individual, in which the data points 
+corresponding to the days directly after those two perturbations co-clustered. 
+Some overlap in enriched pathways for the same perturbations in different 
+individuals could be found, such as the upregulation of "Taurine and 
+hypotaurine metabolism" in both the individuals EBF and DBV upon antibiotics 
+treatment. However, in order to find real trends here, more individuals 
+would have to be analyzed. 
+
+#7. Biological interpretation on a single-metabolite level
+
+When looking at the time series plots, some metabolites have very interesting 
+trajectories in one of the subjects, but aren't even listed with a 
+significant loading in another individual upon the same perturbation. It 
+might be interesting to look at the time series plot for that specific 
+metabolite in the other individuals and/ or other perturbations. This can 
+be done by using the `extract_single_metabolite` function. Its parameters 
+are: 
+
+- input: character string of the KEGG IDs, metabolite IDs from Metabolon or 
+the metabolites name (as listed in the column "BIOCHEMICAL" in the Metabolon 
+output file)
+- individual: character string of the 3-letter-identifier of the individual
+- perturbation: one of "rel_day_diet", "rel_day_CC" or "rel_day_abx"
+- rel_days: numeric input of the number before and after the perturbation, 
+i.e. day 0, that should be displayed in the output plot.
+
+The function outputs the plot, containing the Biochemical name and the 
+KEGG ID in the plot title:  
+
+
+```{r singleMetaboliteExtraction}
+
+extract_single_metabolite <- function(input, individual, perturbation, 
+                                      rel_days = 30){
+  #takes as input KEGG ID, metabolite ID from Metabolon or BIOCHEMICAL; 
+  #rel_days is the number of days before 
+  #and after perturbation we want to look at.
+  
+day_rel_pert_zoomed <-  c(-rel_days:rel_days)
+list_rel_days_zoomed <- list()
+
+for (d in SubjectIDs){
+  i_list <- list()
+  for (i in pert_types){
+    rel_days_zoomed <- 
+      as.numeric(colData(sub_exp_list_NA_filtered[[d]])[[i]]
+                 [colData(sub_exp_list_NA_filtered[[d]])[[i]] %in% 
+                     day_rel_pert_zoomed])
+    i_list[[i]] <- rel_days_zoomed
+  }
+  list_rel_days_zoomed[[d]] <- i_list
+}
+
+d_list_zoomed_with_NAs <- list()
+for (d in SubjectIDs){
+  i_list <- list()
+  for (i in pert_types){
+    
+    rel_subset <- assay(sub_exp_list_NA_filtered[[d]])[, as.numeric(
+      colData(sub_exp_list_NA_filtered[[d]])[[i]]) %in% 
+                                                    c(-rel_days:rel_days)]
+    if(length(rel_subset)==0){i_list[[i]] <- NA}
+    else i_list[[i]] <- t(rel_subset)
+  }
+  d_list_zoomed_with_NAs[[d]] <- i_list}
+
+  if (input %in% rowData(sum_exp)$KEGG){metabolite_ID <- 
+    rownames(subset(rowData(sum_exp), KEGG == input))
+  overview_input <- subset(rowData(sum_exp), 
+                           KEGG == input, select =c(KEGG, BIOCHEMICAL))}
+  
+  else if (input %in% rowData(sum_exp)$BIOCHEMICAL){metabolite_ID <- rownames(
+    subset(rowData(sum_exp), BIOCHEMICAL == input))
+  overview_input <- subset(rowData(sum_exp), BIOCHEMICAL == input, 
+                           select =c(KEGG, BIOCHEMICAL))}
+  else if (input %in% rownames(rowData(sum_exp))){metabolite_ID <- input
+  overview_input <- subset(rowData(sum_exp)[input,], 
+                           select =c(KEGG, BIOCHEMICAL))}
+  else{stop("metabolite not in Metabolon output file")}
+  
+  gg_assay_data <- 
+    d_list_zoomed_with_NAs[[individual]][[perturbation]][, metabolite_ID, 
+                                                         drop=FALSE]
+  
+  gg_metabolites <- rep(metabolite_ID, times = ncol(gg_assay_data))
+  gg_timepoints <- rep(list_rel_days_zoomed[[individual]][[perturbation]], 
+                       times=ncol(gg_assay_data))
+  
+  df_lineplot <- data.frame(gg_metabolites, gg_timepoints, gg_assay_data)
+        
+        plot <- ggplot(data=df_lineplot, aes(x=gg_timepoints, 
+                                             y=gg_assay_data)) +
+                geom_point(aes(color=gg_metabolites)) +
+                geom_line(aes(color=gg_metabolites)) +
+                scale_color_manual(values=col_vector, 
+                                   labels = paste(overview_input$BIOCHEMICAL, 
+                                                  overview_input$KEGG)) +
+                theme(axis.text.x = element_text(colour = "aquamarine4", 
+                                      angle = 60, size = 6.5, hjust = 1 ,
+                                      face = "bold"))+
+                geom_vline(xintercept = 0) +
+                ggplot2::scale_x_continuous(breaks=c(-rel_days:rel_days))+
+                ggtitle(paste(individual, perturbation, 
+                              overview_input$BIOCHEMICAL, overview_input$KEGG))
+        
+                print(plot)
+}
+
+
+```
+
+Using this function, we can now have a closer look at metabolites of interest. 
+For example, C00526, which has a characteristic pattern in DBV upon diet, 
+but not in EBF: We now want to look at it in EBF:
+
+```{r}
+
+extract_single_metabolite("C00526", "DBV", "rel_day_diet")
+
+```
+
+This tool can thus be useful to interactively explore trajectories of 
+specific metabolites in specific individuals upon a specific perturbation.
+
+#References

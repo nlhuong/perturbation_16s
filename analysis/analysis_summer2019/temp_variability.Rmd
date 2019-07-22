@@ -1,0 +1,248 @@
+---
+title: "Temporal Variability"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("phyloseq")
+library("RColorBrewer")
+library("tidyverse")
+datadir <- "../../data/"
+curdir <- getwd()
+theme_set(theme_bw())
+theme_update(text = element_text(20))
+```
+
+# Load data
+
+## Amplicon 16S data
+
+```{r}
+# File generated in /perturbation_16s/analysis/analysis_summer2019/generate_phyloseq.rmd
+psSubj <- readRDS("../../data/16S/phyloseq/perturb_physeq_participants_decontam_15Jul19.rds")
+psSubj
+# otu_table()   OTU Table:         [ 2425 taxa and 4402 samples ]
+# sample_data() Sample Data:       [ 4402 samples by 40 sample variables ]
+SMP <- data.frame(sample_data(psSubj))
+
+```
+
+
+```{r}
+SMP %>%
+    select(Group, Subject) %>%
+    distinct() %>%
+    group_by(Group) %>%
+    summarise(subject_count = n())
+```
+
+```{r}
+table(psSubj@sam_data$Group)
+```
+
+
+## Distance matrices
+
+
+```{r}
+load("output/pairwise_dist_subj_16S.rda")
+ls()
+```
+
+
+# Daily Variability
+
+
+```{r}
+daily_var <- function(
+  dist.df, 
+  time1 = "Abx_RelDay_1", time2= "Abx_RelDay_2",
+  time_range = seq(-10, 12), mid_period = c(0, 5)) {
+  
+  df <- dist.df
+  df$time1 <- df[[time1]]; df$time2 <- df[[time2]] 
+
+  df <- df %>%
+    filter( 
+      time2 - time1 == 1,
+      time2 %in% c(time_range)) %>%
+    group_by(Subject) %>%
+    summarize(
+      n_pre = sum(time2 <= mid_period[1]),
+      n_mid = sum(time2 > mid_period[1] & time2 < mid_period[2]),
+      n_post = sum(time2 >= mid_period[2]),
+      pre = mean(dist[time2 <= mid_period[1]]),
+      mid = mean(dist[time2 > mid_period[1] & time2 <= mid_period[2]]),
+      post = mean(dist[time2 > mid_period[2]])
+      )
+  return(df)
+}
+
+
+nointv_daily <- function(dist.df) {
+  df <- dist.df %>%
+    filter( 
+      Group == "NoIntv",
+      DaysFromStart_2 -  DaysFromStart_1 == 1) %>%
+    group_by(Subject) %>%
+    summarize(
+      n = n(),
+      median_dist = median(dist)
+    )
+  return(df)
+}
+```
+
+
+```{r}
+abxDailyVar.bray <- daily_var(
+  bray.df, time1 = "Abx_RelDay_1", time2= "Abx_RelDay_2")
+dietDailyVar.bray <- daily_var(
+  bray.df, time1 = "Diet_RelDay_1", time2= "Diet_RelDay_2")
+ccDailyVar.bray <- daily_var(
+  bray.df, time1 = "CC_RelDay_1", time2= "CC_RelDay_2")
+noIntvDailyVar.bray <- nointv_daily(bray.df)
+
+abxDailyVar.jacc <- daily_var(
+  jacc.df, time1 = "Abx_RelDay_1", time2= "Abx_RelDay_2")
+dietDailyVar.jacc <- daily_var(
+  jacc.df, time1 = "Diet_RelDay_1", time2= "Diet_RelDay_2")
+ccDailyVar.jacc <- daily_var(
+  jacc.df, time1 = "CC_RelDay_1", time2= "CC_RelDay_2")
+noIntvDailyVar.jacc <- nointv_daily(jacc.df)
+
+abxDailyVar.uniFrac <- daily_var(
+  uniFrac.df, time1 = "Abx_RelDay_1", time2= "Abx_RelDay_2")
+dietDailyVar.uniFrac <- daily_var(
+  uniFrac.df, time1 = "Diet_RelDay_1", time2= "Diet_RelDay_2")
+ccDailyVar.uniFrac <- daily_var(
+  uniFrac.df, time1 = "CC_RelDay_1", time2= "CC_RelDay_2")
+noIntvDailyVar.uniFrac <- nointv_daily(uniFrac.df)
+
+dim(abxDailyVar.bray); dim(dietDailyVar.bray); dim(ccDailyVar.bray)
+dim(noIntvDailyVar.bray)
+```
+
+
+
+```{r}
+summary(abxDailyVar.bray)
+summary(dietDailyVar.bray)
+summary(ccDailyVar.bray)
+```
+
+```{r}
+noIntvDailyVar.bray
+```
+
+
+```{r}
+combine_var_data <- function(dailyVar.lst, noIntvDailyVar, dist_metric = "bray") {
+  rename_dist <- "median_dist"
+  names(rename_dist) <- dist_metric
+  dailyVar <- plyr::ldply(
+    dailyVar.lst, .id = "perturb",
+    function(df) {
+      df %>% 
+        select(-(n_pre:n_post)) %>%
+        gather(key = "interval", value = "dist", -Subject)
+    }) %>% 
+    bind_rows(
+      noIntvDailyVar %>%
+        mutate(perturb = "NoIntv", interval = "all", dist = median_dist) %>%
+        select(perturb, Subject, interval, dist)
+    ) %>%
+    mutate(interval = factor(interval, levels = c("pre", "mid", "post", "all"))) 
+  colnames(dailyVar)[4] <- dist_metric
+  return(dailyVar)
+}
+
+dailyVar.bray <- list(abxDailyVar.bray, dietDailyVar.bray, ccDailyVar.bray)
+names(dailyVar.bray) <- c("Abx", "Diet", "CC")
+dailyVar.bray <- combine_var_data(dailyVar.bray, noIntvDailyVar.bray, dist_metric = "bray")
+
+dailyVar.jacc <- list(abxDailyVar.jacc, dietDailyVar.jacc, ccDailyVar.jacc)
+names(dailyVar.jacc) <- c("Abx", "Diet", "CC")
+dailyVar.jacc <- combine_var_data(dailyVar.jacc, noIntvDailyVar.jacc, dist_metric = "jacc")
+
+dailyVar.uniFrac <- list(abxDailyVar.uniFrac, dietDailyVar.uniFrac, ccDailyVar.uniFrac)
+names(dailyVar.uniFrac) <- c("Abx", "Diet", "CC")
+dailyVar.uniFrac <- combine_var_data(dailyVar.uniFrac, noIntvDailyVar.uniFrac, dist_metric = "uniFrac")
+
+dailyVar <- dailyVar.bray %>% left_join(dailyVar.jacc) %>% left_join(dailyVar.uniFrac)
+
+```
+
+
+
+```{r dailyvar-with-noitv, fig.width=8, fig.height=8}
+dailyVar.long <- dailyVar %>%
+  gather(key = "metric", value = "dist", bray:uniFrac) 
+
+dailyVar.long %>%
+  ggplot(aes(y = dist, x = perturb, color = interval)) +
+    geom_boxplot() +
+    ggbeeswarm::geom_beeswarm(dodge.width = 0.7, alpha = 0.5) +
+    scale_color_manual(values = c(pre = "#4DAF4A", mid = "#E41A1C", post = "#377EB8", all = "grey50")) +
+    facet_wrap(~ metric, ncol = 1, scales = "free") +
+    ggtitle("Daily variability") + ylab("Mean distance between consecutive samples") +
+    theme(text = element_text(size = 15))
+```
+
+```{r dailyvar, fig.width=8, fig.height=6}
+library(ggpubr)
+p <- ggboxplot(
+  dailyVar.long %>% filter(!is.na(dist), interval %in% c("pre", "mid")),
+  x = "perturb", y = "dist", color = "interval", palette = "jco",
+  add = "jitter")
+p + stat_compare_means(aes(group = interval)) +
+  facet_wrap(~ metric, ncol = 1, scales = "free") +
+  theme(text = element_text(size = 15))
+```
+
+
+```{r dailyvar-bray, fig.width=8, fig.height=5}
+my_comparisons <- list( c("pre", "mid"), c("mid", "post"), c("pre", "post"))
+
+dailyVar.long %>% filter(!is.na(dist), perturb != "NoIntv", metric == "bray") %>%
+ ggboxplot(
+  x = "interval", y = "dist", color = "interval", palette = "jco",
+  add = "jitter", facet.by = "perturb") +
+  stat_compare_means(label.y = c(0.58)) +
+  stat_compare_means(comparisons = my_comparisons, label.y = c(0.4, 0.45, 0.5)) +
+  theme(text = element_text(size = 15), legend.position = "bottom") +
+  ggtitle("Daily variability measured with Bray-Curtis dissimilarity")
+```
+
+```{r dailyvar-jaccard, fig.width=8, fig.height=5}
+dailyVar.long %>% filter(!is.na(dist), perturb != "NoIntv", metric == "jacc") %>%
+ ggboxplot(
+  x = "interval", y = "dist", color = "interval", palette = "jco",
+  add = "jitter", facet.by = "perturb") +
+  stat_compare_means(label.y = c(0.65)) +
+  stat_compare_means(comparisons = my_comparisons, label.y = c(0.5, 0.55, 0.6)) +
+  theme(text = element_text(size = 15), legend.position = "bottom") +
+  ggtitle("Daily variability measured with Jaccard dissimilarity")
+```
+
+
+```{r dailyvar-unifrac, fig.width=8, fig.height=5}
+dailyVar.long %>% filter(!is.na(dist), perturb != "NoIntv", metric == "uniFrac") %>%
+ ggboxplot(
+  x = "interval", y = "dist", color = "interval", palette = "jco",
+  add = "jitter", facet.by = "perturb") +
+  stat_compare_means(label.y = c(0.55)) +
+  stat_compare_means(comparisons = my_comparisons, label.y = c(0.4, 0.45, 0.5)) +
+  theme(text = element_text(size = 15), legend.position = "bottom") +
+  ggtitle("Daily variability measured with UniFrac dissimilarity")
+```
+
+```{r}
+save(list = c("dailyVar.long", "dailyVar"), file = "output/daily_variability.rda")
+```
+
+
+```{r}
+sessionInfo()
+```

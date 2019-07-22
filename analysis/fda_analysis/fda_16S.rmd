@@ -1,0 +1,1160 @@
+---
+  title: "Resilience Study 16S data: Functional Data Analysis"
+author:
+  - name: Lan Huong Nguyen
+affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output:
+  BiocStyle::html_document:
+  toc_float: true
+df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+%\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+rm(list = ls())
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE)
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/",
+  dev='png')
+```
+
+```{r warning=FALSE, message=FALSE}
+library("DESeq2")
+library("phyloseq")
+library("fdapace")
+library("viridis")
+library("RColorBrewer")
+library("ggplot2")
+library("tidyverse")
+source('../utils.R')
+source('./fda_pca_funs.R')
+
+datadir <- "/scratch/PI/sph/resilience/"
+resfile <- "results/treeDA_res16S.rda"
+curdir <- getwd()
+
+load("results/ps_objects.rda")
+load("results/abx_long_subset.rda")
+load("results/abx_rsv_fpca.rda")
+# load("results/abx_rsv_fclust.rda")
+```
+
+
+```{r}
+theme_set(theme_bw())
+theme_update(
+  strip.text = element_text(size = 10),
+  strip.background = element_rect(color = "grey90"),
+  text = element_text(size = 15)
+)
+```
+
+
+# Load data
+
+
+```{r, eval = FALSE}
+# processed_physeq.rda Copied from ../holmes_group_presentation
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+
+taxtab <- data.frame(
+  as(ps_norm@tax_table, "matrix"), stringsAsFactors = FALSE) %>%
+  select(-Seq) %>%
+  rownames_to_column("Seq_ID") %>%
+  mutate(
+    SpeciesMult.RDP = Species.1,
+    SpeciesMult.Silva = Species.3,
+    OrgName.RDP = paste(Genus, Species),
+    OrgName.Silva = paste(Genus.1, Species.2),
+    OrgName = ifelse(grepl("NA", OrgName.RDP) & !grepl("NA", OrgName.RDP),
+                     OrgName.Silva, OrgName.RDP),
+    OrgName = ifelse(OrgName == "NA NA", "NA", OrgName),
+    OrgName = paste0(Seq_ID, ": ", OrgName)
+) %>%
+  select(-Species.1, -Species.2, -Species.3, -Genus.1)
+rownames(taxtab) <- taxtab$Seq_ID
+```
+
+
+```{r, eval = FALSE}
+dds <- phyloseq_to_deseq2(ps, design = ~ 1)
+dds <- estimateSizeFactors(dds, type = "poscounts")
+norm_counts <- counts(dds, normalized = TRUE)
+ps_norm <- ps
+otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+ps_norm
+```
+
+## Filter data
+
+```{r, eval = FALSE}
+diet <- subset_samples(ps_norm, grepl("Diet", Group))
+diet <- subset_samples(
+  diet, !grepl("MidAbx", Abx_Interval) & !grepl("PostAbx", Abx_Interval) &
+    !grepl("PostCC", CC_Interval))
+
+# Filter taxa that occurs at minTaxaSum in at least minNoSubj subjects
+minTaxaSum <- 5; minTaxaPrev <- 3; minNoSubj <- 3
+ASVsum <- data.frame(t(as(otu_table(diet), "matrix"))) %>%
+  mutate(Subject = diet@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+ASVprev <- data.frame(t(as(otu_table(diet), "matrix")) > 0) %>%
+  mutate(Subject = diet@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+
+keepASV <- data.frame(
+  Seq_ID = colnames(ASVsum),
+  abundant = colSums(ASVsum >= minTaxaSum) >= minNoSubj,
+  prevalent = colSums(ASVprev >= minTaxaPrev) >= minNoSubj) %>%
+  filter(abundant, prevalent)
+
+diet <- prune_taxa(keepASV$Seq_ID, diet)
+sample_data(diet)$type <- with(
+  sample_data(diet),
+  memisc::cases(
+    Diet_RelDay < -15                    -> "Ancient",
+    Diet_RelDay < 0 & Diet_RelDay >= -15 -> "PreDiet",
+    Diet_RelDay < 5 & Diet_RelDay >= 0   -> "MidDiet",
+    Diet_RelDay < 15 & Diet_RelDay >= 5  -> "PostDiet",
+    Diet_RelDay >= 15                    -> "Recovery"
+  )
+)
+```
+
+
+```{r, eval = FALSE}
+## Abx Samples ----------------------------------------------------------------
+abx <- subset_samples(ps_norm, grepl("Abx", Group))
+abx <- subset_samples(
+  abx,
+  !grepl("MidDiet", Diet_Interval) & !grepl("PreDiet", Diet_Interval) &
+    !grepl("PreCC", CC_Interval))
+
+# Filter taxa that occurs at minTaxaSum in at least minNoSubj subjects
+minTaxaSum <- 10; minTaxaPrev <- 3; minNoSubj <- 3
+ASVsum <- data.frame(t(as(otu_table(abx), "matrix"))) %>%
+  mutate(Subject = abx@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+ASVprev <- data.frame(t(as(otu_table(abx), "matrix")) > 0) %>%
+  mutate(Subject = abx@sam_data$Subject) %>%
+  group_by(Subject) %>%
+  summarise_all(sum)
+
+keepASV <- data.frame(
+  Seq_ID = colnames(ASVsum),
+  abundant = colSums(ASVsum >= minTaxaSum) >= minNoSubj,
+  prevalent = colSums(ASVprev >= minTaxaPrev) >= minNoSubj) %>%
+  filter(abundant, prevalent)
+
+abx <- prune_taxa(keepASV$Seq_ID, abx)
+
+sample_data(abx)$type <- with(
+  sample_data(abx),
+  memisc::cases(
+    Abx_RelDay < -20                   -> "Ancient",
+    Abx_RelDay < 0 & Abx_RelDay >= -20 -> "PreAbx",
+    Abx_RelDay < 7 & Abx_RelDay >= 0   -> "MidAbx",
+    Abx_RelDay < 30 & Abx_RelDay >= 7  -> "PostAbx",
+    Abx_RelDay >= 30                   -> "Recovery"
+  )
+)
+rm(keepASV, ASVprev, ASVsum)
+save(list = c("ps", "ps_norm", "dds", "diet", "abx", "taxtab"),
+     file = "results/ps_objects.rda")
+
+```
+
+## Experimental design
+
+
+```{r fig.width=12, fig.height=15}
+SMP <- data.frame(ps@sam_data) %>%
+  mutate(Samp_Date = as.Date(Samp_Date))
+ggplot(
+  SMP, aes(y = Subject, x = Samp_Date)) +
+  geom_point(
+    aes(color = Interval, fill = Interval),
+    pch = 124, size = 3) +
+  facet_grid(Group ~ ., scales = "free", space = "free") +
+  #scale_color_manual(values = colors) +
+  theme(legend.position = "bottom",
+        strip.text.y = element_text(angle=270, size = 10)) +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+```
+
+# Antibiotics
+
+```{r}
+# Deal with measurements taken multiple times in one day for a subject
+duplicated_meas <- data.frame(abx@sam_data) %>%
+  select(Meas_ID, Subject, Abx_RelDay, Samp_Date, Samp_Time) %>%
+  group_by(Subject, Abx_RelDay) %>%
+  filter(n() > 1)
+duplicated_meas
+
+abx_SMP <- data.frame(abx@sam_data) %>%
+  mutate(
+    Abx_RelDay = ifelse(Meas_ID == "M2243", 68.5, Abx_RelDay),
+    Abx_RelDay = ifelse(Meas_ID == "M7886", -48.5, Abx_RelDay))
+rownames(abx_SMP) <- abx_SMP$Meas_ID
+sample_data(abx) <- sample_data(abx_SMP)
+```
+
+```{r}
+abx@sam_data %>%
+  select(Subject, Group) %>%
+  distinct() %>%
+  group_by(Group) %>%
+  summarise(count = n())
+```
+
+
+
+## Overall response measured with Bray-Curtis
+
+```{r}
+# Load table of distances computed previously
+load("../holmes_group_presentation/results/dist_df.rda")
+head(distDF)
+```
+
+```{r}
+noitv_bray <- distDF %>%
+  filter(
+    grepl("NoIntv", Group),
+    DaysFromStart.S1 >= -7,
+    Abx_RelDay.S1 < 0 ,
+    !grepl("MidDiet", Diet_Interval.S2),
+    !grepl("PreDiet", Diet_Interval.S2),
+    !grepl("PreCC", CC_Interval.S2))
+
+abx_bray <- get_responses(
+  abx_bray, dist_cols = c("bray", "jaccard", "unifrac"))
+abx_bray <- recovery_stats(
+  abx_bray, relday_col = "Abx_RelDay.S2",
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4) %>%
+  arrange(Subject, DaysFromStart.S2)
+
+```
+
+```{r}
+abx_bray <- distDF %>%
+  filter(
+    grepl("Abx", Group),
+    Abx_RelDay.S1 >= -7,
+    Abx_RelDay.S1 < 0 ,
+    !grepl("MidDiet", Diet_Interval.S2),
+    !grepl("PreDiet", Diet_Interval.S2),
+    !grepl("PreCC", CC_Interval.S2))
+
+abx_bray <- get_responses(
+  abx_bray, dist_cols = c("bray", "jaccard", "unifrac"))
+abx_bray <- recovery_stats(
+  abx_bray, relday_col = "Abx_RelDay.S2",
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4) %>%
+  arrange(Subject, DaysFromStart.S2)
+
+```
+
+
+
+```{r abx-bray, fig.width= 14, fig.height=7}
+abx_intv_cols <- c("MidAbx" = "#E41A1C", "PreAbx" = "grey60",
+                   "PostAbx" = "#00BFC4", "UnpAbx" = "Purple")
+df_subj_label <- abx_bray %>%
+  group_by(Subject) %>%
+  top_n(1, Abx_RelDay.S2) %>%
+  mutate(Abx_RelDay.S2 = min(120, Abx_RelDay.S2 + sample(20:50)))
+
+
+plot_betadiver_over_time(
+  abx_bray, distname = "bray",  recov_color = "red",
+  rel_day = "Abx_RelDay.S2", interval = "Abx_Interval.S2") +
+  scale_color_manual(values = abx_intv_cols) +
+  geom_text(
+    data = df_subj_label,
+    aes(label = Subject)
+  )
+```
+
+
+```{r abx-bray-zoom, fig.width= 14, fig.height=7}
+plot_betadiver_over_time(
+  abx_bray, distname = "bray",  recov_color = "red",
+  rel_day = "Abx_RelDay.S2", interval = "Abx_Interval.S2") +
+  scale_color_manual(values = abx_intv_cols) +
+  geom_text(
+    data = df_subj_label,
+    aes(label = Subject)
+  ) +
+  xlim(-10, 15)
+```
+
+
+```{r}
+timept <- seq(70, 110, 5)
+names(timept) <- timept
+sapply(timept, function(x) {
+  df <- data.frame(sample_data(abx))
+  length(unique(df %>% filter(Abx_RelDay >= x) %>% .[["Subject"]]))
+})
+```
+
+Since above 80 days the number of subjects having samples drops to less than half,
+we trucated up to day 80 to have more accurate estimates for mean response.
+
+```{r}
+abx_bray <- abx_bray %>%
+  mutate(
+    Abx_RelDay.S2 = ifelse(S2 == "M2243", 68.5, Abx_RelDay.S2),
+    Abx_RelDay.S2 = ifelse(S2 == "M7886", -48.5, Abx_RelDay.S2)) %>%
+  filter(Abx_RelDay.S2 >= -40, Abx_RelDay.S2 <= 80)    # limit the scope due to effect of other perturbations
+
+```
+
+
+
+```{r}
+abx_bray_fpca <- fit_fdapca(
+  abx_bray, time_column="Abx_RelDay.S2",
+  value_column = "bray", replicate_column = "Subject",
+  cluster = FALSE, filter = FALSE, fpca_optns = list(nRegGrid = 101))
+
+abx_bray_mean <- data.frame(
+  time = abx_bray_fpca$workGrid,
+  value = abx_bray_fpca$mu)
+
+abx_bray_fit <- fpca_fit(abx_bray_fpca) %>%
+  mutate(Subject = Replicate_ID)
+
+abx_bray_deriv <- fpca_fit(abx_bray_fpca, derOptns = list(p = 1)) %>%
+  mutate(Subject = Replicate_ID)
+
+abx_bray_response <- abx_bray_fit%>%
+  left_join(
+    abx_bray_deriv %>%
+      rename("deriv" = value)
+  )
+```
+
+```{r abx-bray-fit, fig.width=12, fig.height=7}
+abx_intv_cols[3] <- "#00BFC4"
+ggplot(abx_bray, aes(x = Abx_RelDay.S2, y = bray)) +
+  geom_line(
+    data = abx_bray_response,
+    aes(group = Subject, x = time, y = value),
+    alpha = 0.3, size = 0.7 ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  # geom_point(
+  #     data = abx_bray %>% filter(Abx_RelDay.S2 > bray_recov_time),
+  #     color = "orange", size = 2.5) +
+  geom_text(
+      data = abx_bray, aes(color = Abx_Interval.S2,
+                           label = Subject), size = 3, alpha = 0.7) +
+  geom_line(
+    data = abx_bray_mean, aes(x = time, y = value),
+    color = "navy", size = 2.5) +
+  scale_color_manual(values = abx_intv_cols, name = "Time Interval") +
+  scale_x_continuous(name = "Days relative to Abx start date",
+                     breaks = seq(-40, 120, 20),
+                     labels =  seq(-40, 120, 20), limits = c(NA, NA))
+
+```
+
+```{r abx-bray-fit-zoom, fig.width=10, fig.height=6}
+ggplot(abx_bray, aes(x = Abx_RelDay.S2, y = bray)) +
+  geom_line(
+    data = abx_bray_response,
+    aes(group = Subject, x = time, y = value),
+    alpha = 0.5, size = 0.7 ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_bray_mean, aes(x = time, y = value),
+    color = "red", size = 2) +
+  geom_point(
+      data = abx_bray %>% filter(Abx_RelDay.S2 > bray_recov_time),
+      color = "red", size = 2.5) +
+  geom_point(
+      data = abx_bray, aes(color = Abx_Interval.S2), size = 1.5, alpha = 0.5) +
+  scale_color_manual(values = abx_intv_cols) +
+  scale_x_continuous(name = "Days relative to Abx start date", breaks = seq(-40, 120, 5),
+                   labels =  seq(-40, 120, 5), limits = c(-10, 25))
+
+```
+
+```{r}
+get_recovery_stats <- function(df, stab_tol =1e-3, tolerance = 1.5, n_contigeous = 3){
+  df_lst <- lapply(unique(df$Subject), function(subj){
+    df_subj <- df %>%
+      filter(Subject == subj) %>%
+      mutate(
+        sd_prior_value = sd(value[time <= -10]),
+        diff = value - mean(value[time < -10]),
+        stab = abs(deriv) < stab_tol) %>%
+      arrange(time)
+    df_subj$stab <- sapply(1:nrow(df_subj), function(i) {
+      if(df_subj$time[i] <= 0) return(FALSE)
+      all(df_subj$stab[i:(min(nrow(df_subj), i+n_contigeous))])
+    })
+    df_subj <- df_subj %>%
+      mutate(
+        diff_max = diff[which.max(abs(diff))],
+        diff_t40 = diff[which.min(abs(time - 40))],
+        slope_t4 = deriv[which.min(abs(time - 4))],
+        stabilization_time = ifelse(any(stab), min(time[stab]), NA),
+        stable = time >= stabilization_time,
+        reach_stability = any(stable),
+        recovered = stable & (abs(diff) < tolerance*sd_prior_value),
+        recovery_time = ifelse(any(recovered), min(time[recovered]), NA),
+        recovered = time >= recovery_time,
+        recovery = any(recovered)
+    )
+    return(df_subj)
+  })
+  df_recov <- plyr::ldply(df_lst, function(x) x)
+  return(df_recov)
+}
+
+abx_bray_recovery  <- get_recovery_stats(abx_bray_response)
+
+```
+
+
+```{r abx-bray-deriv, fig.width=10, fig.height=6}
+ggplot(
+  data = abx_bray_recovery,
+  aes(group = Subject, x = time, y = deriv, color= stable)) +
+  geom_line(
+    alpha = 0.5, size = 0.7) +
+  geom_point(
+    alpha = 0.7, size = 0.7 ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_hline(yintercept = -1e-3, lwd = 0.5, color = "black") +
+  geom_hline(yintercept = 1e-3, lwd = 0.5, color = "black") +
+  scale_x_continuous(name = "Days relative to Abx start date", breaks = seq(-40, 120, 20),
+                   labels =  seq(-40, 120, 20), limits = c(NA, NA))
+
+```
+
+```{r abx-bray-deriv-zoom, fig.width=10, fig.height=6}
+ggplot(
+  data = abx_bray_recovery%>% filter(stabilization_time < 30),
+  aes(group = Subject, x = time, y = deriv, color= stable)) +
+  geom_line(
+    alpha = 0.5, size = 0.7) +
+  geom_text(aes(label = Subject),
+    alpha = 0.7, size = 3 ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_hline(yintercept = -1e-3, lwd = 0.5, color = "black") +
+  geom_hline(yintercept = 1e-3, lwd = 0.5, color = "black") +
+  scale_x_continuous(name = "Days relative to Abx start date", breaks = seq(-40, 120, 5),
+                   labels =  seq(-40, 120, 5), limits = c(-10, 30))
+
+```
+
+```{r abx-bray-stabilization, fig.width=10, fig.height=6}
+ggplot(
+  abx_bray_recovery,
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Subject, color =  stable),
+   size = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_bray_mean, aes(x = time, y = value),
+    color = "red", size = 2) +
+  ylab("Normalized, VST counts (divide by size factor + asinh)")
+```
+
+
+```{r abx-bray-stabilization, fig.width=10, fig.height=6}
+ggplot(
+  abx_bray_recovery %>% filter(recovery),
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Subject, color =  recovered),
+   size = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_bray_mean, aes(x = time, y = value),
+    color = "red", size = 2) +
+  geom_text(
+    data = abx_bray_recovery %>% filter(recovery, floor(time) %% 5 == 0),
+    aes(label = Subject, color =  recovered), alpha = 0.7, size = 4) +
+  ylab("Normalized, VST counts (divide by size factor + asinh)")
+```
+
+```{r}
+table(abx_bray_recovery$stabilization_time)
+```
+
+```{r fig.width=10, fig.height=5}
+abx_bray_recovery_subj <- abx_bray_recovery %>%
+  select(Subject, diff_max, slope_t4, stabilization_time, recovery) %>%
+  distinct()
+ggplot(abx_bray_recovery_subj) +
+  geom_histogram(aes(x = stabilization_time), bins = 20)
+```
+
+```{r, fig.width=10, fig.height=5}
+
+abx_bray_recovery_subj$jitter <- 0.2*runif(nrow(abx_bray_recovery_subj))-0.1
+ggplot(
+  abx_bray_recovery_subj,
+  aes(x = jitter, y = stabilization_time, color = diff_max)) +
+  geom_boxplot(aes(y = stabilization_time), width = 1) +
+  geom_text(aes(label = Subject), size = 5, fontface = "bold") +
+  scale_color_viridis() + xlab("") + coord_flip() + xlim(-0.2, 0.2)
+```
+
+```{r  }
+ggplot(abx_bray_recovery_subj) +
+  geom_violin(aes(x = "", y = slope_t4)) +
+  geom_jitter(
+    aes(x =  "", y= slope_t4, color = stabilization_time),
+    height = 0, width = 0.2) +
+  ylab("slope at t = 4") + coord_flip() +
+  scale_color_viridis ()
+```
+
+
+```{r fig.width=8, fig.height=6}
+library(GGally)
+Z <- abx_bray_recovery_subj %>%
+  data.frame() %>%
+  select(diff_max, slope_t4, stabilization_time, recovery)
+ggpairs(Z)
+```
+
+
+## Daily variability and recovery
+
+
+```{r}
+daily_variability <- distDF %>%
+  mutate(
+    day_diff = Abx_RelDay.S2 - Abx_RelDay.S1
+  ) %>%
+  filter(
+    Subject.S1 == Subject.S2,
+    grepl("Abx", Group),
+    Abx_RelDay.S1 >= -7, Abx_RelDay.S1 <= 0,
+    Abx_RelDay.S2 >= -7, Abx_RelDay.S2 <= 0,
+    day_diff == 1)
+
+subj_count <- daily_variability %>%
+  group_by(Subject) %>%
+  summarise(Freq = n())
+
+# daily_variability <- daily_variability %>%
+#   filter(Subject %in% (subj_count %>% filter(Freq >= 5) %>% .[["Subject"]]))
+
+```
+
+```{r}
+table(daily_variability$Subject)
+table(daily_variability$Subject) %>% length()
+```
+
+
+There are 37 subjects left with at least 5 daily samples right before the abx.
+
+```{r}
+daily_variability_mean <- daily_variability %>%
+  group_by(Subject) %>%
+  summarise_at(
+    .vars = c("bray", "jaccard", "unifrac"),
+    .funs = mean) %>%
+  left_join(abx_bray_recovery_subj)
+```
+
+```{r}
+ggplot(
+  daily_variability_mean,
+  aes(x = bray, y = stabilization_time)) +
+  geom_text(aes(label = Subject, color = diff_max), size = 4, fontface = "bold") +
+  scale_color_viridis() +
+  xlab("Daily Variability at [-7, 0] measured with Bray-Curtis")
+```
+
+```{r}
+ggplot(
+  daily_variability_mean,
+  aes(x = unifrac, y = stabilization_time)) +
+  geom_text(aes(label = Subject, color = diff_max), size = 4, fontface = "bold") +
+  scale_color_viridis() +
+  xlab("Daily Variability at [-7, 0] measured with Unifrac")
+```
+
+
+```{r}
+ggplot(
+  daily_variability_mean,
+  aes(x = jaccard, y = diff_max)) +
+  geom_text(aes(label = Subject, color = diff_max), size = 4, fontface = "bold") +
+  scale_color_viridis() +
+  xlab("Daily Variability at [-7, 0] measured with Jaccard")
+```
+
+```{r}
+daily_variability_mean %>%
+  summarise_at(
+    .vars = c("bray", "jaccard", "unifrac"),
+    .funs = function(x)
+      cor(x,daily_variability_mean$stabilization_time, method = "spearman")
+  )
+```
+
+
+## Individual ASV response
+
+
+
+```{r, eval = FALSE}
+abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
+  rownames_to_column("Seq_ID") %>%
+  gather(Meas_ID, abundance, -Seq_ID) %>%
+  left_join(abx_SMP) %>%
+  left_join(taxtab) %>%
+  mutate(
+    Abx_Interval = factor(
+      Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) %>%
+  filter(Abx_RelDay >= -40, Abx_RelDay <= 80) %>%   # limit the scope due to effect of other perturbations
+  arrange(Seq_ID, Subject, Abx_RelDay)
+```
+
+
+
+```{r, eval = FALSE}
+## Run using  fclust.R script
+
+thresh <- 0; num_nonzero <- 10; min_no_subj <- 3
+keep_rsv <- abx.rsv %>%
+  filter(abundance > thresh) %>%
+  group_by(Subject, Seq_ID) %>%
+  summarise(Freq = n()) %>%   # No. of samples for each subject with non-zero count of a given rsv
+  filter(Freq >= num_nonzero) %>%
+  group_by(Seq_ID) %>%
+  summarise(Freq = n()) %>% # For each RSV, # of subjects w/ num_nonzero samples with counts > thresh
+  filter(Freq >= min_no_subj) %>%
+  arrange(desc(Freq))
+
+length(unique(keep_rsv$Seq_ID)) # = 861
+
+abx.rsv.subset <- abx.rsv %>%
+  filter(Seq_ID %in% unique(keep_rsv$Seq_ID))
+
+save(list = c("abx.rsv", "keep_rsv"), file = "results/abx_long.rda")
+save(list = c("keep_rsv", "abx.rsv.subset"), file = "results/abx_long_subset.rda")
+```
+
+
+
+```{r, eval = FALSE}
+## Run using  fclust.R script
+
+abx_fpca <- fda_pca(
+  abx.rsv.subset,
+  time_column = "Abx_RelDay",
+  value_column = "abundance",
+  replicate_column = "Subject",
+  feat_column = "Seq_ID",
+  cluster = FALSE,
+  fpca_optns = NULL, fclust_optns = NULL,
+  parallel = TRUE, ncores = 16)
+abx_fpca_mu <- get_fpca_means(abx_fpca)
+abx_fpca_subjFit <- get_fpca_fits(abx_fpca)
+save(list = c("abx_fpca", "abx_fpca_mu", "abx_fpca_subjFit"),
+    file = "results/abx_rsv_fpca.rda")
+
+abx_fclust <- fda_pca(
+  abx.rsv.subset,
+  time_column = "Abx_RelDay",
+  value_column = "abundance",
+  replicate_column = "Subject",
+  feat_column = "Seq_ID",
+  cluster = TRUE,
+  clust_min_num_replicate = 15,
+  fpca_optns = NULL, fclust_optns = NULL,
+  parallel = TRUE, ncores = 16)
+save(list = c("abx_fclust"),
+    file = "results/abx_rsv_fclust.rda")
+
+abx_fclust_mu <- get_fpca_means(abx_fclust)
+abx_fclust_subjFit <- get_fpca_fits(abx_fclust)
+
+save(list = c("abx_fclust", "abx_fclust_subjFit", "abx_fclust_mu"),
+    file = "results/abx_rsv_fclust.rda")
+```
+
+
+
+```{r}
+# Clustering was performed on data fitted with smooth FPCA
+# (different settings in 'abx_fclust' and  'abx_pca')
+abx_fclust_mu <- abx_fclust_mu %>%
+  mutate(Seq_ID = Feature_ID) %>%
+  left_join(taxtab)
+
+abx_fclust_subjFit <- abx_fclust_subjFit %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab)
+
+abx.rsv.subset <- abx.rsv.subset %>%
+  left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+```
+
+
+```{r}
+# Different settings in 'abx_fclust' and  'abx_pca'
+# we use 'abx_pca' fits because more PC (higher K than in abx_fclust)a are obtained fore these.
+abx_fpca_mu <- abx_fpca_mu %>%
+  mutate(Seq_ID = Feature_ID) %>%
+  left_join(taxtab)
+
+abx_fpca_subjFit <- abx_fpca_subjFit %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab) %>% left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+
+abx_fpca_subjDeriv <- get_fpca_fits(abx_fpca, derOptns = list(p = 1))  %>%
+  mutate(Seq_ID = Feature_ID, Subject = Replicate_ID) %>%
+  left_join(taxtab) %>% left_join(abx_fclust_subjFit %>% select(Seq_ID, Subject, Cluster) %>% distinct())
+```
+
+
+```{r}
+# RSVs ordered according to abundance:
+min_num_subj <- 10
+abx_rsv_total <- abx.rsv.subset %>%
+  left_join(keep_rsv) %>%
+  filter(Freq >= min_num_subj) %>%
+  group_by(Seq_ID) %>%
+  summarise(mean_sample_abundance = mean(abundance)) %>%
+  arrange(desc(mean_sample_abundance))
+
+# RSVs ordered according to variability over time:
+abx_rsv_variability <- abx_fclust_mu %>%
+  left_join(keep_rsv) %>%
+  filter(Freq >= min_num_subj) %>%
+  group_by(Seq_ID) %>%
+  summarise(sd = sd(value)) %>%
+  arrange(desc(sd))
+
+# Using counts only
+# abx_rsv_variability <- abx.rsv.subset %>%
+#   group_by(Seq_ID, Subject) %>%
+#   summarise(
+#     variability = sd(abundance)) %>%
+#   group_by(Seq_ID) %>%
+#   summarise(mean_variability = mean(variability)) %>%
+#   arrange(desc(mean_variability))
+
+# RSVs that changed most after perturbation
+abx_rsv_perturb_sensitivity <- abx_fpca_subjDeriv %>%
+  left_join(keep_rsv) %>%
+  filter(time >= 0, time <= 30, Freq >= min_num_subj) %>%
+  group_by(Subject, Seq_ID) %>%
+  summarise(max_slope = max(value)) %>%
+  group_by(Seq_ID) %>%
+  summarise(mean_slope = mean(max_slope)) %>%
+  arrange(desc(mean_slope))
+```
+
+
+
+```{r}
+multiple_clust_seq_id <- abx_fpca_subjFit %>%
+  group_by(Seq_ID) %>%
+  summarise(n_clust = length(unique(Cluster))) %>%
+  filter(n_clust > 1)
+
+abx_diff_clusters <- abx_fpca_subjFit %>%
+  filter(Seq_ID %in% multiple_clust_seq_id$Seq_ID) %>%
+  left_join(keep_rsv) %>%
+  filter(Freq >= min_num_subj) %>%
+  group_by(Seq_ID, Cluster, time) %>%
+  summarise(value = mean(value)) %>%
+  group_by(Seq_ID, time) %>%
+  summarise(diff = abs(value[Cluster == "1"] - value[Cluster == "2"])) %>%
+  group_by(Seq_ID) %>%
+  summarise(mean_diff = mean(diff)) %>%
+  arrange(desc(mean_diff))
+
+```
+
+
+```{r abx-top20-rsv-distinct-clust,  fig.width=15, fig.height=8}
+nTop <- 20
+i <- 1
+# Use abx_rsv_total or abx_rsv_variability or abx_rsv_perturb_sensitivity
+seq_to_plot <-  c("Seq1", "Seq3","Seq6", "Seq7", "Seq26", "Seq28",
+                  "Seq31", "Seq35", "Seq58", "Seq62", "Seq65", "Seq68")
+
+ggplot(
+  abx_fpca_subjFit %>%
+    filter(Seq_ID %in% seq_to_plot) %>%
+    mutate(Seq_ID = factor(Seq_ID, levels = seq_to_plot)),
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Replicate_ID, color = Cluster),
+    alpha = 0.5, size = 0.7
+  ) +
+  # geom_point(
+  #   data = abx.rsv.subset %>% filter(Seq_ID %in% seq_to_plot),
+  #   aes(x = Abx_RelDay, y = abundance, color = Cluster),
+  #   size = 0.3, alpha = 0.5
+  # ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_fpca_mu %>% filter(Seq_ID %in% seq_to_plot),
+    color = "red", size = 2
+  ) +
+  scale_color_manual(values = c( "deepskyblue2", "grey17")) +
+  facet_wrap(~ OrgName, scales = "free", ncol = 4) +
+  theme(strip.text = element_text(family="Helvetica-Narrow", size = 10)) +
+  scale_x_continuous(name = "Days relative to Abx start date",
+                     breaks = seq(-40, 120, 20), labels =  seq(-40, 120, 20),
+                     limits = c(NA, NA))
+```
+
+
+```{r}
+z <- abx_fpca_subjFit %>%
+  filter(Seq_ID %in% seq_to_plot) %>%
+  select(Seq_ID, Cluster, Subject) %>%
+  distinct() %>%
+  group_by(Seq_ID) %>%
+  mutate(
+    n1 = sum(Cluster == 1),
+    n2 = sum(Cluster == 2),
+    smaller_cluster = ifelse(n1 < n2, "1", "2")) %>%
+  filter(Cluster == smaller_cluster) %>%
+  arrange(Seq_ID, Cluster, Subject)
+z %>% group_by(Seq_ID) %>%
+  summarise(Subject_smaller_cluster = paste(Subject, collapse = "; "))
+```
+
+
+
+
+```{r top20-rsv-response-abx,  fig.width=15, fig.height=10}
+nTop <- 20
+i <- 1
+# Use abx_rsv_total or abx_rsv_variability or abx_rsv_perturb_sensitivity
+seq_to_plot <- abx_rsv_total$Seq_ID[seq((i-1)*nTop+1, i*nTop)]
+
+ggplot(
+  abx_fpca_subjFit %>% filter(Seq_ID %in% seq_to_plot),
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Replicate_ID, color = Cluster),
+    alpha = 0.5, size = 0.7
+  ) +
+  # geom_point(
+  #   data = abx.rsv.subset %>% filter(Seq_ID %in% seq_to_plot),
+  #   aes(x = Abx_RelDay, y = abundance, color = Cluster),
+  #   size = 0.3, alpha = 0.5
+  # ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_fpca_mu %>% filter(Seq_ID %in% seq_to_plot),
+    color = "red", size = 2
+  ) +
+  scale_color_manual(values = c( "deepskyblue2", "grey17")) +
+  facet_wrap(~ OrgName, scales = "free", ncol = 4) +
+  theme(strip.text = element_text(family="Helvetica-Narrow", size = 10)) +
+  scale_x_continuous(name = "Days relative to Abx start date",
+                     breaks = seq(-40, 120, 20), labels =  seq(-40, 120, 20),
+                     limits = c(NA, NA))
+```
+
+## Cluster Sequerce Mean Response:
+
+
+```{r}
+set.seed(123456)
+rsv_clust <- fit_fdapca(
+  abx_fpca_mu, "time", "value", "Feature_ID",
+  cluster = TRUE, K = 6)
+
+rsv_mean <- data.frame(
+  time = rsv_clust$fpca$workGrid,
+  value = rsv_clust$fpca$mu)
+
+rsv_fit <- fpca_fit(rsv_clust) %>%
+  mutate(Seq_ID = Replicate_ID)
+
+rsv_deriv <- fpca_fit(rsv_clust, derOptns = list(p = 1)) %>%
+  mutate(Seq_ID = Replicate_ID)
+
+rsv_response <-  rsv_fit %>%
+  select(Seq_ID,time:Cluster) %>%
+  left_join(
+    rsv_deriv %>%
+      select(time:Seq_ID) %>%
+      rename("deriv" = value)
+  )  %>%
+  left_join(taxtab)
+
+```
+
+```{r}
+abx_rsv_total <- abx.rsv.subset %>%
+  left_join(keep_rsv) %>%
+  group_by(Seq_ID) %>%
+  summarise(mean_sample_abundance = mean(abundance)) %>%
+  arrange(desc(mean_sample_abundance))
+```
+
+
+
+
+
+```{r rsv-clusters-abx, fig.width=10, fig.height=6}
+ggplot(
+  rsv_response, aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Seq_ID, color = Cluster),
+    alpha = 0.5, size = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = rsv_mean,
+    color = "red", size = 2
+  ) +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 3) +
+  scale_color_brewer(palette = "Set2")
+```
+
+
+```{r rsv-clusters-deriv-abx, fig.width=10, fig.height=6}
+ggplot(
+  rsv_response, aes(x = time, y = deriv)) +
+  geom_line(
+    aes(group = Seq_ID, color = Cluster),
+    alpha = 0.5, size = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 3) +
+  scale_color_brewer(palette = "Set2")
+```
+
+```{r}
+top_rsv <- rsv_response %>%
+  left_join(abx_rsv_total) %>%
+  select(Seq_ID, OrgName, Genus, mean_sample_abundance, Cluster) %>%
+  distinct() %>%
+  group_by(Cluster) %>%
+  top_n(10, wt =  mean_sample_abundance)
+
+top_genus <- rsv_response %>%
+  left_join(abx_rsv_total) %>%
+  group_by(Family, Genus, Cluster) %>%
+  summarise(mean_sample_abundance = mean(mean_sample_abundance)) %>%
+  group_by(Cluster) %>%
+  top_n(10, wt =  mean_sample_abundance)
+```
+
+```{r}
+top_genus %>%
+  arrange(Cluster, desc(mean_sample_abundance)) %>%
+  select(Cluster, Family, Genus, mean_sample_abundance)
+
+```
+
+```{r}
+top_rsv %>%
+  arrange(Cluster, desc(mean_sample_abundance)) %>%
+  select(Cluster, OrgName, mean_sample_abundance)
+
+```
+
+```{r}
+abx_rsv_recovery  <- get_recovery_stats(
+  rsv_response, replicate_column = "Seq_ID", stab_tol = 1e-2, n_contigeous = 3)
+
+```
+
+
+```{r rsv-recovery-abx, fig.width=10, fig.height=20}
+ggplot(
+  abx_rsv_recovery,
+  aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Seq_ID, color =  stable),
+    alpha = 0.5, size = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 1, scale = "free") #+ scale_color_viridis()
+```
+
+```{r}
+abx.subset <- subset_taxa(abx, taxa_names(abx) %in% unique(abx_rsv_response$Seq_ID))
+tr <- abx.subset@phy_tree
+#tr$edge.length = rep(1, length(tr$edge.length))
+tree.plot <- phyloseq::plot_tree(tr, ladderize = TRUE) +
+  coord_flip() + scale_x_reverse()
+
+leaf.position <- treeDA::get_leaf_position(abx.subset@phy_tree,
+    ladderize = TRUE)$otu.pos
+
+```
+
+```{r}
+top_family <- taxtab %>%
+  filter(!is.na(Family)) %>%
+  group_by(Family) %>%
+  summarise(Freq = n()) %>%
+  top_n(15) %>%
+  arrange(desc(Freq)) %>% .[["Family"]]
+taxtab <- taxtab %>%
+  mutate(family = factor(Family, levels = top_family))
+```
+
+
+```{r}
+X <- abx_rsv_response %>%
+  mutate_at(.vars = c("recovery", "Cluster", "reach_stability"), .funs = as.numeric)
+seq_stats <- reshape2::melt(
+  X, id.vars = "Seq_ID", variable.name = c("Coef")) %>%
+  left_join(abx_rsv_response[, c("Seq_ID", "Cluster")])
+
+df <- data.frame(
+  Seq_ID = taxa_names(abx.subset), leaf.position) %>%
+  left_join(seq_stats) %>%
+  left_join(taxtab)
+```
+
+
+```{r  fig.width=15, fig.height=8}
+coefs <- c("diff_max", "diff_t40", "slope_t4")
+df2plot <- df %>% filter(Coef %in% coefs, !is.na(value))
+coef.plot <- ggplot(df2plot) +
+  geom_point(aes_string(x = "leaf.position", y = "value", color = "family")) +
+  facet_grid(Coef ~ ., scales = "free")
+treeDA::combine_plot_and_tree(coef.plot, tree.plot, tree.height = 3)
+```
+
+
+
+```{r rsv-abx-resposnse-stats-magnitude, fig.width=15, fig.height=8, message=FALSE, warning=FALSE}
+df2label <- df2plot %>%
+  group_by(Coef) %>%
+  mutate(keep = value > quantile(value, 0.985) | value < quantile(value, 0.015)) %>%
+  filter(keep)
+coef.plot +
+  ggrepel::geom_text_repel(
+    data = df2label,
+    aes(x = leaf.position, y = value, label = OrgName, color = family)
+  )
+
+
+```
+
+```{r fig.width=15, fig.height=8}
+
+clust_cols <- c("1" = "#5cd7b5", "2" = "#f9cb9c", "3" = "#a4c2f4",
+                "4" = "#ea39c460", "5" = "#77e649ff" , "6" = "#ffd966ff" )
+ggplot(df2plot) +
+  geom_point(aes_string(x = "leaf.position", y = "value", color = "Cluster")) +
+  facet_grid(Coef ~ ., scales = "free") +
+  ggrepel::geom_text_repel(
+    data = df2label, fontface = "bold", size = 4,
+    aes(x = leaf.position, y = value, label = OrgName, color = Cluster)
+  ) +
+  scale_color_manual(values = clust_cols)
+```
+
+
+
+
+
+
+```{r rsv-abx-resposnse-stats-magnitude, fig.width=15, fig.height=8, message=FALSE, warning=FALSE}
+coefs <- c("stabilization_time", "recovery_time")
+df2plot <- df %>% filter(Coef %in% coefs, !is.na(value))
+coef.plot <- ggplot(df2plot) +
+  geom_point( aes_string(x = "leaf.position", y = "value", color = "family")) +
+  facet_grid(Coef ~ ., scales = "free")
+treeDA::combine_plot_and_tree(coef.plot, tree.plot, 3)
+```
+
+
+```{r fig.width=15, fig.height=8}
+df2label <- df2plot %>%
+  group_by(Coef) %>%
+  mutate(keep = value > quantile(value, 0.985) | value < quantile(value, 0.015)) %>%
+  filter(keep)
+
+ggplot(df2plot) +
+  geom_point(aes_string(x = "leaf.position", y = "value", color = "Cluster")) +
+  facet_grid(Coef ~ ., scales = "free") +
+  ggrepel::geom_text_repel(
+    data = df2label,
+    aes(x = leaf.position, y = value, label = OrgName, color = Cluster)
+  )
+
+```
+
+```{r}
+df <- abx_rsv_response %>%
+  left_join(taxtab) %>%
+  mutate(family = factor(Family, levels = top_family))
+
+family_ordered <- df %>%
+  filter(!is.na(family)) %>%
+  group_by(family) %>%
+  summarise(n = n(), percent_recovered = sum(recovery)/n) %>%
+  arrange(percent_recovered)
+
+df <- df %>%
+  mutate(family = factor(family, levels = family_ordered$family))
+ggplot(df) +
+  geom_bar(aes(fill = recovery, x = family), position = "fill") +
+  theme(axis.text.x = element_text(angle = 90)) + coord_flip()
+```
+
+
+# Diet
+
+
+```{r}
+diet.long <- data.frame(asinh(as(otu_table(diet), "matrix"))) %>%
+  rownames_to_column("Seq_ID") %>%
+  gather(Meas_ID, abundance, -Seq_ID) %>%
+  left_join(data.frame(diet@sam_data)) %>%
+  left_join(taxtab) %>%
+  mutate(
+    Diet_Interval = factor(Diet_Interval, levels = c("PreDiet", "MidDiet", "PostDiet")))
+```
+
+
+```{r}
+sessionInfo()
+```

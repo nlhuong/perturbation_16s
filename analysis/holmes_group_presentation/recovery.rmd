@@ -1,0 +1,751 @@
+---
+title: "Resilience Study 16S data: recovery after perturbation"
+author: 
+  - name: Lan Huong Nguyen
+    affiliation: Institute for Computational and Mathematical Engineering, Stanford University, CA 94305
+keywords: microbiome, metatranscriptomics.
+date: "`r BiocStyle::doc_date()`"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    df_print: paged
+vignette: >
+  %\VignetteIndexEntry{Gene expression time course data analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+
+```{r style, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+library("BiocStyle")
+library("rmarkdown")
+options(width = 200, stringsAsFactors = FALSE) 
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "../figs/holmes_group_presentation/treeDA/", 
+  dev='png') 
+```
+
+```{r warning=FALSE, message=FALSE}
+rm(list = ls())
+library("DESeq2")
+library("viridis")
+library("RColorBrewer")
+library("ggplot2")
+library("dplyr")
+library("phyloseq")
+
+datadir <- "/scratch/PI/sph/resilience/"
+curdir <- getwd()
+source('../utils.R')
+
+processed_datafile <- "results/processed_physeq.rda"
+load(processed_datafile)
+load("results/dist_df.rda")
+```
+
+
+```{r}
+theme_set(theme_bw())
+theme_update(
+   panel.border = element_rect(size = 0.5),
+   legend.position = "bottom",
+   text = element_text(size = 15),
+   strip.background = element_blank()
+)
+cols_itv <- c("grey57", colorRampPalette(brewer.pal(9, "Set1"))(12))
+names(cols_itv) <- c("NoInterv", setdiff(unique(SMP$Interval), "NoInterv"))
+```
+
+
+```{r}
+# dds <- phyloseq_to_deseq2(ps, design = ~ 1)
+# dds <- estimateSizeFactors(dds, type = "poscounts")
+# norm_counts <- counts(dds, normalized = TRUE)
+# ps_norm <- ps
+# otu_table(ps_norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+```
+
+
+# Experiment
+
+```{r exp-design, fig.width=10, fig.height=10}
+ggplot(
+  SMP, aes(y = Subject, x = DaysFromStart)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 4 , override.aes = list(size=3, pch = 16)))
+```
+
+
+# Distances
+
+```{r, echo = FALSE, eval = FALSE}
+load( "results/ordinate_16S.rda")
+```
+
+## Jaccard
+
+
+```{r, eval = FALSE}
+jaccardD <- dist(t(as(otu_table(ps), "matrix")), "binary")
+save(list = c("pca.ihs", "sparse_pca",
+              "rtsne.norm.ihs", "rtsne.centered.ihs", "rtsne.bray.ihs", 
+              "brayD.ihs", "jaccardD",
+              "pp", "out.agpca",
+              "scores", "loadings", "scores_centered"),
+     file =  "results/ordinate_16S.rda")
+```
+
+```{r, eval = FALSE}
+keep_cols <- c(
+  "Meas_ID", "Subject", "Interval",
+  "Samp_Type", "Samp_Date", "Samp_Time",
+  "Diet_Interval", "CC_Interval", "Abx_Interval",
+  "Diet_RelDay", "CC_RelDay", "Abx_RelDay",
+  "DaysFromStart", "Sequencing_Run", "SampleDepth")
+
+jaccD.df <- reshape2::melt(as.matrix(jaccardD), varnames = c("S1", "S2")) %>%
+  mutate(S1 = as.character(S1),
+         S2 = as.character(S2))
+jaccD.df <- jaccD.df %>%
+  left_join(SMP %>% select(keep_cols), by = c("S1" = "Meas_ID")) %>%
+  left_join(SMP %>% select(keep_cols), by = c("S2" = "Meas_ID"), 
+            suffix = c(".S1", ".S2")) %>%
+  filter(Subject.S1 == Subject.S2)
+```
+
+
+## UniFrac
+
+```{r, eval = FALSE}
+doParallel::registerDoParallel(cores = 8)
+unifracD <- phyloseq::UniFrac(ps, parallel=FALSE, fast=TRUE)
+save(list = c("pca.ihs", "sparse_pca",
+              "rtsne.norm.ihs", "rtsne.centered.ihs", "rtsne.bray.ihs", 
+              "brayD.ihs", "jaccardD", "unifracD"
+              "pp", "out.agpca",
+              "scores", "loadings", "scores_centered"),
+     file =  "results/ordinate_16S.rda")
+```
+
+```{r, eval = FALSE}
+unifraD.df <- reshape2::melt(
+  as.matrix(unifracD), varnames = c("S1", "S2"),
+  value.name = "unifrac") %>%
+  mutate(S1 = as.character(S1),
+         S2 = as.character(S2))
+```
+
+## Bray Curtis
+
+```{r, eval = FALSE}
+# Transform counts to not "over-weight" highly abundant taxa
+ps_asinh <- transform_sample_counts(ps, function(x) {asinh(x)})
+brayD.ihs <- phyloseq::distance(ps_asinh, method = "bray")
+```
+
+
+```{r, eval = FALSE}
+brayD.df <- reshape2::melt(
+  as.matrix(brayD.ihs), varnames = c("S1", "S2"),
+  value.name = "bray") %>%
+  mutate(S1 = as.character(S1),
+         S2 = as.character(S2))
+```
+
+
+```{r, eval = FALSE}
+distDF <- jaccD.df %>%
+  rename(jaccard = value) %>%
+  left_join(brayD.df) %>% 
+  # left_join(unifraD.df) %>%
+  left_join(
+    SMP %>%
+      select(Meas_ID, Subject, Group:Real_First_Sample_Date), 
+    by = c("S1" = "Meas_ID"))
+
+distDF <- distDF %>%
+  select(
+    setdiff(colnames(distDF), c("bray", "jaccard", "unifrac")),
+    c("bray", "jaccard", "unifrac"))
+```
+
+```{r, eval = FALSE}
+save(list = c("distDF", "brayD.ihs", "jaccardD", "unifracD"), file = "results/dist_df.rda")
+```
+
+
+```{r, eval = FALSE}
+rm(brayD.df, unifraD.df, brayD.ihs, jaccardD, unifracD)
+```
+
+
+# Recovery After Perturbations
+
+
+## Response to Diet
+
+
+```{r diet-samples, fig.width=9, fig.height=7}
+ggplot( 
+  SMP %>%
+    filter(
+      grepl("Diet", Group),
+      !grepl("MidAbx", Abx_Interval),
+      !grepl("PostAbx", Abx_Interval),
+      !grepl("PostCC", CC_Interval)), 
+  aes(y = Subject, x = Diet_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r}
+diet_response <- distDF %>% 
+  filter(
+    grepl("Diet", Group),
+    Diet_RelDay.S1 >= -7,
+    Diet_RelDay.S1 < 0 ,
+    !grepl("MidAbx", Abx_Interval.S2),
+    !grepl("PostAbx", Abx_Interval.S2),
+    !grepl("PostCC", CC_Interval.S2)) 
+
+diet_response <- get_responses(
+  diet_response, dist_cols = c("bray", "jaccard", "unifrac")) 
+
+diet_response <- recovery_stats(
+  diet_response, relday_col = "Diet_RelDay.S2", 
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4
+)
+```
+
+```{r diet-response-bray-jacc, fig.width=12, fig.height=15}
+diet_intv_cols <- c("MidDiet" = "#5A9D5A", "PreDiet" = "grey60", "PostDiet" = "Orange") #"#377EB8"
+ggplot(diet_response, aes(x = bray, y = jaccard)) +
+  geom_path(aes(group = Subject, color = Diet_Interval.S2)) +
+  geom_point(aes(fill = Diet_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = diet_intv_cols) +
+  scale_color_manual(values = diet_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+
+```{r diet-response-bray-unifrac, fig.width=12, fig.height=15}
+ggplot(diet_response, aes(x = bray, y = unifrac)) +
+  geom_path(aes(group = Subject, color = Diet_Interval.S2)) +
+  geom_point(aes(fill = Diet_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = diet_intv_cols) +
+  scale_color_manual(values = diet_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+
+
+
+
+```{r diet-response-over-time, warning=FALSE, fig.width=10, fig.height=12}
+p1 <- plot_betadiver_over_time(
+  diet_response, distname = "bray", recov_color = "red",
+  rel_day = "Diet_RelDay.S2", interval = "Diet_Interval.S2") +
+  scale_color_manual(values = diet_intv_cols) 
+
+
+p2 <- plot_betadiver_over_time(
+  diet_response, distname = "jaccard", recov_color = "red",
+  rel_day = "Diet_RelDay.S2", interval = "Diet_Interval.S2") +
+  scale_color_manual(values = diet_intv_cols) 
+
+p3 <- plot_betadiver_over_time(
+  diet_response, distname = "unifrac", recov_color = "red", 
+  rel_day = "Diet_RelDay.S2", interval = "Diet_Interval.S2") +
+  scale_color_manual(values = diet_intv_cols) 
+
+
+gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
+```
+
+
+## Response to Colon Cleanout
+
+
+```{r cc-samples, fig.width=9, fig.height=7}
+ggplot( 
+  SMP %>%
+    filter(
+      grepl("CC", Group),
+      !grepl("MidDiet", Diet_Interval),
+      !grepl("PreDiet", Diet_Interval),
+      !grepl("MidAbx", Abx_Interval),
+      !grepl("PostAbx", Abx_Interval)), 
+  aes(y = Subject, x = CC_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r}
+cc_response <- distDF %>% 
+  filter(
+    grepl("CC", Group),
+    CC_RelDay.S1 >= -7,
+    CC_RelDay.S1 < 0 ,
+    !grepl("MidDiet", Diet_Interval.S2),
+    !grepl("PreDiet", Diet_Interval.S2),
+    !grepl("MidAbx", Abx_Interval.S2),
+    !grepl("PostAbx", Abx_Interval.S2))
+
+cc_response <- get_responses(
+  cc_response, dist_cols = c("bray", "jaccard", "unifrac")) 
+cc_response <- recovery_stats(
+  cc_response, relday_col = "CC_RelDay.S2",
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4)
+
+```
+
+```{r cc-response-bray-jacc, fig.width=12, fig.height=7}
+cc_intv_cols <- c("PreCC" = "grey60", "PostCC" = "#4169E1") #"#377EB8"
+ggplot(cc_response, aes(x = bray, y = jaccard)) +
+  geom_path(aes(group = Subject, color = CC_Interval.S2)) +
+  geom_point(aes(fill = CC_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = cc_intv_cols) +
+  scale_color_manual(values = cc_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+
+
+
+
+```{r cc-response-bray-unifrac, fig.width=12, fig.height=7}
+ggplot(cc_response, aes(x = bray, y = unifrac)) +
+  geom_path(aes(group = Subject, color = CC_Interval.S2)) +
+  geom_point(aes(fill = CC_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = cc_intv_cols) +
+  scale_color_manual(values = cc_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+```{r cc-response-over-time, warning=FALSE, fig.width=10, fig.height=10}
+p1 <- plot_betadiver_over_time(
+  cc_response, distname = "bray",  recov_color = "red",
+  rel_day = "CC_RelDay.S2", interval = "CC_Interval.S2") +
+  scale_color_manual(values = cc_intv_cols) 
+
+p2 <- plot_betadiver_over_time(
+  cc_response, distname = "jaccard",  recov_color = "red",
+  rel_day = "CC_RelDay.S2", interval = "CC_Interval.S2") +
+  scale_color_manual(values = cc_intv_cols) 
+
+
+p3 <- plot_betadiver_over_time(
+  cc_response, distname = "unifrac",  recov_color = "red",
+  rel_day = "CC_RelDay.S2", interval = "CC_Interval.S2") +
+  scale_color_manual(values = cc_intv_cols) 
+
+gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
+```
+
+
+## Response to Antibiotics
+
+```{r abx-samples, fig.width=9, fig.height=7}
+ggplot( 
+  SMP %>%
+    filter(
+      grepl("Abx", Group),
+      !grepl("MidDiet", Diet_Interval),
+      !grepl("PreDiet", Diet_Interval),
+      !grepl("PreCC", CC_Interval)), 
+  aes(y = Subject, x = Abx_RelDay)) +
+  geom_point(
+      aes(color = Interval, fill = Interval), 
+      pch = 124, size = 3) +
+    facet_grid(Group ~ ., scales = "free", space = "free") +
+    scale_color_manual(values = cols_itv) +
+    theme(legend.direction = "horizontal", legend.box = "vertical",
+          strip.text.y = element_text(angle=270, size = 10)) +
+    guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 16)))
+```
+
+
+```{r}
+abx_response <- distDF %>% 
+  filter(
+    grepl("Abx", Group),
+    Abx_RelDay.S1 >= -7,
+    Abx_RelDay.S1 < 0 ,
+    !grepl("MidDiet", Diet_Interval.S2),
+    !grepl("PreDiet", Diet_Interval.S2),
+    !grepl("PreCC", CC_Interval.S2))
+
+abx_response <- get_responses(abx_response, 
+                              dist_cols = c("bray", "jaccard", "unifrac")) 
+abx_response <- recovery_stats(
+  abx_response, relday_col = "Abx_RelDay.S2", 
+  fac = 1.2, thresh_num_days_below = 3, perturb_day = 4) %>%
+  arrange(Subject, DaysFromStart.S2)
+
+```
+
+```{r abx-response-bray-jaccard, fig.width=12, fig.height=15}
+abx_intv_cols <- c("MidAbx" = "#E41A1C", "PreAbx" = "grey60", "PostAbx" = "#00BFC4", "UnpAbx" = "Purple") #"#377EB8"
+ggplot(abx_response, aes(x = bray, y = jaccard)) +
+  geom_path(aes(group = Subject, color = Abx_Interval.S2)) +
+  geom_point(aes(fill = Abx_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = abx_intv_cols) +
+  scale_color_manual(values = abx_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+```{r}
+ggplot(abx_response %>% filter(Subject == "EAO"), aes(x = bray, y = unifrac)) +
+  geom_path(aes(group = Subject, color = Abx_Interval.S2)) +
+  geom_point(aes(fill = Abx_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = abx_intv_cols) +
+  scale_color_manual(values = abx_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+
+```{r abx-response-bray-unifrac, fig.width=12, fig.height=15}
+ggplot(abx_response, aes(x = bray, y = unifrac)) +
+  geom_path(aes(group = Subject, color = Abx_Interval.S2)) +
+  geom_point(aes(fill = Abx_Interval.S2), 
+             size = 2, pch = 21, color = "white") +
+  facet_wrap(~ Subject, scales = "free", ncol = 5) +
+  scale_fill_manual(values = abx_intv_cols) +
+  scale_color_manual(values = abx_intv_cols) +
+  guides(color = guide_legend(nrow = 2 , override.aes = list(size=3, pch = 21)))
+```
+
+
+```{r abx-response-over-time, warning=FALSE, fig.width=10, fig.height=10}
+p1 <- plot_betadiver_over_time(
+  abx_response, distname = "bray",  recov_color = "red",
+  rel_day = "Abx_RelDay.S2", interval = "Abx_Interval.S2") +
+  scale_color_manual(values = abx_intv_cols) 
+
+p2 <- plot_betadiver_over_time(
+  abx_response, distname = "jaccard",  recov_color = "red",
+  rel_day = "Abx_RelDay.S2", interval = "Abx_Interval.S2") +
+  scale_color_manual(values = abx_intv_cols) 
+
+p3 <- plot_betadiver_over_time(
+  abx_response, distname = "unifrac",  recov_color = "red",
+  rel_day = "Abx_RelDay.S2", interval = "Abx_Interval.S2") +
+  scale_color_manual(values = abx_intv_cols) 
+
+gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
+```
+
+
+```{r}
+plot_betadiver_over_time(
+  abx_response %>% filter(Subject == "EAV"), distname = "unifrac",  recov_color = "red",
+  rel_day = "Abx_RelDay.S2", interval = "Abx_Interval.S2") +
+  scale_color_manual(values = abx_intv_cols)
+
+plot_betadiver_over_time(
+  diet_response %>% filter(Subject == "EAV"), distname = "unifrac",  recov_color = "red",
+  rel_day = "Diet_RelDay.S2", interval = "Diet_Interval.S2") +
+  scale_color_manual(values = diet_intv_cols) 
+```
+
+
+# Compare perturbations
+
+
+## Recovery Time
+
+Recovery time is defined as the first day after the start of the perturbation 
+when at least 3 samples have been observed to have the dissimilarity
+with the samples prior to perturbation (averaged over seven days),
+below a threshold (of factor * mean dissimilarity samples < -7 days 
+prior perturnbation).
+
+```{r}
+compare_recov_time <- diet_response %>%
+  select("Subject", contains("_recov_time")) %>%
+  distinct() %>%
+  full_join(abx_response %>% 
+              #filter(Subject %in% intersect_subjects) %>%
+              select("Subject", contains("_recov_time")) %>%
+              distinct(), 
+            by = c("Subject"),
+            suffix = c(".diet", ".abx")) %>%
+  full_join(cc_response %>% 
+             # filter(Subject %in% intersect_subjects) %>%
+              select("Subject", contains("_recov_time")) %>%
+              distinct() %>%
+              rename_at(
+                .vars = vars(contains("recov_time")),
+                .funs = function(x) paste0(x, ".cc")), 
+            by = c("Subject")) 
+
+
+compare_recov_time <- compare_recov_time %>%
+  left_join(
+    SMP %>% 
+      select(Subject, Age, Gender, Height, Weight, BMI) %>%
+      distinct()) %>%
+  mutate_at(
+    .vars = c("BMI", "Age", "Height", "Weight"),
+    .funs = as.numeric)
+```
+
+
+```{r compare-recovery-time, fig.width=10, fig.height=13}
+plt.lst <- list()
+for(dist in c("bray", "jaccard", "unifrac")) {
+  for(perturb1 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+    for(perturb2 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+      if(perturb1 >= perturb2) {next}
+      
+      DF <- compare_recov_time %>%
+        filter(!is.na(compare_recov_time[[paste0(dist, "_recov_time.", perturb1)]]),
+               !is.na(compare_recov_time[[paste0(dist, "_recov_time.", perturb2)]]))
+      plt.lst[[paste0(dist, "_", perturb1, "_", perturb2)]] <- 
+        ggplot(
+          data = DF,
+          aes_string(x = paste0(dist, "_recov_time.", perturb1), 
+                    y = paste0(dist, "_recov_time.", perturb2))) +
+        geom_text(aes(label = Subject, color = Age), size = 5) +
+        scale_color_viridis() +
+        ggtitle(paste0(dist, ": ", perturb1, " vs ", perturb2)) +
+        xlab(perturb1) + ylab(perturb2)
+    }  
+  }
+}
+
+library(gridExtra)
+do.call("grid.arrange", c(plt.lst, ncol=3))
+```
+
+
+## Maximum displacement
+
+Maximum deviation from the baseline samples (-7 to -1 days before the perturbation):
+
+```{r}
+max_dist_post_samples <- function(df, rel_day) {
+  df <- df %>%
+    filter(df[[rel_day]] > 0) %>%
+    select("Subject", "bray", "jaccard", "unifrac") %>%
+    group_by(Subject) %>%
+    summarise_all(max)
+}
+compare_max_dist <- max_dist_post_samples(diet_response, "Diet_RelDay.S2") %>%
+  full_join(max_dist_post_samples(abx_response, "Abx_RelDay.S2") , 
+            by = c("Subject"),
+            suffix = c(".diet", ".abx")) %>%
+  full_join(max_dist_post_samples(cc_response, "CC_RelDay.S2") %>% 
+              select("Subject", "bray", "jaccard", "unifrac") %>%
+              rename_at(
+                .vars = vars(-Subject),
+                .funs = function(x) paste0(x, ".cc")), 
+            by = c("Subject")) 
+
+
+compare_max_dist <- compare_max_dist %>%
+  left_join(SMP %>% 
+              select(Subject, Age, Gender, Height, Weight, BMI) %>%
+              distinct()) %>%
+  mutate_at(
+    .vars = c("BMI", "Age", "Height", "Weight"),
+    .funs = as.numeric)
+```
+
+
+```{r compare-max-dist, fig.width=10, fig.height=13}
+plt.lst <- list()
+for(dist in c("bray", "jaccard", "unifrac")) {
+  for(perturb1 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+    for(perturb2 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+      if(perturb1 >= perturb2) {next}
+      
+      DF <- compare_max_dist %>%
+        filter(!is.na(compare_max_dist[[paste0(dist, ".", perturb1)]]),
+               !is.na(compare_max_dist[[paste0(dist, ".", perturb2)]]))
+              
+      max_limit <- max(DF[[paste0(dist, ".", perturb1)]], 
+                       DF[[paste0(dist, ".", perturb2)]], na.rm = TRUE) + 0.05
+      
+      min_limit <- min(DF[[paste0(dist, ".", perturb1)]], 
+                       DF[[paste0(dist, ".", perturb2)]], na.rm = TRUE) - 0.05
+      
+      
+      plt.lst[[paste0(dist, "_", perturb1, "_", perturb2)]] <- 
+        ggplot(DF,
+               aes_string(x = paste0(dist, ".", perturb1), 
+                          y = paste0(dist, ".", perturb2))) +
+        geom_abline(slope = 1, lty = 2, color = "grey50") +
+        geom_text(aes(label = Subject, color = Age), size = 5) +
+        scale_color_viridis() +
+        ggtitle(paste0(dist, ": ", perturb1, " vs ", perturb2)) +
+        xlim(min_limit, max_limit) +  ylim(min_limit, max_limit) +
+        xlab(perturb1) + ylab(perturb2) 
+    }  
+  }
+}
+
+do.call("grid.arrange", c(plt.lst, ncol=3))
+```
+
+
+## Displacement at T10
+
+Deviation from the baseline at T9-T1:
+
+```{r}
+dist_post_samples <- function(df, rel_day) {
+  df <- df %>%
+    filter(df[[rel_day]] >= 9, df[[rel_day]] <=11) %>%
+    select("Subject", "bray", "jaccard", "unifrac") %>%
+    group_by(Subject) %>%
+    summarise_all(mean)
+}
+compare_post_dist <- dist_post_samples(diet_response, "Diet_RelDay.S2") %>%
+  full_join(dist_post_samples(abx_response, "Abx_RelDay.S2") , 
+            by = c("Subject"),
+            suffix = c(".diet", ".abx")) %>%
+  full_join(dist_post_samples(cc_response, "CC_RelDay.S2") %>% 
+              select("Subject", "bray", "jaccard", "unifrac") %>%
+              rename_at(
+                .vars = vars(-Subject),
+                .funs = function(x) paste0(x, ".cc")), 
+            by = c("Subject")) 
+
+compare_post_dist <- compare_post_dist %>%
+  left_join(
+    SMP %>% 
+      select(Subject, Age, Gender, Height, Weight, BMI) %>%
+      distinct()) %>%
+  mutate_at(
+    .vars = c("BMI", "Age", "Height", "Weight"),
+    .funs = as.numeric)
+```
+
+
+```{r compare-t10-dist, fig.width=10, fig.height=13}
+plt.lst <- list()
+for(dist in c("bray", "jaccard", "unifrac")) {
+  for(perturb1 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+    for(perturb2 in factor(c("diet", "abx","cc"), ordered = TRUE)) {
+      if(perturb1 >= perturb2) {next}
+      
+      DF <- compare_post_dist %>%
+        filter(!is.na(compare_post_dist[[paste0(dist, ".", perturb1)]]),
+               !is.na(compare_post_dist[[paste0(dist, ".", perturb2)]]))
+              
+      max_limit <- max(DF[[paste0(dist, ".", perturb1)]], 
+                       DF[[paste0(dist, ".", perturb2)]], na.rm = TRUE) + 0.05
+      
+      min_limit <- min(DF[[paste0(dist, ".", perturb1)]], 
+                       DF[[paste0(dist, ".", perturb2)]], na.rm = TRUE) - 0.05
+      
+      
+      plt.lst[[paste0(dist, "_", perturb1, "_", perturb2)]] <- 
+        ggplot(DF,
+               aes_string(x = paste0(dist, ".", perturb1), 
+                          y = paste0(dist, ".", perturb2))) +
+        geom_abline(slope = 1, lty = 2, color = "grey50") +
+        geom_text(aes(label = Subject, color = Age), size = 5) +
+        scale_color_viridis() +
+        ggtitle(paste0(dist, ": ", perturb1, " vs ", perturb2)) +
+        xlim(min_limit, max_limit) +  ylim(min_limit, max_limit) +
+        xlab(perturb1) + ylab(perturb2) 
+    }  
+  }
+}
+
+do.call("grid.arrange", c(plt.lst, ncol=3))
+```
+
+
+
+## All Samples
+
+```{r}
+# Diet Abx
+
+all_subjects <- distDF %>% 
+  rename(Subject = Subject.S1) %>%
+  filter(Interval.S1 == "NoInterv") %>%
+  select(Subject, S1, S2, starts_with("Interval"), bray, jaccard) %>%
+  group_by(Subject, S2, Interval.S1, Interval.S2) %>%
+  summarise(
+    mean_jaccard = mean(jaccard),
+    mean_bray = mean(bray)) %>%
+  left_join(SMP %>% 
+              select(Meas_ID, DaysFromStart, Interval, Group, 
+                     contains("_RelDay"), contains("_Interval")),
+            by = c("S2" = "Meas_ID")) %>%
+  arrange(Subject, DaysFromStart) 
+
+```
+
+
+```{r diet_abx_resilience, fig.width=10, fig.height=10}
+ggplot(all_subjects %>%
+         filter(Group == "Diet_Abx") %>%
+         arrange(Subject, DaysFromStart) ,
+       aes(x = mean_bray, y = mean_jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Interval, alpha = Interval)) +
+  #scale_color_viridis() +
+  scale_color_manual(values = cols_itv) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+
+```
+
+
+```{r diet_abx_resilience, fig.width=10, fig.height=10}
+ggplot(all_subjects %>%
+         filter(grepl("Abx", Group), Diet_Interval == "PostDiet") %>%
+         arrange(Subject, Abx_RelDay) ,
+       aes(x = mean_bray, y = mean_jaccard)) +
+  geom_path() +
+  geom_point(aes(color = Abx_Interval)) +
+  facet_wrap(~ Subject, scales = "free") +
+  guides(color = guide_legend(nrow = 3 , override.aes = list(size=3, pch = 16)))
+```
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+

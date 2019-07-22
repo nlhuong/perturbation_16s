@@ -1,0 +1,591 @@
+---
+title: 'Perturbation Study: First Look'
+author:
+  affiliation: "| Institute for Computational and Mathematical Engineering, \n| Stanford
+    University, CA 94305\n"
+  name: Lan Huong Nguyen
+date: '`r BiocStyle::doc_date()`'
+output:
+  BiocStyle::html_document2:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+    smart: false
+keywords: microbiome, gPCA, PCA, clustering, differential abundance
+--- 
+
+```{r, eval = FALSE, echo = FALSE}
+# html_notebook:
+#     toc: yes
+#     toc_float: yes
+#     smart: false
+```
+
+
+# Data processing  {#processing .unnumbered}
+
+In this section we are setting the environment, loading all the necessary
+packages, as well as obtaining and processing the dataset. 
+
+
+## Packages and functions {#packages .unnumbered}
+
+```{r setup, include=FALSE}
+rm(list = ls())
+require(knitr)
+require(rmarkdown)
+options(width = 80, stringsAsFactors = FALSE)
+opts_chunk$set(
+  cache = FALSE, warning = FALSE, message = FALSE, 
+  fig.align = 'center', fig.wide = TRUE, fig.path = "../figs/", # dev='pdf',
+  fig.width = 10, fig.height = 8
+)
+```
+
+
+Load the packages needed and set paths to files and outputs.
+
+```{r packages, include = FALSE}
+.packages <- c("gridExtra", "ggplot2", "scales", "viridis", "RColorBrewer", 
+               "ggrepel", "phyloseq" ,"tibble", "tidyr", "dplyr")
+sapply(.packages, require, character.only = TRUE)
+theme_set(theme_bw())
+```
+
+## Load phyloseq data {#loda-data .unnumbered}
+
+
+
+```{r}
+path_to_data <- file.path("../data", "processed/")
+physeq_file <- file.path(path_to_data, "perturb_physeq_filtered_22Jan18.rds")
+ps <- readRDS(physeq_file)
+ps
+```
+
+```{r, echo = FALSE}
+load(file.path(path_to_data, "perturb_ordinate.rda"))
+```
+
+# Visualization {#visualization .unnumbered}
+
+## Experimental design {#exp-dsgn .unnumbered}
+
+We can look at the experimental design / sampling:
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) 
+```
+
+```{r exp-design, fig.height=20, fig.width=15}
+p0 <- ggplot(SMP, aes(y = Subject, x = Samp_Date)) + 
+  scale_x_date() 
+p1 <- p0 + geom_point(aes(color = Diet_Interval), size = 2.5) 
+p2 <- p0 + geom_point(aes(color = CC_Interval), size = 2.5)
+p3 <- p0 + geom_point(aes(color = Abx_Interval), size = 2.5) 
+grid.arrange(p1, p2, p3, ncol = 1)
+```
+
+
+```{r}
+remove_subjects <- c("AAA", "AAB", "AAN", "DAC")
+ps <- subset_samples(ps, !Subject %in% remove_subjects)
+ps
+
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(
+    Interval = paste0(Diet_Interval, "_", CC_Interval, "_", Abx_Interval),
+    Interval = gsub("_NA", "", Interval),
+    Interval = gsub("NA_", "", Interval)
+  )
+```
+
+
+```{r timeline, fig.height=10, fig.width=12}
+set.seed(123)
+ggplot(SMP %>% filter(Subject != "NA_QC", DayFromStart > 0), 
+       aes(y = Subject, x = DayFromStart)) + 
+  geom_point(aes(color = Interval), size = 2.5) +
+  facet_grid(Group ~ ., scales = "free", space = "free") +
+  scale_color_manual(values = sample(colorRampPalette(brewer.pal(9, "Set1"))(21)))
+#xlim(as.Date("2014-08-01"), as.Date("2016-06-01"))
+```
+
+## Filter taxa {#filter .unnumbered}
+
+We will filter out taxa which are not present in samples of at least two 
+distinct subjects.
+
+```{r}
+minTaxaSubjPrev <- 2
+# Compute prevalence across subjects
+num_subj_present <- function(physeq, subject_indicator = "Subject") {
+  smp <- data.frame(physeq@sam_data, stringsAsFactors = FALSE)
+  seqtab <- as(physeq@otu_table, "matrix")
+  sapply(1:ntaxa(physeq), function(i) {
+    subj.present <- smp[[subject_indicator]][seqtab[i, ] > 0]
+    length(unique(subj.present))})
+}
+subjects_prevalence <- num_subj_present(ps)
+# Filter taxa present in more than 1 subject
+ps <- subset_taxa(ps, subjects_prevalence >= minTaxaSubjPrev)
+ps
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  select(Subject, Group, First_Sample_Date, CC_Date, Diet_StartDate, 
+         Age, Gender, Height, Weight, BMI,
+         Waist_Circumference, Resting_Pulse, Blood_Pressure,
+         Test_Cholesterol_Glucose, Birth_Mode, BirthYear) %>%
+  distinct()
+```
+
+```{r}
+# Transform counts to not "over-weight" highly abundant taxa
+psIHS <- transform_sample_counts(ps, function(x) {log(x + sqrt(x^2+1))})
+```
+
+## Phylogenetic tree
+
+```{r}
+# Assign colors to taxa
+taxa_rank <- "Family"
+n_taxa <- 15
+
+taxFreq <- data.frame(Taxa = c(ps@tax_table[, taxa_rank])) %>%
+  group_by(Taxa) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  mutate(
+    Taxa = ifelse(is.na(Taxa), "Unknown", Taxa),
+    Taxa = ifelse(Taxa %in% Taxa[1:n_taxa], Taxa, "Other")
+  )  %>%
+  group_by(Taxa) %>%
+  summarise(count = sum(count)) %>%
+  arrange(desc(count))
+taxFreq
+
+set.seed(1)
+taxa_col_map <- colorRampPalette(brewer.pal(9, "Set3"))(n_taxa + 1)
+taxa_col_map <- taxa_col_map[sample(length(taxa_col_map))]
+names(taxa_col_map) <- c(
+  taxFreq %>% 
+    filter(!.[[1]] %in% c("Other", "Unknown")) %>%
+    .[["Taxa"]],
+  "Other", 
+  "Unknown"
+)
+taxa_col_map["Unknown"] <- c("white")
+
+
+taxa_col <- data.frame(Taxa = c(ps@tax_table[, taxa_rank])) %>%
+  mutate(
+    Taxa = ifelse(is.na(Taxa), "Unknown", Taxa),
+    Taxa = ifelse(Taxa %in% taxFreq$Taxa, Taxa, "Other"),
+    Color = taxa_col_map[Taxa])
+```
+
+```{r phylotree, fig.height=20, fig.width=16}
+default_par <- par()
+par(mar=c(6,1,1,1), xpd = TRUE)
+plot(ps@phy_tree, label.offset=0.75, show.tip.label = FALSE) 
+par(mar=c(1,1,1,1), xpd = TRUE)
+ape::tiplabels(pch=21, col="black", adj=1, bg=taxa_col$Color, cex=2) 
+legend(x= 0, y = -100, legend = names(taxa_col_map), 
+       fill = taxa_col_map, ncol = 6, cex = 1.2)
+par(default_par)
+```
+
+Now, we process the Genus and Species names to contain assignement from 
+both databases. If none of the databases have assignment, a sequence name
+is returned instead of NA.
+
+```{r}
+sub_na <- function(x, taxtab, subs){
+  taxtab <- data.frame(taxtab)
+  res <- c()
+  for (sub in subs) {
+    res <- sapply(1:nrow(taxtab), function(i)
+      ifelse(!is.na(x[i]), x[i], taxtab[i, sub]))
+  }
+  return(res)
+}
+```
+
+```{r}
+taxtab <- ps@tax_table %>%
+  as.data.frame() %>%
+  rownames_to_column("Seq_ID")
+taxtab <- taxtab %>%
+  mutate(
+    genus = sub_na(taxtab$Genus, taxtab, "GenusSilva"),
+    species = sub_na(taxtab$Species, taxtab, c("SpeciesSilva", "Seq_ID"))
+ )
+```
+
+Now, we find the top most prevalent genuses:
+
+```{r}
+# Compute prevalence of each feature, store as data.frame
+seqs_prev <- apply(as(ps@otu_table, "matrix"), 1, function(x)sum(x > 0))
+# Add taxonomy and total read counts to this data.frame
+genus_prev <- data.frame(Prevalence = seqs_prev, taxtab) %>% 
+  group_by(genus) %>%
+  summarise(
+    MeanPrevalence = mean(Prevalence) 
+  ) %>% 
+  arrange(desc(MeanPrevalence))
+```
+
+```{r}
+nTaxa <- 24
+taxtab$genus[!taxtab$genus %in% genus_prev$genus[1:nTaxa]] <- "Other"
+taxtab$genus <- factor(taxtab$genus, levels = c(genus_prev$genus[1:nTaxa], "Other"))
+```
+
+
+
+## PCA {#pca .unnumbered}
+
+```{r}
+plot_projection <- function(data, xname, yname, labname = "Subject", size = 3,
+                            color = NULL, eigs = NULL, ...){
+  if(all(!is.null(color), color %in% colnames(data))){
+    plt <- ggplot(data, aes_string(x = xname, y = yname, color = color)) 
+  } else {
+    plt <- ggplot(data, aes_string(x = xname, y = yname)) 
+  }
+  if(all(!is.null(labname), labname %in% colnames(data))) {
+    if(size %in% colnames(data)) {
+      plt <- plt + geom_text(aes_string(label = labname, size = size), ...)
+    } else {
+      plt <- plt + geom_text(aes_string(label = labname), size = size, ...)
+    }
+  } else {
+    if(size %in% colnames(data)) {
+      plt <- plt + geom_point(aes_string(size = size), ...)
+    } else {
+      plt <- plt + geom_point(size = size, ...)
+    }
+  }
+  if(!is.null(eigs)){
+    var.explained <- round(100 * eigs/sum(eigs), 2)
+    plt <- plt + 
+      labs(
+        x = sprintf("Axis1 [%s%% variance]", var.explained[1]),
+        y = sprintf("Axis2 [%s%% variance]", var.explained[2])
+      ) +
+      coord_fixed(sqrt(var.explained[2] / var.explained[1])) 
+  }
+  return(plt + theme(text = element_text(size = 20))) 
+}
+```
+
+
+```{r pca, eval = FALSE}
+# Compute PCA 
+pca.ihs <- prcomp(scale(as(t(psIHS@otu_table), "matrix"), scale = FALSE))
+save(list = "pca.ihs",
+     file = "../data/processed/perturb_ordinate.rda")
+```
+
+
+```{r}
+loadings <- pca.ihs$rotation[, 1:10] %>%
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  rownames_to_column("Seq_ID") %>%
+  left_join(taxtab)
+
+scores <- pca.ihs$x[, 1:5] %>%
+  as.data.frame() %>%
+  rownames_to_column("Meas_ID") %>%
+  left_join(SMP[, 1:30])%>%
+  arrange(Group, Subject, Samp_Date)
+```
+
+```{r pca-subj, fig.height=10, fig.width=14}
+plot_projection(scores, xname = "PC1", yname = "PC2", labname = "Subject", 
+            size = 3, color = "Subject", eigs = pca.ihs$sdev^2)
+```
+
+
+```{r pca-loadings-subj, fig.height=15, fig.width=20}
+plt1 <- plot_projection(
+  loadings, xname = "PC1", yname = "PC2", size = "PC3",
+  color = "genus", eigs = pca.ihs$sdev^2, alpha = 0.3
+  ) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter((PC1^2 + PC2^2) > 0.006), 
+    aes(label = species),
+    nudge_y = 0.002) +
+  theme(legend.position = "bottom")
+
+plt2 <- plot_projection(
+  loadings, xname = "PC1", yname = "PC2", size = "PC3",
+  color = "Class", eigs = pca.ihs$sdev^2, alpha = 0.3
+  ) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter((PC1^2 + PC2^2) > 0.006), 
+    aes(label = genus),
+    nudge_y = 0.002) +
+  theme(legend.position = "bottom")
+print(plt1)
+print(plt2)
+```
+
+
+```{r pca-subj-time, fig.height=30, fig.width=18}
+plot_projection(scores, xname = "PC1", yname = "PC2", labname = NULL, 
+            size = 3, color = "DayFromStart", eigs = pca.ihs$sdev^2) +
+  geom_point(data = scores %>% 
+               filter(Timeline != "typical"), aes(fill = Timeline),
+             size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group~Subject, scales = "free", ncol = 5) +
+  scale_color_viridis() +
+  scale_fill_brewer(palette = "Oranges")
+```
+
+## PCoA {#pcoa .unnumbered}
+
+```{r pcoa-bray, eval = FALSE}
+# Compute PCoA with Bray-Curtis distance
+brayD.ihs <- phyloseq::distance(psIHS, method = "bray")
+brayD <- phyloseq::distance(ps, method = "bray")
+
+bray.pcoa.raw <- ordinate(ps,  method = "MDS", distance = "bray")
+bray.pcoa.ihs <- ordinate(psIHS,  method = "MDS", distance = "bray")
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs"), 
+     file = "../data/processed/perturb_ordinate.rda")
+```
+
+
+```{r}
+# Combine sample scores and sample data
+sample.scores <- cbind(bray.pcoa.raw$vectors[, 1:2], bray.pcoa.ihs$vectors[, 1:2])
+colnames(sample.scores) <- c("Axis.1.raw", "Axis.2.raw", "Axis.1.ihs", "Axis.2.ihs")
+sample.scores <- cbind(sample.scores, SMP)
+```
+
+From the plot below, we see there might be some lane effect present. This,
+suggest we would need to tacke account of it in the downstream analysis.
+
+```{r pcoa-bray-subj, fig.height=10, fig.width=14}
+plot_projection(sample.scores, xname = "Axis.1.ihs", yname = "Axis.2.ihs", 
+            size = 3, color = "Subject", eigs = bray.pcoa.ihs$values[, 1])
+```
+
+
+```{r pcoa-bray-sample-depth, fig.height=10, fig.width=14}
+plot_projection(sample.scores, xname = "Axis.1.ihs", yname = "Axis.2.ihs", 
+            size = 3, color = "SampleDepth", eigs = bray.pcoa.ihs$values[, 1]) +
+  scale_color_viridis()
+```
+
+
+```{r pcoa-bray-batch, fig.height=10, fig.width=14}
+plot_projection(sample.scores, xname = "Axis.1.ihs", yname = "Axis.2.ihs", 
+            size = 3, color = "Seq_batch", eigs = bray.pcoa.ihs$values[, 1])
+```
+
+
+```{r pcoa-bray-diet, fig.height=12, fig.width=14}
+plot_projection(sample.scores %>% filter(grepl("Diet", Group)), 
+                xname = "Axis.1.ihs", yname = "Axis.2.ihs", labname = NULL,
+                size = 3, color = "Diet_Interval", eigs = bray.pcoa.ihs$values[, 1])+
+  facet_wrap(~Subject, ncol = 5)
+```
+
+```{r pcoa-bray-cc, fig.height=3, fig.width=14}
+plot_projection(sample.scores %>% filter(grepl("CC", Group)), 
+                xname = "Axis.1.ihs", yname = "Axis.2.ihs", labname = NULL,
+                size = 3, color = "CC_Interval", 
+                eigs = bray.pcoa.ihs$values[, 1])+
+  facet_wrap(~Subject, ncol = 5)
+```
+
+```{r pcoa-bray-abx, fig.height=12, fig.width=14}
+plot_projection(sample.scores %>% filter(grepl("Abx", Group)), 
+                xname = "Axis.1.ihs", yname = "Axis.2.ihs", labname = NULL,
+                size = 3, color = "Abx_Interval", 
+                eigs = bray.pcoa.ihs$values[, 1])+
+  facet_wrap(~Subject, ncol = 5)
+```
+
+```{r pcoa-bray-subj-time,  fig.height=30, fig.width=18}
+plot_projection(sample.scores, 
+                xname = "Axis.1.ihs", yname = "Axis.2.ihs", labname = NULL, 
+            size = 3, color = "DayFromStart", eigs = bray.pcoa.ihs$values[, 1]) +
+  geom_point(data = sample.scores %>% 
+               filter(Timeline != "typical"), aes(fill = Timeline),
+             size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group~Subject, scales = "free", ncol = 5) +
+  scale_color_viridis() +
+  scale_fill_brewer(palette = "Oranges")
+```
+
+## TSNE {#tsne .unnumbered}
+
+```{r, eval = FALSE}
+set.seed(123)
+bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, 
+                               pca = TRUE,
+                               eta = 1, exaggeration_factor = nsamples(ps)/10)
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs", "bray.rtsne.ihs"), 
+     file = "../data/processed/perturb_ordinate.rda")
+```
+
+```{r}
+bray.rtsne.ihs <- Rtsne::Rtsne(brayD.ihs, is_distance = TRUE, dims = 2, 
+                               pca = TRUE)
+sample.scores2 <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
+                        tsne.2.ihs = bray.rtsne.ihs$Y[, 2],
+                        sample.scores) 
+```
+
+
+```{r}
+sample.scores <- cbind(tsne.1.ihs = bray.rtsne.ihs$Y[, 1],
+                       tsne.2.ihs = bray.rtsne.ihs$Y[, 2],
+                       sample.scores) 
+```
+
+
+
+```{r tsne-bray-subj, fig.height=10, fig.width=14}
+plot_projection(sample.scores, xname = "tsne.1.ihs", yname = "tsne.2.ihs", 
+            size = 3, color = "Subject")
+
+plot_projection(sample.score2s, xname = "tsne.1.ihs", yname = "tsne.2.ihs", 
+            size = 3, color = "Subject")
+```
+
+```{r tsne-bray-time, fig.height=10, fig.width=14}
+plot_projection(sample.scores, 
+                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL,
+                size = 3, color = "DayFromStart") + 
+  scale_color_viridis()
+
+plot_projection(sample.scores2, 
+                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL,
+                size = 3, color = "DayFromStart") + 
+  scale_color_viridis()
+```
+
+
+```{r tsne-bray-subj-time,  fig.height=30, fig.width=18}
+
+plot_projection(sample.scores %>%
+                  arrange(Subject, Samp_Date), 
+                xname = "tsne.1.ihs", yname = "tsne.2.ihs", labname = NULL, 
+            size = 3, color = "DayFromStart") +
+  geom_path(
+        aes(group = Subject, color = DayFromStart), 
+        alpha = 0.8, lwd = 1) +
+  geom_point(data = sample.scores %>% 
+               filter(Timeline != "typical"), aes(fill = Timeline),
+             size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group~Subject, scales = "free", ncol = 5) +
+  scale_color_viridis() +
+  scale_fill_brewer(palette = "Oranges")
+```
+
+
+## adaptiveGPCA {#agPCA .unnumbered}
+
+```{r, echo = FALSE, eval = FALSE}
+library(adaptiveGPCA)
+pp <- processPhyloseq(ps)
+out.agpca <- adaptivegpca(pp$X, pp$Q, k = 3)
+
+pp.ihs <- processPhyloseq(psIHS)
+out.agpca.ihs <- adaptivegpca(pp.ihs$X, pp.ihs$Q, k = 3)
+
+# out.ff = gpcaFullFamily(pp$X, pp$Q, k = 2)
+# out.agpca <- 
+#   visualizeFullFamily(out.ff,
+#                       sample_data = sample_data(ps),
+#                       sample_mapping = aes(x = Axis1, y = Axis2, color = type),
+#                       var_data = tax_table(ps),
+#                       var_mapping = aes(x = Axis1, y = Axis2, color = Class))
+
+save(list = c("bray.pcoa.raw", "bray.pcoa.ihs", "brayD", "pca.ihs", "bray.rtsne.ihs",
+            "out.agpca", "out.agpca.ihs"), 
+   file = "../data/processed/perturb_ordinate.rda")
+            
+```
+
+```{r, eval=FALSE}
+sample.scores <- cbind(agPCA1 = out.agpca.ihs$U[, 1],
+                       agPCA2 = out.agpca.ihs$U[, 2],
+                       agPCA3 = out.agpca.ihs$U[, 3],
+                       sample.scores) 
+```
+
+```{r agpca-subj, echo = FALSE, eval= FALSE, fig.height=10, fig.width=14}
+plot_projection(sample.scores, xname = "agPCA1", yname = "agPCA2", 
+            size = 3, color = "Subject", eigs = out.agpca.ihs$vars)
+```
+
+```{r, eval=FAlSE}
+loadings <- data.frame(out.agpca.ihs$QV, tax_table(psIHS)) %>%
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  rownames_to_column("Seq_ID") %>%
+  left_join(taxtab)
+```
+
+
+```{r agpca-loadings,  eval=FAlSE, fig.height=15, fig.width=20}
+plot_projection(loadings, 
+                xname = "Axis1", yname = "Axis2", size = "Axis3",
+                color = "genus", eigs = out.agpca.ihs$vars, alpha = 0.3) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter(abs(Axis1) + abs(Axis2) > 0.035), 
+    aes(label = species), 
+    force = 0.002) + 
+  theme(legend.position = "bottom")
+
+plot_projection(loadings, 
+                xname = "Axis1", yname = "Axis2", size = "Axis3",
+                color = "Class", eigs = out.agpca.ihs$vars, alpha = 0.3) +
+  geom_text_repel(
+    data = loadings %>% 
+      filter(abs(Axis1) + abs(Axis2) > 0.035), 
+    aes(label = genus), 
+    force = 0.002) + 
+  theme(legend.position = "bottom")
+```
+
+
+```{r agpca-time,  eval=FAlSE, fig.height=30, fig.width=18}
+theme_set(theme_bw())
+plot_projection(sample.scores, 
+                xname = "agPCA1", yname = "agPCA2", labname = NULL, 
+                size = 3, color = "DayFromStart",
+                eigs = out.agpca.ihs$vars) +
+  geom_point(data = sample.scores %>% 
+               filter(Timeline != "typical"), aes(fill = Timeline),
+             size = 5, pch = 23, color = "black", lwd=2) +
+  facet_wrap(Group~Subject, scales = "free", ncol = 5) +
+  scale_color_viridis() +
+  scale_fill_brewer(palette = "Oranges")
+```
+
+
+
+
+```{r}
+sessionInfo()
+```
+
+
+

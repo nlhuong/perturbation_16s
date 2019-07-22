@@ -1,0 +1,479 @@
+---
+title: "Prediction"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(phyloseq)
+library(RColorBrewer)
+study_arm <- "Abx"
+perturbation_relday <- "Abx_RelDay"
+```
+
+# Load data
+
+```{r}
+list.files("../../data/16S/phyloseq/")
+```
+
+
+```{r}
+# File generated in /perturbation_16s/analysis/holmes_group_presentation/new_16S_analysis.rmd
+ps <- readRDS("../../data/16S/phyloseq/perturb_physeq_fltr2430_17Jul18.rds")
+ps
+```
+
+```{r}
+SMP <- data.frame(ps@sam_data, stringsAsFactors = FALSE) %>%
+  mutate(SampleDepth = sample_sums(ps))
+  
+SUBJ <-  SMP %>%
+  select(Subject, Group, Age:BMI) %>%
+  distinct()
+```
+
+
+```{r}
+data.frame(ps@sam_data) %>%
+    select(Group, Subject) %>%
+    distinct() %>%
+    group_by(Group) %>%
+    summarise(subject_count = n())
+```
+
+## Generate subsets of subjects
+
+```{r}
+ps_subset <- subset_samples(ps, grepl(study_arm, sample_data(ps)$Group))
+ps_subset
+```
+
+```{r}
+# filter out dates immediately before and after the perturbation
+ps_subset <- subset_samples(
+    ps_subset, 
+    sample_data(ps_subset)[[perturbation_relday]] >= -7 &
+    sample_data(ps_subset)[[perturbation_relday]] <= 90) 
+ps_subset
+```
+
+# Bray-curtis diversity
+
+```{r}
+# Compute bray-Curtis distance on asinh data
+brayD.ihs <- phyloseq::distance(
+    transform_sample_counts(ps_subset, function(x) {asinh(x)}), 
+    method = "bray")
+class(brayD.ihs)
+```
+
+
+```{r}
+brayD.df <- reshape2::melt(
+  as.matrix(brayD.ihs), 
+  varnames = c("Sample_1", "Sample_2"),
+  value.name = "bray") %>%
+  mutate(Sample_1 = as.character(Sample_1),
+         Sample_2 = as.character(Sample_2))
+#dim  2152089       3
+
+brayD.df <- brayD.df %>%
+  left_join(
+    SMP %>% select(Meas_ID, Subject), 
+    by = c("Sample_1" = "Meas_ID"))
+
+brayD.df <- brayD.df %>%
+  left_join(
+    SMP %>% select(Meas_ID, Subject), 
+    by = c("Sample_2" = "Meas_ID"), 
+    suffix = c("_1", "_2"))
+ 
+brayD.df <- brayD.df %>%
+    filter(Subject_1 == Subject_2) %>%
+    rename(Subject = Subject_1) %>%
+    select(-Subject_2)
+head(brayD.df)
+```
+
+
+```{r}
+brayD.df <- brayD.df %>%
+    left_join(
+        SMP %>% select(Meas_ID, Group, Abx_Interval, Abx_RelDay), 
+        by = c("Sample_1" = "Meas_ID")) %>%
+    left_join(
+        SMP %>% select(Meas_ID, Group, Abx_Interval, Abx_RelDay), 
+        by = c("Sample_2" = "Meas_ID"), suffix = c("_1", "_2")) 
+dim(brayD.df)
+```
+
+Mean shift from baseline samples [-7, 0] measured with Bray-Curtis distance.
+
+```{r}
+brayD_mean_to_baseline <- brayD.df %>%
+    filter(Abx_RelDay_1 >= -7 & Abx_RelDay_1 <= 0) %>%
+    group_by(Subject, Group_2, Abx_Interval_2, Abx_RelDay_2) %>%
+    summarize(mean_bray = mean(bray))
+
+brayD_mean_to_baseline <- brayD_mean_to_baseline %>%
+    rename(Group = Group_2, Abx_Interval = Abx_Interval_2, 
+           Abx_RelDay = Abx_RelDay_2)
+dim(brayD_mean_to_baseline)  
+```
+
+```{r, fig.width=8}
+brayD_mean_to_baseline %>%
+ggplot(
+    aes_string(x = paste0(study_arm, "_RelDay"), y = "mean_bray", 
+               group = "Subject", color = paste0(study_arm, "_Interval"))) +
+    geom_point() + geom_line(aes(group = Subject)) +
+    theme(legend.position = "bottom")
+```
+
+
+
+## Compute response measures
+
+First find the time to stabilization
+
+```{r}
+brayD_mean_to_baseline <- brayD_mean_to_baseline %>%
+    group_by(Subject) %>%
+    mutate(
+        mean_post = mean(mean_bray[Abx_RelDay >= 20 & mean_bray < 0.6]), # guard against outliers
+        sd_post = sqrt(var(mean_bray[Abx_RelDay >=20 & mean_bray < 0.6]))
+    ) 
+tolerance <- brayD_mean_to_baseline %>% select(Subject, sd_post) %>% 
+    distinct() %>% .[["sd_post"]] %>% mean()
+
+brayD_mean_to_baseline <- brayD_mean_to_baseline %>%
+    mutate(
+        within_sd = Abx_RelDay > 5 & abs(mean_bray - mean_post) < tolerance) %>%
+    arrange(Subject, Abx_RelDay) %>%
+    group_by(Subject) %>%
+    mutate(stab = cumsum(within_sd) >= 2 )
+```
+
+```{r}
+time_to_stab <- brayD_mean_to_baseline %>% 
+    group_by(Subject) %>%
+    filter(stab) %>%
+    top_n(n = 1, wt = -Abx_RelDay) %>%
+    rename(time_to_stab = Abx_RelDay)
+
+subj_set <- time_to_stab %>% filter(time_to_stab >= 30)
+```
+
+
+```{r, fig.width=10, fig.height=8}
+brayD_mean_to_baseline %>%
+    filter(Abx_RelDay > -7, Abx_RelDay < 100) %>%
+   # filter(Subject %in% sbj) %>%
+   # filter(Subject == bray_recovery$Subject[bray_recovery$slope_pert > 0.6]) %>%
+ggplot(
+    aes_string(x = paste0(study_arm, "_RelDay"), y = "mean_bray", 
+               group = "Subject", color = "stab")) +
+    geom_point() +
+    geom_text(aes(label = Subject)) + 
+    geom_line(aes(group = Subject)) +
+    theme(legend.position = "bottom")
+```
+
+
+```{r}
+# CHANGE HERE for other study arms
+bray_recovery <- brayD_mean_to_baseline %>%
+    group_by(Subject) %>%
+    summarize(
+        time_to_stab = min(Abx_RelDay[stab]),
+        max_amplitude = max(mean_bray[Abx_RelDay >= 0 & Abx_RelDay <= 10]),
+        day_max_amplitude = min(Abx_RelDay[mean_bray == max_amplitude]),
+        deviation_MidAbx = mean(mean_bray[Abx_RelDay %in% c(3,4,5)]),
+        deviation_Stab = mean_bray[Abx_RelDay == time_to_stab],
+        slope_t4 =  mean(mean_bray[which.min(abs(Abx_RelDay-4))+1] - 
+            mean_bray[which.min(abs(Abx_RelDay-4))]),
+        slope_t8 =  mean(mean_bray[which.min(abs(Abx_RelDay-8))+1] - 
+            mean_bray[which.min(abs(Abx_RelDay-8))]),
+        slope_t14 =  mean(mean_bray[which.min(abs(Abx_RelDay-14))+1] - 
+            mean_bray[which.min(abs(Abx_RelDay-14))]),
+        slope_pert = max_amplitude/day_max_amplitude,
+        slope_return = mean((deviation_Stab - max_amplitude)/time_to_stab)
+    ) 
+```
+
+```{r}
+bray_recovery
+```
+
+
+## Measures for pre-perturbation variability
+
+```{r}
+daily_variability <- brayD.df %>%
+    mutate(day_diff = Abx_RelDay_2 - Abx_RelDay_1) %>%
+    filter(day_diff <= 2, day_diff > 0, Abx_RelDay_2 <= 0) 
+    
+daily_variability_mean <- daily_variability %>%
+    group_by(Subject) %>%
+    summarise(preAbx_variability = mean(bray), n_for_var = n()) 
+head(daily_variability_mean)
+```
+
+
+```{r}
+smp_info <- data.frame(
+    sample_data(ps) %>% 
+        select(Meas_ID, Samp_ID, Subject, contains("Abx_"), 
+               Group, DaysFromStart, Samp_Date),  
+    richness = apply(as(otu_table(ps), "matrix"), 2, function(x) sum(x > 0))
+)
+
+subj_data <- smp_info %>% 
+    filter(grepl("Abx", Group), Abx_RelDay >= -7, Abx_RelDay <= 0) %>%
+    group_by(Subject, Group) %>% 
+    summarise(preAbx_richness = mean(richness), n_for_rich = n()) %>%
+    ungroup() %>%
+    left_join(daily_variability_mean)
+```
+
+
+```{r fig.width=12, fig.height=12, message=FALSE}
+library(GGally)
+df <- subj_data %>% left_join(bray_recovery)
+plt <- df %>% 
+    filter(!Subject %in% c("BAA", "BAN")) %>%
+    ggpairs(columns = c(3, 5, 7, 8, 9, 12:15))
+plt
+```
+
+```{r}
+bray_recovery %>% filter( slope_pert > 0.6)
+```
+
+
+```{r, fig.width=10, fig.height=8}
+brayD_mean_to_baseline %>%
+   filter(Subject == bray_recovery$Subject[bray_recovery$slope_pert > 0.6]) %>%
+ggplot(
+    aes_string(x = paste0(study_arm, "_RelDay"), y = "mean_bray", 
+               group = "Subject", color = "stab")) +
+    geom_point() +
+    geom_text(aes(label = Subject)) + 
+    geom_line(aes(group = Subject)) +
+    theme(legend.position = "bottom")
+```
+
+
+
+## Fitting functional pca
+
+```{r}
+brayD_mean_to_baseline %>% 
+    filter(Abx_RelDay > 80) %>%
+    with(table(Subject))
+```
+
+We will use only data from time < 80 to fit ecause not many subjects have 
+samples beyond.
+
+```{r}
+library("fdapace")
+source('./fda_pca_funs.R')
+
+bray_fpca <- fit_fdapca(
+  brayD_mean_to_baseline %>% 
+      filter(Abx_RelDay <= 80) %>%
+      arrange(Subject, Abx_RelDay), 
+  time_column = "Abx_RelDay",
+  value_column = "mean_bray", 
+  replicate_column = "Subject",
+  cluster = FALSE, filter = FALSE, 
+  fpca_optns = list(nRegGrid = 88))
+
+bray_mean <- data.frame(
+  time = bray_fpca$workGrid,
+  value = bray_fpca$mu)
+
+bray_fit <- fpca_fit(bray_fpca) %>%
+    rename(Subject = Replicate_ID) 
+
+bray_fit <- bray_fit %>%
+    left_join(
+        fpca_fit(bray_fpca, derOptns = list(p = 1)) %>%
+            rename(Subject = Replicate_ID) %>%
+            rename("deriv" = value)
+    )
+```
+
+```{r, fig.width=10, fig.height=8}
+ plt <-  bray_fit %>%
+    ggplot(aes(x = time, y = value)) +
+        geom_line(aes(group = Subject), alpha = 0.3, size = 0.7 ) +
+        geom_line(
+            data = bray_mean,
+            aes(x = time, y = value),
+            color = "navy", size = 2.5) +
+        geom_text(
+            size = 3,
+            data = brayD_mean_to_baseline,
+            aes_string(
+                x = paste0(study_arm, "_RelDay"), y = "mean_bray",
+                label = "Subject", color = paste0(study_arm, "_Interval"))) +
+        geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+        geom_vline(xintercept = 4.5, lwd = 1, color = "orange") +
+        theme(legend.position = "bottom") 
+print(plt)
+```
+
+
+```{r abx-bray-fit, fig.width=8, fig.height=5}
+for (subj in unique(brayD_mean_to_baseline$Subject)) {
+   plt <-  bray_fit %>%
+    filter(Subject %in% subj)%>%
+    ggplot(aes(x = time, y = value)) +
+        geom_line(aes(group = Subject), alpha = 0.3, size = 0.7 ) +
+        geom_line(
+            data = bray_mean,
+            aes(x = time, y = value),
+            color = "navy", size = 2.5) +
+        geom_text(
+            size = 3,
+            data = brayD_mean_to_baseline %>%  
+                filter(Abx_RelDay <= 60) %>%
+                filter(Subject %in% subj),
+            aes_string(
+                x = paste0(study_arm, "_RelDay"), y = "mean_bray",
+                label = "Subject", color = paste0(study_arm, "_Interval"))) +
+        geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+        geom_vline(xintercept = 4.5, lwd = 1, color = "orange") +
+        theme(legend.position = "bottom") 
+   print(plt)
+}
+
+```
+
+
+```{r}
+nthresh <- 3
+stab_tol <- 1e-3
+
+subj_fpca_est <- bray_fit %>%
+    arrange(Subject, time) %>%
+    group_by(Subject) %>%
+    mutate(
+        sum_stab = cumsum(ifelse(time >= 5, abs(deriv) < stab_tol, FALSE)),
+        stab = sum_stab > nthresh
+)
+
+subj_fpca_aggr <- subj_fpca_est %>%
+    group_by(Subject) %>%
+    summarise(
+        time_to_stab_fpca = min(time[stab]),
+        deriv_t4 = deriv[which.min(abs(time - 4))],
+        deriv_t6 = deriv[which.min(abs(time - 6))],
+        deriv_t8 = deriv[which.min(abs(time - 8))],
+        deriv_t10 = deriv[which.min(abs(time - 10))],
+        deriv_t12 = deriv[which.min(abs(time - 12))],
+        deriv_t14 = deriv[which.min(abs(time - 14))],
+        deriv_t16 = deriv[which.min(abs(time - 16))]
+    )
+```
+
+
+```{r, fig.width=6, fig.height=4}
+ plt <-  bray_fit %>%
+    left_join(subj_fpca_est) %>%
+    ggplot(aes(x = time, y = value)) +
+     geom_text(
+            size = 3,
+            data = brayD_mean_to_baseline %>%
+                left_join(subj_fpca_est %>% select(Subject, time, stab),
+                          by=c("Subject", "Abx_RelDay"="time")),
+            aes_string(
+                x = paste0(study_arm, "_RelDay"), y = "mean_bray",
+                color = "stab.y", label = "Subject")) +
+        geom_line(
+            aes(group = Subject, color = stab), size = 0.7 ) +
+        geom_line(
+            data = bray_mean,
+            aes(x = time, y = value),
+            color = "navy", size = 2.5) +
+   
+        geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+        geom_vline(xintercept = 4.5, lwd = 1, color = "orange") +
+        theme(legend.position = "bottom") 
+print(plt)
+```
+
+
+```{r, fig.width=10, fig.height=8}
+ plt <-  bray_fit %>%
+    left_join(subj_fpca_est) %>%
+    ggplot(aes(x = time, y = deriv)) +
+        geom_line(
+            aes(group = Subject, color = stab), size = 0.7 ) +
+        geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+        geom_vline(xintercept = 4.5, lwd = 1, color = "orange") +
+        theme(legend.position = "bottom") 
+print(plt)
+```
+
+
+
+
+```{r fig.width=12, fig.height=12, message=FALSE}
+recovery_df <- subj_data %>% 
+  left_join(bray_recovery) %>% left_join(subj_fpca_aggr)
+
+
+plt <- recovery_df %>% 
+    filter(!Subject %in% c("BAA", "BAN")) %>%
+    ggpairs(columns = c(3, 5, 9, 7, 17, 8, 12, 14, 18, 23))
+plt
+```
+
+
+
+```{r fig.width=9.5, fig.height=9.5, message=FALSE}
+recovery_df <- subj_data %>% 
+  left_join(bray_recovery) %>% left_join(subj_fpca_aggr)
+
+
+plt <- recovery_df %>% 
+    filter(!Subject %in% c("BAA", "BAN")) %>%
+    ggpairs(columns = c(3, 5, 9, 7, 8, 18, 23))
+plt + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+counts <- as(otu_table(ps), "matrix")
+counts[1:5, 1:5]
+```
+
+
+```{r}
+qplot(log(sample_sums(ps)))
+```
+
+
+```{r}
+# library(factoextra)
+# pca_res <- prcomp(t(asinh(counts)))
+# 
+# fviz_pca_ind(pca_res)
+```
+
+
+
+
+```{r}
+sessionInfo()
+```
+
