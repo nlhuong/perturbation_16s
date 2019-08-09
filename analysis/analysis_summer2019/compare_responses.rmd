@@ -53,6 +53,7 @@ alphaDiversity <- readRDS(file = "output/alphaDiversity.rds")
 ls()
 ```
 
+## Max Amplitude
 
 ```{r}
 max_amplitude <- function(df) {
@@ -79,13 +80,191 @@ maxAmp.wide <- maxAmp.wide %>% filter(not_na > 1)
 ```
 
 
+## Alpha diversity
+
 ```{r}
+alphaDiver_intervals <- function(
+  df, time_column = "Abx_RelDay", time_range = seq(-10, 12), mid_period = c(0, 5)) {
+  
+  df$time_column <- df[[time_column]]; 
+  df <- df %>%
+    filter( 
+      time_column %in% time_range) %>%
+    group_by(Subject) %>%
+    summarize(
+      n_pre = sum(time_column <= mid_period[1]),
+      n_mid = sum(time_column > mid_period[1] & time_column < mid_period[2]),
+      n_post = sum(time_column >= mid_period[2]),
+      pre_Observed = mean(Observed[time_column <= mid_period[1]], na.rm = TRUE),
+      mid_Observed = mean(Observed[time_column > mid_period[1] & time_column <= mid_period[2]], na.rm = TRUE),
+      post_Observed = mean(Observed[time_column > mid_period[2]], na.rm = TRUE),
+      pre_Shannon = mean(Shannon[time_column <= mid_period[1]], na.rm = TRUE),
+      mid_Shannon = mean(Shannon[time_column > mid_period[1] & time_column <= mid_period[2]], na.rm = TRUE),
+      post_Shannon = mean(Shannon[time_column > mid_period[2]], na.rm = TRUE),
+      pre_InvSimpson = mean(InvSimpson[time_column <= mid_period[1]], na.rm = TRUE),
+      mid_InvSimpson = mean(InvSimpson[time_column > mid_period[1] & time_column <= mid_period[2]], na.rm = TRUE),
+      post_InvSimpson = mean(InvSimpson[time_column > mid_period[2]], na.rm = TRUE),
+      pre_PD = mean(PD[time_column <= mid_period[1]], na.rm = TRUE),
+      mid_PD = mean(PD[time_column > mid_period[1] & time_column <= mid_period[2]], na.rm = TRUE),
+      post_PD = mean(PD[time_column > mid_period[2]], na.rm = TRUE)
+      ) %>%
+    filter(!is.na(n_pre))
+  return(df)
+}
+
+relday_cols <- c("Abx_RelDay", "Diet_RelDay", "CC_RelDay")
+alphaAroundPerturbs <- lapply(relday_cols, function(x) {
+  alphaDiver_intervals(alphaDiversity, x, time_range = seq(-10, 11), mid_period = c(0, 4)) 
+})
+names(alphaAroundPerturbs) <- c("Abx", "Diet", "CC")
+alphaAroundPerturbs <- plyr::ldply(alphaAroundPerturbs, function(x) {x}, .id = "perturbation")
+
+
 startingAlphaDiver <- alphaDiversity %>%
   filter(Diet_RelDay < 0 | (is.na(Diet_RelDay) & Abx_RelDay < 0)) %>%
   select(Subject, Observed:PD) %>%
   group_by(Subject) %>%
   summarise_all(mean)
 ```
+
+
+```{r, fig.weight=8, fig.height=10, message=FALSE, warning=FALSE}
+GGally::ggpairs(
+  alphaDiversity %>% select(Abx_Interval, Observed:PD) %>%
+    gather(key = "interval", value = "Observed", contains("_Observed")),
+  mapping = aes(color=  Abx_Interval), columns = 2:5
+)
+```
+
+
+```{r, fig.weight=8, fig.height=10, message=FALSE, warning=FALSE}
+GGally::ggpairs(
+  alphaDiversity %>% select(Diet_Interval, Observed:PD) %>%
+    gather(key = "interval", value = "Observed", contains("_Observed")),
+  mapping = aes(color=  Diet_Interval), columns = 2:5
+)
+```
+
+```{r, fig.weight=8, fig.height=10, message=FALSE, warning=FALSE}
+GGally::ggpairs(
+  alphaDiversity %>% select(CC_Interval, Observed:PD) %>%
+    gather(key = "interval", value = "Observed", contains("_Observed")),
+  mapping = aes(color = CC_Interval), columns = 2:5
+)
+```
+
+
+```{r alphaDiver-vs-MaxAmp-bray, fig.width=9, fig.height=6}
+df <- alphaAroundPerturbs %>% 
+  select(perturbation, Subject, contains("pre_")) %>%
+  gather(key = "alphaDiverMetric", value = "alphaDiver", pre_Observed:pre_PD) %>%
+  left_join(maxAmp %>% filter(metric == "bray")) %>%
+  left_join(dailyVar.long %>% 
+              filter(metric == "bray", interval == "pre") %>% 
+              rename(perturbation = perturb, dailyVar = dist)) %>%
+  mutate(
+    alphaDiverMetric = gsub("pre_", "", alphaDiverMetric),
+    alphaDiverMetric = factor(alphaDiverMetric, levels = c("Observed","Shannon", "InvSimpson", "PD"))
+    )
+
+head(df)
+
+df %>%
+  ggplot(aes(x = alphaDiver, y = max_amplitude, color = dailyVar)) +
+ # geom_point() +
+  facet_grid(perturbation ~ alphaDiverMetric, scales = "free") +
+  geom_text(aes(label = Subject), size = 2) +
+ # facet_wrap(~ alphaDiverMetric + perturbation , ncol = 3, scales = "free") +
+  ggpubr::stat_cor(size = 4) +
+  scale_color_viridis_c() +
+  xlab("Pre-perturbation [-10, 0] alpha diversity") + 
+  ylab("Bray-Curtis post-perturbation [0, 10] max amplitude")
+
+```
+
+
+```{r alphaDiver-vs-MaxAmp-jacc, fig.width=9, fig.height=6}
+df <- alphaAroundPerturbs %>% 
+  select(perturbation, Subject, contains("pre_")) %>%
+  gather(key = "alphaDiverMetric", value = "alphaDiver", pre_Observed:pre_PD) %>%
+  left_join(maxAmp %>% filter(metric == "jacc")) %>%
+  left_join(dailyVar.long %>% 
+              filter(metric == "jacc", interval == "pre") %>% 
+              rename(perturbation = perturb, dailyVar = dist)) %>%
+  mutate(
+    alphaDiverMetric = gsub("pre_", "", alphaDiverMetric),
+    alphaDiverMetric = factor(alphaDiverMetric, levels = c("Observed","Shannon", "InvSimpson", "PD"))
+    )
+
+head(df)
+
+df %>%
+  ggplot(aes(x = alphaDiver, y = max_amplitude, color = dailyVar)) +
+ # geom_point() +
+  facet_grid(perturbation ~ alphaDiverMetric, scales = "free") +
+  geom_text(aes(label = Subject), size = 2) +
+ # facet_wrap(~ alphaDiverMetric + perturbation , ncol = 3, scales = "free") +
+  scale_color_viridis_c() +
+  ggpubr::stat_cor(size = 4) +
+  xlab("Pre-perturbation [-10, 0] alpha diversity") + 
+  ylab("Jaccard post-perturbation [0, 10] max amplitude")
+
+```
+
+
+
+```{r preVar-vs-MaxAmp-bray, fig.width=8, fig.height=6}
+df <- alphaAroundPerturbs %>% 
+  select(perturbation, Subject, pre_Shannon) %>%
+  rename(Shannon = pre_Shannon) %>%
+  left_join(maxAmp %>% filter(metric == "bray") %>% rename(maxAmpMetric = metric)) %>%
+  left_join(dailyVar.long %>% 
+              filter(interval == "pre") %>% 
+              rename(perturbation = perturb, dailyVar = dist))
+
+head(df)
+
+df %>%
+  ggplot(aes(x = dailyVar, y = max_amplitude, color = Shannon)) +
+ # geom_point() +
+  facet_grid(perturbation ~ metric, scales = "free") +
+  geom_text(aes(label = Subject), size = 2) +
+ # facet_wrap(~ alphaDiverMetric + perturbation , ncol = 3, scales = "free") +
+  ggpubr::stat_cor(size = 4) +
+  scale_color_viridis_c() +
+  xlab("Pre-perturbation [-10, 0] daily variability") + 
+  ylab("Bray-Curtis post-perturbation [0, 10] max amplitude")
+
+```
+
+```{r preVar-vs-alphaDiver, fig.width=8, fig.height=6}
+df <- alphaAroundPerturbs %>% 
+  select(perturbation, Subject, pre_Shannon) %>%
+  rename(Shannon = pre_Shannon) %>%
+  left_join(
+    maxAmp %>% 
+      filter(metric == "bray") %>% 
+      rename(maxAmpMetric = metric)) %>%
+  left_join(
+    dailyVar.long %>% 
+      filter(interval == "pre") %>% 
+      rename(perturbation = perturb, dailyVar = dist))
+
+head(df)
+
+df %>%
+  ggplot(aes(x = Shannon, y = dailyVar, color = max_amplitude)) +
+ # geom_point() +
+  facet_grid(perturbation ~ metric, scales = "free") +
+  geom_text(aes(label = Subject), size = 2) +
+ # facet_wrap(~ alphaDiverMetric + perturbation , ncol = 3, scales = "free") +
+  ggpubr::stat_cor(size = 4) +
+  scale_color_viridis_c() +
+  xlab("Pre-perturbation [-10, 0] daily variability") + 
+  ylab("Pre-perturbation [-10, 0] Shannon alpha-diversity")
+
+```
+
 
 
 ```{r max-amp-diet-abx, fig.width=8, fig.height=3}

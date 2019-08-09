@@ -1,7 +1,18 @@
 ---
 title: "Functional PCA"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "./figs/functional_PCA/", 
+  dev='png') 
+```
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -38,33 +49,31 @@ intv_cols <- c(abx_intv_cols, diet_intv_cols, cc_intv_cols, "NoInterv" = "grey60
 
 ```{r}
 # File generated in /perturbation_16s/analysis/analysis_summer2019/generate_phyloseq.rmd
-<<<<<<< HEAD
 psSubj <- readRDS("../../data/16S/phyloseq/perturb_physeq_participants_decontam_15Jul19.rds")
-=======
-psSubj <- readRDS(
-  "../../data/16S/phyloseq/perturb_physeq_participants_decontam_15Jul19.rds")
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
 psSubj
 # otu_table()   OTU Table:         [ 2425 taxa and 4402 samples ]
 # sample_data() Sample Data:       [ 4402 samples by 40 sample variables ]
 SMP <- data.frame(sample_data(psSubj))
 SUBJ <- SMP %>% select(Subject, Age:BirthYear) %>% distinct()
-<<<<<<< HEAD
-=======
+
 TAXTAB <- data.frame(as(tax_table(psSubj), "matrix")) %>%
   rownames_to_column("Seq_ID") %>%
-  select(1:7) 
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
+  select(-Seq) %>%
+  mutate(
+    OrgName.RDP = paste(Genus, Species),
+    OrgName.Silva = paste(GenusSilva, SpeciesSilva),
+    OrgName = ifelse(grepl("NA", OrgName.RDP) & !grepl("NA", OrgName.RDP),
+                     OrgName.Silva, OrgName.RDP),
+    OrgName = ifelse(OrgName == "NA NA", "NA", OrgName),
+    OrgName = paste0(Seq_ID, ": ", OrgName)) %>%
+  select(1:8, OrgName) 
+head(TAXTAB)
 ```
 
 
 ```{r}
 load("output/pairwise_dist_to_baseline_subj_16S.rda")
-<<<<<<< HEAD
-=======
-load("output/fpca_clust_res_abx.rda")
-load("output/fpca_clust_res_diet.rda")
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
+
 load("output/fpca_res.rda")
 ls()
 ```
@@ -74,149 +83,7 @@ ls()
 
 
 ```{r}
-<<<<<<< HEAD
-=======
-# (...) - a list options of options to fdapace()
-fpca_wrapper <- function(df.long, time_column, value_column, replicate_column,
-                    feat_column = NULL, parallel = FALSE, ncores = 1, 
-                    num_nonzero = 10, thresh = 0, clust_min_num_replicate = 15,
-                    cluster = FALSE, cmethod = "EMCluster", K = 2, 
-                    fpca_optns = NULL, fclust_optns = NULL){
-  require(dplyr)
-  if (!time_column %in% colnames(df.long)) {
-    stop("'df.long' does not have", time_column, "as time column.")
-  }
-  if (!value_column %in% colnames(df.long)) {
-    stop("'df.long' does not have", value_column, "as value column.")
-  }
-  if (!replicate_column %in% colnames(df.long)) {
-    stop("'df.long' does not have", replicate_column, "as replicate id column.")
-  }
-  if (all(!is.null(feat_column), !feat_column %in% colnames(df.long))) {
-    stop("'df.long' does not have", feat_column, "as feature id column.")
-  }
-  if(!is.null(feat_column)){
-    features <- unique(df.long[[feat_column]])
-  } else {
-    feat_column <- "Feature_ID"
-    features <- df.long[[feat_column]] <- "Feat1"
-  }
-  if(parallel) {
-    require(doParallel)
-    ncores <- min(ncores, detectCores())
-    cat("Running on ", ncores, " cores...\n")
-    registerDoParallel(ncores)
-    res <- foreach(feat=features) %dopar% {
-      fit_fdapca(df.long, time_column, value_column, 
-                 replicate_column, feat_column, feat, 
-                 cluster = cluster, cmethod = cmethod, K = K, 
-                 num_nonzero = num_nonzero, thresh = thresh,  
-                 clust_min_num_replicate = clust_min_num_replicate, 
-                 fpca_optns = fpca_optns, fclust_optns = fclust_optns)
-    }
-  } else {
-    res <- lapply(features, function(feat) {
-      cat("Processing feature: ", feat, "...\n")
-      fit_fdapca(df.long, time_column, value_column, 
-                 replicate_column, feat_column, feat, 
-                 cluster = cluster, cmethod = cmethod, K = K, 
-                 num_nonzero = num_nonzero, thresh = thresh,  
-                 clust_min_num_replicate = clust_min_num_replicate, 
-                 fpca_optns = fpca_optns, fclust_optns = fclust_optns)
-    })
-  }
-  names(res) <- features
-  return(res)
-}
-
-
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
-fit_fdapca <- function(
-  df, time_column, value_column, replicate_column,
-  feat_column = NULL, feat = NULL,
-  cluster = FALSE, cmethod = "EMCluster", K = 2, filter = TRUE,
-  thresh = 0, num_nonzero = 10, clust_min_num_replicate = 10,
-  fpca_optns = NULL, fclust_optns = NULL)
-{
-  if(!is.null(feat) & !is.null(feat_column)) {
-    df <- df %>% 
-      filter_at(.vars = feat_column, any_vars((.) == feat))
-  }
-  y_lst <- plyr::dlply(df, replicate_column, function(x) x[[value_column]])
-  t_lst <- plyr::dlply(df, replicate_column, function(x) x[[time_column]])
-  if (filter){
-    idx <- sapply(y_lst, function(y){sum(abs(y) > thresh) >= num_nonzero})
-    y_lst <- y_lst[idx]
-    t_lst <- t_lst[idx]
-  }  
-  if(length(y_lst) == 0) return(NULL)
-  feat_res <- NULL
-  if(cluster & (length(y_lst) >= clust_min_num_replicate)) {
-    feat_res <- try(fdapace::FClust(
-      y_lst, t_lst, k = K, optnsFPCA = fpca_optns, optnsCS = fclust_optns))
-  } else {
-    if(is.null(fpca_optns)) {
-      fpca_optns <- list()
-    } 
-    if (length(y_lst) < clust_min_num_replicate) {
-      fpca_optns$dataType <- 'Sparse'
-    }
-    feat_res <- fdapace::FPCA(y_lst, t_lst, optns = fpca_optns)
-    if(cluster){
-      feat_res <- list("cluster" = rep(1, length(y_lst)), 
-                       "fpca" = feat_res, "clusterObj" = NULL)
-    }
-  }
-  feat_res
-}
-
-fitted_values_fpca <- function(obj, derOptns = list(p = 0)) 
-{
-  selectedK <- NULL; clust_df <- NULL
-  if("cluster" %in% names(obj)){
-    clust_df <- data.frame(
-      "Replicate_ID" = names(obj$fpca$inputData$Ly),
-      "Cluster" =  as.character(obj[["cluster"]]),
-      stringsAsFactors = FALSE)
-    obj <- obj[["fpca"]]
-  }
-  if(derOptns$p > 0) {
-    selectedK <- fdapace::SelectK(obj)$K
-    if(!is.finite(selectedK)) selectedK <- ncol(obj$xiEst)
-  }  
-  fit <- fdapace:::fitted.FPCA(obj, K = selectedK, derOptns = derOptns)
-  rownames(fit) <- names(obj$inputData$Ly)
-  colnames(fit) <- obj$workGrid
-  fit <- reshape2::melt(fit, varnames = c("Replicate_ID", "time")) %>%
-    mutate(Replicate_ID = as.character(Replicate_ID))
-  if(!is.null(clust_df)){
-    fit <- suppressMessages(fit  %>% left_join(clust_df))
-  }
-  return(fit)
-}
-
-
-fit_dist_to_baseline <- function(
-  dist_to_baseline, time_column="RelDay", 
-  value_column = "dist_to_baseline", replicate_column = "Subject") 
-{
-  nGrid <- length(
-    seq(min(dist_to_baseline[[time_column]]),
-        max(dist_to_baseline[[time_column]])))
-  fpca_res <- fit_fdapca(
-    dist_to_baseline, time_column, value_column, replicate_column,
-    cluster = FALSE, filter = FALSE, fpca_optns = list(nRegGrid = nGrid))
-  
-  fitted_mean <- data.frame(time = fpca_res$workGrid, value = fpca_res$mu)
-  fitted_response <- fitted_values_fpca(fpca_res) %>%
-    mutate(Subject = Replicate_ID) %>%
-    left_join(
-      fitted_values_fpca(fpca_res, derOptns = list(p = 1)) %>%
-        mutate(Subject = Replicate_ID) %>%
-        rename("deriv" = value)
-    )
-  return(list(res = fpca_res, mean = fitted_mean, fitted = fitted_response))
-}
+source("./fpca_funs.R")
 ```
 
 
@@ -246,16 +113,10 @@ bray_to_baseline_fltr %>%
   geom_point(alpha = 0.5, size = 1.2) + 
   scale_color_manual(values = abx_intv_cols) + 
   theme(legend.position = "bottom") + 
-<<<<<<< HEAD
   guides(colour = guide_legend(override.aes = list(size=3))) 
 # +
 #   xlab("Days from initial antibiotic dose") +
 #   ylab("Bray-Curtis distance to 7 pre-antibiotic samples") 
-=======
-  guides(colour = guide_legend(override.aes = list(size=3))) +
-  xlab("Days from initial antibiotic dose") +
-  ylab("Bray-Curtis distance to 7 pre-antibiotic samples") 
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
 ```
 
 
@@ -344,12 +205,7 @@ ggplot(aes(x = RelDay, y = dist_to_baseline)) +
 ```
 
 ```{r fpca-bray-abx-val-deriv, fig.width=12, fig.height=6.5}
-<<<<<<< HEAD
 vp = grid::viewport(width = 0.3, height = 0.32, x = 0.07, y =0.95, just = c("left", "top"))
-=======
-vp = grid::viewport(width = 0.3, height = 0.32,
-                    x = 0.07, y =0.95, just = c("left", "top"))
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
 print(pAbx)
 print(pAbxDeriv + theme_bw(base_size = 10) + theme_subplot, vp = vp)
 ```
@@ -357,38 +213,21 @@ print(pAbxDeriv + theme_bw(base_size = 10) + theme_subplot, vp = vp)
 
 ### Cluster RSVs
 
-```{r, eval = FALSE}
-<<<<<<< HEAD
-abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
-  rownames_to_column("Seq_ID") %>%
-  gather(Meas_ID, abundance, -Seq_ID) %>%
-  left_join(abx_SMP) %>%
-  left_join(taxtab) %>%
-  mutate(
-    Abx_Interval = factor(
-      Abx_Interval, levels = c("PreAbx", "MidAbx", "PostAbx"))) %>%
-  filter(Abx_RelDay >= -40, Abx_RelDay <= 80) %>%   # limit the scope due to effect of other perturbations
-  arrange(Seq_ID, Subject, Abx_RelDay)
+
+
+```{r}
+## Process data
+dds <- phyloseq_to_deseq2(psSubj, design = ~ 1)
+dds <- DESeq2::estimateSizeFactors(dds, type = "poscounts")
+norm_counts <- DESeq2::counts(dds, normalized = TRUE)
+psSubj.norm <- psSubj
+otu_table(psSubj.norm) <- otu_table(norm_counts, taxa_are_rows = TRUE)
+psSubj.norm
 ```
 
 ```{r, eval = FALSE}
-## Run using  fclust.R script
-
-thresh <- 0; num_nonzero <- 10; min_no_subj <- 3
-keep_rsv <- abx.rsv %>%
-  filter(abundance > thresh) %>%
-  group_by(Subject, Seq_ID) %>%
-  summarise(Freq = n()) %>%   # No. of samples for each subject with non-zero count of a given rsv
-  filter(Freq >= num_nonzero) %>%
-  group_by(Seq_ID) %>%
-  summarise(Freq = n()) %>% # For each RSV, # of subjects w/ num_nonzero samples with counts > thresh
-  filter(Freq >= min_no_subj) %>%
-  arrange(desc(Freq))
-
-length(unique(keep_rsv$Seq_ID)) # = 861
-=======
 abxFac <- c("PreAbx", "MidAbx", "PostAbx")
-abx <- subset_samples(psSubj, Abx_RelDay >= -50, Abx_RelDay <= 60)
+abx <- subset_samples(psSubj.norm , Abx_RelDay >= -50 & Abx_RelDay <= 60)
 abx <- subset_taxa(abx, taxa_sums(abx) > 0)
 abx
 
@@ -396,24 +235,25 @@ abx
   group_by(Subject, Group, Interval, Abx_RelDay) %>%
   mutate(n = n()) %>%
   ungroup() %>% filter(n > 1))
-
 ```
 
 ```{r, eval = FALSE}
 # Remove replicated samples
 sample_sums(abx)[replicated$Meas_ID]
 
-#  M2242  M2243  M7869  M7886 
-# 109520  88834  74697  74873 
+# M7869 M7886                                                                                         
+# 74697 74873
 
 # we retain a replicate with higher sample depth:
 
 abx <- subset_samples(abx, !Meas_ID %in% c("M2243", "M7869"))
 abx
+#otu_table()   OTU Table:         [ 2339 taxa and 1418 samples ] 
 ```
 
 
 ```{r, eval = FALSE}
+# Asinh the data so that the counts are comparable
 abx.rsv <- data.frame(asinh(as(otu_table(abx), "matrix"))) %>%
   rownames_to_column("Seq_ID") %>%
   gather(Meas_ID, abundance, -Seq_ID) %>%
@@ -436,32 +276,18 @@ keep_rsv <- abx.rsv %>%
   filter(Freq >= min_no_subj) %>%
   arrange(desc(Freq))
 
-length(unique(keep_rsv$Seq_ID)) # = 921
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
+length(unique(keep_rsv$Seq_ID)) # = 839
 
 abx.rsv.subset <- abx.rsv %>%
   filter(Seq_ID %in% unique(keep_rsv$Seq_ID))
 
-<<<<<<< HEAD
-save(list = c("abx.rsv", "keep_rsv"), file = "results/abx_long.rda")
-save(list = c("keep_rsv", "abx.rsv.subset"), file = "results/abx_long_subset.rda")
+#save(list = c("keep_rsv", "abx.rsv.subset"), file = "results/fpca_clust_res_abx.rda")
 ```
 
-
-```{r}
-
-abx_fclust <- fda_pca(
-=======
-#save(list = c("abx.rsv", "keep_rsv"), file = "output/abx_long.rda")
-save(list = c("keep_rsv", "abx.rsv.subset"), 
-     file = "output/fpca_clust_res_abx.rda")
-```
 
 
 ```{r, eval = FALSE}
-source("./fda_pca_funs.R")
 abx_fclust <- fpca_wrapper(
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
   abx.rsv.subset,
   time_column = "Abx_RelDay",
   value_column = "abundance",
@@ -473,16 +299,7 @@ abx_fclust <- fpca_wrapper(
   parallel = TRUE, ncores = 16)
 save(list = c("abx_fclust"),
     file = "results/abx_rsv_fclust.rda")
-<<<<<<< HEAD
 
-abx_fclust_mu <- get_fpca_means(abx_fclust)
-abx_fclust_subjFit <- get_fpca_fits(abx_fclust)
-
-save(list = c("abx_fclust", "abx_fclust_subjFit", "abx_fclust_mu"),
-    file = "results/abx_rsv_fclust.rda")
-```
-
-=======
 abx_fclust_mu <- get_fpca_means(abx_fclust)
 abx_fclust_subjFit <- get_fpca_fits(abx_fclust)
 
@@ -491,13 +308,224 @@ save(list = c("keep_rsv", "abx.rsv.subset",
     file = "output/fpca_clust_res_abx.rda")
 ```
 
+We now find the taxa with the most variability in the response to ABX between two clusters:
+
 ```{r}
+# Taxa's trajectory difference between two clusters
+load("output/fpca_clust_res_abx_norm.rda")
+
+#load("output/fpca_clust_res_diet.rda")
+diffBetweenClusts.abx <- abx_fclust_subjFit %>%
+  group_by(Feature_ID, time, Cluster ) %>% 
+  summarise(value = mean(value, na.rm = TRUE)) %>%
+  spread(key = "Cluster", value = "value") %>%
+  ungroup() %>% 
+  mutate(diff = abs(`1` - `2`)) %>%
+  group_by(Feature_ID) %>%
+  summarise(
+    mean_clustDist_L1 = mean(diff, na.rm = TRUE),
+    sd_Clust1 = sd(`1`),
+    sd_Clust2 = sd(`2`)) %>% 
+  filter(
+    !is.na(mean_clustDist_L1)
+  ) %>% # Some taxa have a single cluster (everyone behaves similarly)
+  arrange(-mean_clustDist_L1)
+
+summary(diffBetweenClusts.abx)
+
+diffBetweenClusts.abx <- diffBetweenClusts.abx %>%
+  filter(sd_Clust1 > median(diffBetweenClusts.abx$sd_Clust1) |
+           sd_Clust2 > median(diffBetweenClusts.abx$sd_Clust2))
+```
+
+
+```{r}
+# Plot top 20
+seq_to_plot <- diffBetweenClusts.abx$Feature_ID[1:20]
+tax_to_plot <- (TAXTAB %>% column_to_rownames("Seq_ID"))[seq_to_plot, "OrgName"]
+tax_to_plot
+
+
+seq1_subjClusters <- abx_fclust_subjFit %>%
+  filter(Feature_ID == "Seq1") %>%
+  select(Replicate_ID, Cluster) %>% distinct() %>%
+  filter(Cluster==2)
+
+abx2plot.fclust <- abx_fclust_subjFit %>%
+  left_join(TAXTAB, by = c("Feature_ID" = "Seq_ID")) %>%
+  group_by(Feature_ID) %>%
+  mutate(
+    n_cluster1 = sum(Cluster == 1),
+    n_cluster2 = sum(Cluster == 2),
+    majorityCluster = ifelse(n_cluster1 > n_cluster2, 1, 2)
+  ) %>% 
+  ungroup() %>%
+  mutate(
+    OrgName = factor(OrgName, levels = tax_to_plot),
+    Subject_Cluster = ifelse(Cluster == majorityCluster, "Majority", "Minority")) 
+
+
+abx2plot <- abx.rsv.subset %>% 
+  filter(Seq_ID %in% seq_to_plot) %>%
+  left_join(
+    abx2plot.fclust %>% 
+      select(-value, -time) %>%
+      distinct() %>%
+      rename(Seq_ID = Feature_ID,  Subject = Replicate_ID) 
+  ) %>%
+  mutate(
+    Seq_ID = factor(Seq_ID, levels = seq_to_plot),
+    OrgName = factor(OrgName, levels = tax_to_plot))
 
 ```
 
 
 
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
+```{r diffTaxa-abx, fig.width=12, fig.height=10}
+
+abx2plot.fclust %>%
+    filter(Feature_ID %in% seq_to_plot) %>%
+ggplot(aes(x = time, y = value, color = Subject_Cluster)) +
+  geom_line(
+    aes(group = Replicate_ID),
+    alpha = 0.3, size = 0.5
+  ) +
+  geom_smooth(se = FALSE) +
+  geom_point(
+    data = abx2plot,
+    aes(x = Abx_RelDay, y = abundance),
+    size = 0.3, alpha = 0.5
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = abx_fclust_mu %>% 
+      filter(Feature_ID %in% seq_to_plot) %>% 
+      left_join(TAXTAB, by = c("Feature_ID" = "Seq_ID")) %>%
+      mutate(OrgName = factor(OrgName, levels = tax_to_plot)),
+    color = "red", size = 1
+  ) +
+  scale_color_manual(values = c( "grey17", "deepskyblue2")) +
+  facet_wrap(~ OrgName, scales = "free", ncol = 4) +
+  ylab("Variance stabilized counts, asinh(cnt)") +
+  theme(strip.text = element_text(family="Helvetica-Narrow", size = 10)) +
+  scale_x_continuous(name = "Days from initial antibiotic dose",
+                     breaks = seq(-40, 120, 20), labels =  seq(-40, 120, 20),
+                     limits = c(NA, NA)) 
+```
+
+
+### Microbe clusters
+
+
+Using mean response to Abx
+
+```{r, eval = FALSE}
+set.seed(123456)
+min_num_subj <- 5
+
+abx_fclust_majority <- abx2plot.fclust %>%
+  filter(Subject_Cluster == "Majority") %>%
+  left_join(keep_rsv, by = c("Feature_ID" = "Seq_ID")) %>%
+  filter(Freq >= min_num_subj) %>%
+  select(-Freq) %>%
+  group_by(time, Feature_ID) %>%
+  summarise(value = mean(value)) %>%
+  left_join(TAXTAB, by = c("Feature_ID" = "Seq_ID")) %>%
+  arrange( Feature_ID, time)
+
+length(unique(abx_fclust_majority$Feature_ID))
+#[1] 573
+
+seqClusters.abx <- fit_fpca(
+  abx_fclust_majority,
+  "time", "value", "Feature_ID",
+  cluster = TRUE, K = 8)
+
+seqClusters_fpca.abx <- fitted_values_fpca(seqClusters.abx) %>%
+  mutate(Seq_ID = Replicate_ID) 
+
+save(list = c("keep_rsv", "abx.rsv.subset", 
+              "abx_fclust", "abx_fclust_subjFit", "abx_fclust_mu",
+              "abx_fclust_majority", "seqClusters.abx", "seqClusters_fpca.abx"),
+     file = "output/fpca_clust_res_abx_norm.rda")
+```
+
+
+
+
+
+
+```{r seq-clusters-abx, fig.width=10, fig.height=6}
+ggplot(
+  seqClusters_fpca.abx, aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Seq_ID, color = Cluster),
+    size = 0.7, alpha = 0.7
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  geom_smooth(color = "grey20") +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 4) +
+  scale_color_brewer(palette = "Set1") +
+  guides(color = guide_legend(override.aes = list(size=4))) +
+  ylab("Variance stabilized counts, asinh(cnt)") +
+  xlab("Days from initial abx dose")
+```
+
+
+```{r}
+top_rsv <- seqClusters_fpca.abx %>%
+  group_by(Seq_ID, Cluster) %>%
+  summarise(mean_abnd = mean(value)) %>%
+  arrange(desc(mean_abnd)) %>%
+  left_join(TAXTAB %>% select(Seq_ID, OrgName, Species, Genus))
+
+top_genus <- top_rsv %>%
+  filter(!is.na(Genus)) %>%
+  group_by(Genus, Cluster) %>%
+  summarise(
+    mean_abnd = mean(mean_abnd),
+    prev = n()) %>%
+  arrange(Cluster, -prev, -mean_abnd) 
+```
+
+```{r}
+n = 6; nclust = length(unique(top_genus$Cluster))
+df_top_genus <- top_genus %>% 
+  group_by(Cluster) %>% 
+  top_n(n, wt = prev*mean_abnd) %>%
+  arrange(Cluster, -prev, -mean_abnd) %>%
+  select(-mean_abnd, -prev) %>% ungroup() %>%
+  mutate(Cluster = paste0("Cluster", Cluster)) %>%
+  mutate(idx = rep(1:n, nclust)) %>%
+  spread(key = Cluster, Genus)
+df_top_genus %>% select(-idx)
+```
+
+
+```{r}
+n = 10; nclust = length(unique(top_rsv$Cluster))
+df_top_rsv <- top_rsv %>% 
+  ungroup() %>%
+  select(OrgName, Cluster, mean_abnd) %>%
+  group_by(Cluster) %>% 
+  top_n(n, wt = mean_abnd) %>%
+  arrange(Cluster, mean_abnd) %>%
+  select(-mean_abnd) %>% ungroup() %>%
+  mutate(Cluster = paste0("Cluster", Cluster)) %>%
+  mutate(idx = rep(1:n, nclust)) %>%
+  spread(key = Cluster, OrgName)
+df_top_rsv %>% select(-idx)
+```
+
+```{r}
+# write.csv(seqClusters_fpca.abx %>% select(Seq_ID, Cluster) %>% distinct() %>% 
+#             left_join(TAXTAB) %>% arrange(Cluster),
+#           file = "output/abx_seqClusters.csv")
+```
+
+
 ## Diet
 
 
@@ -541,7 +569,7 @@ ggplot(aes(x = RelDay, y = dist_to_baseline)) +
     color = "navy", size = 2) +
   scale_color_manual(values = diet_intv_cols, name = "Interval") +
   scale_x_continuous(
-    name = "Days from initial antibiotic dose",
+    name = "Days from diet initiation",
     limits = c(NA, NA), breaks = seq(-50, 60, 10)) +
   scale_y_continuous(
     name = "Bray-Curtis distance to baseline", 
@@ -588,7 +616,7 @@ ggplot(aes(x = RelDay, y = dist_to_baseline)) +
     color = "navy", size = 2) +
   scale_color_manual(values = diet_intv_cols, name = "Interval") +
   scale_x_continuous(
-    name = "Days from initial antibiotic dose",
+    name = "Days from diet initiation",
     limits = c(NA, NA), breaks = seq(-50, 60, 10)) +
   scale_y_continuous(
     name = "Bray-Curtis distance to baseline", 
@@ -604,18 +632,33 @@ print(pDiet)
 print(pDietDeriv + theme_bw(base_size = 10) + theme_subplot, vp = vp)
 ```
 
-<<<<<<< HEAD
-## Colon cleanout
 
-=======
 
 ### Cluster RSVs
 
 ```{r, eval = FALSE}
 dietFac <- c("PreDiet", "MidDiet", "PostDiet")
-diet <- subset_samples(psSubj, Diet_RelDay >= -30, Diet_RelDay <= 30)
+diet <- subset_samples(psSubj.norm, Diet_RelDay >= -30 & Diet_RelDay <= 45)
 diet <- subset_taxa(diet, taxa_sums(diet) > 0)
 diet
+
+(replicated <- data.frame(sample_data(diet)) %>% 
+        group_by(Subject, Group, Diet_Interval, Diet_RelDay) %>%
+        mutate(n = n()) %>% ungroup() %>% 
+        filter(n > 1) %>% select(Meas_ID, Subject, Diet_RelDay, Diet_Interval))
+
+# Remove replicated samples
+sample_sums(diet)[replicated$Meas_ID]
+# M7869 M7886 
+# 74697 74873 
+
+# we retain a replicate with higher sample depth:
+diet <- subset_samples(diet, !Meas_ID %in% c("M2129"))
+diet
+# otu_table()   OTU Table:         [ 2333 taxa and 2611 samples ]
+```
+
+```{r, eval = FALSE}
 diet.rsv <- data.frame(asinh(as(otu_table(diet), "matrix"))) %>%
   rownames_to_column("Seq_ID") %>%
   gather(Meas_ID, abundance, -Seq_ID) %>%
@@ -623,10 +666,7 @@ diet.rsv <- data.frame(asinh(as(otu_table(diet), "matrix"))) %>%
   left_join(TAXTAB) %>%
   mutate(Diet_Interval = factor(Diet_Interval, levels = dietFac)) %>%
   arrange(Seq_ID, Subject, Diet_RelDay)
-```
 
-```{r, eval = FALSE}
-## Run using  fclust.R script
 thresh <- 0; num_nonzero <- 10; 
 min_no_subj <- 3
 
@@ -640,18 +680,17 @@ keep_rsv <- diet.rsv %>%
   filter(Freq >= min_no_subj) %>%
   arrange(desc(Freq))
 
-length(unique(keep_rsv$Seq_ID)) # = 921
+length(unique(keep_rsv$Seq_ID)) # = 781
 
 diet.rsv.subset <- diet.rsv %>%
   filter(Seq_ID %in% unique(keep_rsv$Seq_ID))
 
-save(list = c("keep_rsv", "diet.rsv.subset"), 
-     file = "output/fpca_clust_res_diet.rda")
+# save(list = c("keep_rsv", "diet.rsv.subset"), 
+#      file = "output/fpca_clust_res_diet.rda")
 ```
 
 
-```{r}
-source("./fda_pca_funs.R")
+```{r, eval = FALSE}
 diet_fclust <- fpca_wrapper(
   diet.rsv.subset,
   time_column = "Diet_RelDay",
@@ -663,7 +702,6 @@ diet_fclust <- fpca_wrapper(
   fpca_optns = NULL, fclust_optns = NULL,
   parallel = TRUE, ncores = 16)
 
-
 diet_fclust_mu <- get_fpca_means(diet_fclust)
 diet_fclust_subjFit <- get_fpca_fits(diet_fclust)
 
@@ -672,8 +710,216 @@ save(list = c("keep_rsv", "diet.rsv.subset",
     file = "output/fpca_clust_res_diet.rda")
 ```
 
+We now find the taxa with the most variability in the response to Diet between two clusters:
+
+```{r}
+# Taxa's trajectory difference between two clusters
+load("output/fpca_clust_res_diet_norm.rda")
+diffBetweenClusts.diet <- diet_fclust_subjFit %>%
+  group_by(Feature_ID, time, Cluster ) %>% 
+  summarise(value = mean(value, na.rm = TRUE)) %>%
+  spread(key = "Cluster", value = "value") %>%
+  ungroup() %>% 
+  mutate(diff = abs(`1` - `2`)) %>%
+  group_by(Feature_ID) %>%
+  summarise(
+    mean_clustDist_L1 = mean(diff, na.rm = TRUE),
+    sd_Clust1 = sd(`1`),
+    sd_Clust2 = sd(`2`)) %>% 
+  filter(
+    !is.na(mean_clustDist_L1)
+  ) %>% # Some taxa have a single cluster (everyone behaves similarly)
+  arrange(-mean_clustDist_L1)
+
+summary(diffBetweenClusts.diet)
+
+diffBetweenClusts.diet <- diffBetweenClusts.diet %>%
+  filter(sd_Clust1 > median(diffBetweenClusts.diet$sd_Clust1) |
+           sd_Clust2 > median(diffBetweenClusts.diet$sd_Clust2))
+```
+
+
+```{r}
+# Plot top 20
+seq_to_plot <- diffBetweenClusts.diet$Feature_ID[1:20]
+tax_to_plot <- (TAXTAB %>% column_to_rownames("Seq_ID"))[seq_to_plot, "OrgName"]
+tax_to_plot
+
+seq1_subjClusters <- diet_fclust_subjFit %>%
+  filter(Feature_ID == "Seq1") %>%
+  select(Replicate_ID, Cluster) %>% distinct() %>%
+  filter(Cluster==2)
+
+diet2plot.fclust <- diet_fclust_subjFit %>%
+  left_join(TAXTAB, by = c("Feature_ID" = "Seq_ID")) %>%
+  group_by(Feature_ID) %>%
+  mutate(
+    n_cluster1 = sum(Cluster == 1),
+    n_cluster2 = sum(Cluster == 2),
+    majorityCluster = ifelse(n_cluster1 > n_cluster2, 1, 2)
+  ) %>% 
+  ungroup() %>%
+  mutate(
+    OrgName = factor(OrgName, levels = tax_to_plot),
+    Subject_Cluster = ifelse(Cluster == majorityCluster, "Majority", "Minority")) 
+
+
+diet2plot <- diet.rsv.subset %>% 
+  filter(Seq_ID %in% seq_to_plot) %>%
+  left_join(
+    diet2plot.fclust %>% 
+      select(-value, -time) %>%
+      distinct() %>%
+      rename(Seq_ID = Feature_ID,  Subject = Replicate_ID) 
+  ) %>%
+  mutate(
+    Seq_ID = factor(Seq_ID, levels = seq_to_plot),
+    OrgName = factor(OrgName, levels = tax_to_plot))
+```
+
+
+
+```{r diffTaxa-diet, fig.width=12, fig.height=10}
+diet2plot.fclust %>%
+    filter(Feature_ID %in% seq_to_plot) %>%
+ggplot(aes(x = time, y = value, color = Subject_Cluster)) +
+  geom_line(
+    aes(group = Replicate_ID),
+    alpha = 0.3, size = 0.5
+  ) +
+  geom_smooth(se = FALSE) +
+  geom_point(
+    data = diet2plot,
+    aes(x = Diet_RelDay, y = abundance),
+    size = 0.3, alpha = 0.5
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 4, lwd = 1, color = "orange") +
+  geom_line(
+    data = diet_fclust_mu %>% 
+      filter(Feature_ID %in% seq_to_plot) %>% 
+      left_join(TAXTAB, by = c("Feature_ID" = "Seq_ID")) %>%
+      mutate(OrgName = factor(OrgName, levels = tax_to_plot)),
+    color = "red", size = 1
+  ) +
+  scale_color_manual(values = c( "grey17", "deepskyblue2")) +
+  facet_wrap(~ OrgName, scales = "free", ncol = 4) +
+  theme(strip.text = element_text(family="Helvetica-Narrow", size = 10)) +
+  scale_x_continuous(name = "Days from diet initiation",
+                     breaks = seq(-40, 120, 20), labels =  seq(-40, 120, 20),
+                     limits = c(NA, NA)) +
+  ylab("Variance stabilized counts, asinh(cnt)")
+```
+
+
+### Microbe clusters
+
+Using mean response to Diet
+
+```{r, eval = FALSE}
+diet_fclust_majority <- diet2plot.fclust %>%
+  filter(Subject_Cluster == "Majority") %>%
+  left_join(keep_rsv, by = c("Feature_ID" = "Seq_ID")) %>%
+  filter(Freq >= min_num_subj) %>%
+  select(-Freq) %>%
+  group_by(time, Feature_ID) %>%
+  summarise(value = mean(value)) %>%
+  left_join(TAXTAB, by = c("Feature_ID" = "Seq_ID")) %>%
+  arrange( Feature_ID, time)
+
+length(unique(diet_fclust_majority$Feature_ID))
+#[1] 500
+
+set.seed(123456)
+min_num_subj <- 5
+seqClusters.diet <- fit_fpca(
+  diet_fclust_majority,
+  "time", "value", "Feature_ID",
+  cluster = TRUE, K = 6)
+
+seqClusters_fpca.diet <- fitted_values_fpca(seqClusters.diet) %>%
+  mutate(Seq_ID = Replicate_ID) 
+
+ save(list = c("keep_rsv", "diet.rsv.subset",                                                      
+              "diet_fclust", "diet_fclust_subjFit", "diet_fclust_mu",                           
+              "diet_fclust_majority", "seqClusters.diet", "seqClusters_fpca.diet"),           
+         file = "output/fpca_clust_res_diet_norm.rda")   
+
+```
+
+```{r}
+# write.csv(seqClusters_fpca.diet %>% select(Seq_ID, Cluster) %>% distinct() %>%
+#             left_join(TAXTAB) %>% arrange(Cluster),
+#           file = "output/diet_seqClusters.csv")
+```
+
+
+
+
+```{r seq-clusters-diet, fig.width=7, fig.height=4}
+ggplot(
+  seqClusters_fpca.diet, aes(x = time, y = value)) +
+  geom_line(
+    aes(group = Seq_ID, color = Cluster),
+    size = 0.7, alpha = 0.5
+  ) +
+  geom_vline(xintercept = 0, lwd = 1, color = "orange") +
+  geom_vline(xintercept = 5, lwd = 1, color = "orange") +
+  geom_smooth(color = "grey20") +
+  facet_wrap(~ Cluster, labeller = label_both, ncol = 3, scales = "free") +
+  scale_color_brewer(palette = "Set1") +
+  guides(color = guide_legend(override.aes = list(size=4))) +
+  ylab("Variance stabilized counts, asinh(cnt)")
+```
+
+
+```{r}
+top_rsv <- seqClusters_fpca.diet %>%
+  group_by(Seq_ID, Cluster) %>%
+  summarise(mean_abnd = mean(value)) %>%
+  arrange(desc(mean_abnd)) %>%
+  left_join(TAXTAB %>% select(Seq_ID, OrgName, Species, Genus))
+
+top_genus <- top_rsv %>%
+  filter(!is.na(Genus)) %>%
+  group_by(Genus, Cluster) %>%
+  summarise(
+    mean_abnd = mean(mean_abnd),
+    prev = n()) %>%
+  arrange(Cluster, -prev, -mean_abnd) 
+```
+
+```{r}
+n = 6; nclust = length(unique(top_genus$Cluster))
+df_top_genus <- top_genus %>% 
+  group_by(Cluster) %>% 
+  top_n(n, wt = prev*mean_abnd) %>%
+  arrange(Cluster, -prev, -mean_abnd) %>%
+  select(-mean_abnd, -prev) %>% ungroup() %>%
+  mutate(Cluster = paste0("Cluster", Cluster)) %>%
+  mutate(idx = rep(1:n, nclust)) %>%
+  spread(key = Cluster, Genus)
+df_top_genus %>% select(-idx)
+```
+
+
+```{r}
+n = 10; nclust = length(unique(top_rsv$Cluster))
+df_top_rsv <- top_rsv %>% 
+  ungroup() %>%
+  select(OrgName, Cluster, mean_abnd) %>%
+  group_by(Cluster) %>% 
+  top_n(n, wt = mean_abnd) %>%
+  arrange(Cluster, mean_abnd) %>%
+  select(-mean_abnd) %>% ungroup() %>%
+  mutate(Cluster = paste0("Cluster", Cluster)) %>%
+  mutate(idx = rep(1:n, nclust)) %>%
+  spread(key = Cluster, OrgName)
+df_top_rsv %>% select(-idx)
+```
+
+
 ## Colon cleanout
->>>>>>> 4d2dd8ae0a201b86a8ba480455a3a3966ad60b7b
 
 
 ```{r bray-cc}
@@ -688,12 +934,12 @@ bray_to_baseline_fltr %>%
   scale_color_manual(values = cc_intv_cols) + 
   theme(legend.position = "bottom") + 
   guides(colour = guide_legend(override.aes = list(size=3))) +
-  xlab("Days from diet initiation") +
+  xlab("Days from colon cleanout") +
   ylab("Bray-Curtis distance to 7 pre-diet samples") 
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 fpca.bray.cc30 <- fit_dist_to_baseline(
   bray_to_baseline_fltr %>% 
     filter(perturbation == "CC", RelDay >= -30, RelDay <= 30) %>%
@@ -720,7 +966,7 @@ ggplot(aes(x = RelDay, y = dist_to_baseline)) +
     color = "navy", size = 2) +
   scale_color_manual(values = cc_intv_cols, name = "Interval") +
   scale_x_continuous(
-    name = "Days from initial antibiotic dose",
+    name = "Days from colon cleanout",
     limits = c(NA, NA), breaks = seq(-50, 60, 10)) +
   scale_y_continuous(
     name = "Bray-Curtis distance to baseline", 
@@ -764,7 +1010,7 @@ ggplot(aes(x = RelDay, y = dist_to_baseline)) +
     color = "navy", size = 2) +
   scale_color_manual(values = cc_intv_cols, name = "Interval") +
   scale_x_continuous(
-    name = "Days from initial antibiotic dose",
+    name = "Days from colon cleanout",
     limits = c(NA, NA), breaks = seq(-50, 60, 10)) +
   scale_y_continuous(
     name = "Bray-Curtis distance to baseline", 

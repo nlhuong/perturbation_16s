@@ -32,7 +32,8 @@ fpca_wrapper <- function(df.long, time_column, value_column, replicate_column,
     cat("Running on ", ncores, " cores...\n")
     registerDoParallel(ncores)
     res <- foreach(feat=features) %dopar% {
-      fit_fdapca(df.long, time_column, value_column, 
+        cat("Feature:", feat, "...\n")
+        fit_fpca(df.long, time_column, value_column, 
                  replicate_column, feat_column, feat, 
                  cluster = cluster, cmethod = cmethod, K = K, 
                  num_nonzero = num_nonzero, thresh = thresh,  
@@ -42,7 +43,7 @@ fpca_wrapper <- function(df.long, time_column, value_column, replicate_column,
   } else {
     res <- lapply(features, function(feat) {
       cat("Processing feature: ", feat, "...\n")
-      fit_fdapca(df.long, time_column, value_column, 
+      fit_fpca(df.long, time_column, value_column, 
                  replicate_column, feat_column, feat, 
                  cluster = cluster, cmethod = cmethod, K = K, 
                  num_nonzero = num_nonzero, thresh = thresh,  
@@ -55,7 +56,7 @@ fpca_wrapper <- function(df.long, time_column, value_column, replicate_column,
 }
 
 
-fit_fdapca <- function(
+fit_fpca <- function(
   df, time_column, value_column, replicate_column,
   feat_column = NULL, feat = NULL,
   cluster = FALSE, cmethod = "EMCluster", K = 2, filter = TRUE,
@@ -160,7 +161,7 @@ fit_dist_to_baseline <- function(
   nGrid <- length(
     seq(min(dist_to_baseline[[time_column]]),
         max(dist_to_baseline[[time_column]])))
-  fpca_res <- fit_fdapca(
+  fpca_res <- fit_fpca(
     dist_to_baseline, time_column, value_column, replicate_column,
     cluster = FALSE, filter = FALSE, fpca_optns = list(nRegGrid = nGrid))
   

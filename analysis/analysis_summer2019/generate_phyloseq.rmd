@@ -24,7 +24,7 @@ options(width = 200, stringsAsFactors = FALSE)
 knitr::opts_chunk$set(
   message = FALSE, error = FALSE, warning = FALSE, 
   fig.width = 8, fig.height = 6,
-  fig.path = "../figs/analysis_summer/generate_phylseq/", 
+  fig.path = "../figs/generate_phylseq/", 
   dev='png') 
 ```
 

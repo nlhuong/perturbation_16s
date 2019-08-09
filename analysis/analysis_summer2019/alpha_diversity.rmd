@@ -1,11 +1,20 @@
 ---
 title: "Alpha diversity"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results="asis"}
+knitr::opts_chunk$set(
+  message = FALSE, error = FALSE, warning = FALSE, 
+  fig.width = 8, fig.height = 6,
+  fig.path = "./figs/alpha_diversity/", 
+  dev='png') 
+```
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 library("phyloseq")
 library("RColorBrewer")
 library("tidyverse")
@@ -42,6 +51,8 @@ psSubj
 # sample_data() Sample Data:       [ 4402 samples by 40 sample variables ]
 SMP <- data.frame(sample_data(psSubj))
 SUBJ <- SMP %>% select(Subject, Age:BirthYear) %>% distinct()
+
+alphaDiversity <- readRDS("output/alphaDiversity.rds")
 ```
 
 # Alpha Diversity
@@ -100,21 +111,38 @@ df %>%
   ylab("Alpha diversity") 
 ```
 
-
-```{r alphaDiver-abx-zoom, fig.width=10, fig.height=10}
+```{r alphaDiver-abx-smooth, fig.width=10, fig.height=10}
 df %>% 
   arrange(diversity_metric, perturb_interval, Subject, RelDay) %>%
-  ggplot(
-    aes(x = RelDay, y = value, 
-        group = Subject, color = Interval)) +
-  geom_line(aes(group = Subject), alpha = 0.3, lwd = 0.5) + 
-  geom_point(alpha = 0.5, size = 0.5) + 
+  ggplot(aes(x = RelDay, y = value)) +
+  geom_line(aes(group = Subject,color = Interval), alpha = 0.3, lwd = 0.5) + 
+  geom_point(aes(color = Interval), alpha = 0.3, size = 0.5) + 
+  geom_smooth(color = "navy", size = 1) +
   scale_color_manual(values = intv_cols) + 
   theme(legend.position = "bottom") + 
   guides(colour = guide_legend(override.aes = list(size=3))) +
   facet_grid(diversity_metric ~ perturb_interval, scales = "free") +
   xlab("Days from perturbation") +
-  ylab("Alpha diversity") + xlim(-30, 30)
+  ylab("Alpha diversity") +
+  xlim(-60, 60)
+```
+
+
+```{r alphaDiver-abx-zoom-smooth, fig.width=10, fig.height=10}
+df %>% 
+  arrange(diversity_metric, perturb_interval, Subject, RelDay) %>%
+  ggplot(
+    aes(x = RelDay, y = value)) +
+  geom_line(aes(group = Subject, color = Interval), alpha = 0.3, lwd = 0.5) + 
+  geom_point(aes(color = Interval), alpha = 0.5, size = 0.5) + 
+  geom_smooth(color = "navy", size = 1) +
+  scale_color_manual(values = intv_cols) + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(override.aes = list(size=3))) +
+  facet_grid(diversity_metric ~ perturb_interval, scales = "free") +
+  xlab("Days from perturbation") +
+  ylab("Alpha diversity") + 
+  xlim(-30, 30)
 ```
 
 
